@@ -32,10 +32,33 @@ function Get-DefaultInstallDir {
 }
 
 function Get-OsArch {
-  $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+  $arch = $null
+
+  try {
+    $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
+  }
+  catch {
+    $arch = $null
+  }
+
+  if (-not $arch) {
+    $legacyArch = if ($env:PROCESSOR_ARCHITEW6432) {
+      $env:PROCESSOR_ARCHITEW6432
+    }
+    else {
+      $env:PROCESSOR_ARCHITECTURE
+    }
+
+    if ($legacyArch) {
+      $arch = $legacyArch.ToLowerInvariant()
+    }
+  }
+
   switch ($arch) {
     "x64" { return "amd64" }
+    "amd64" { return "amd64" }
     "arm64" { return "arm64" }
+    "aarch64" { return "arm64" }
     default { throw "unsupported architecture: $arch" }
   }
 }
