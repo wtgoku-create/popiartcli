@@ -105,6 +105,11 @@ install_dir() {
     return
   fi
 
+  if [ "$(resolve_os)" = "darwin" ]; then
+    printf '/usr/local/bin\n'
+    return
+  fi
+
   if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
     printf '/usr/local/bin\n'
     return
@@ -116,6 +121,22 @@ install_dir() {
   fi
 
   printf '/usr/local/bin\n'
+}
+
+profile_file_hint() {
+  shell_name="${SHELL:-}"
+  shell_name="${shell_name##*/}"
+  case "${shell_name}" in
+    zsh)
+      printf '%s\n' "${HOME}/.zprofile"
+      ;;
+    bash)
+      printf '%s\n' "${HOME}/.bash_profile"
+      ;;
+    *)
+      printf '%s\n' "${HOME}/.profile"
+      ;;
+  esac
 }
 
 detect_completion_shell() {
@@ -250,8 +271,14 @@ log "installed ${BINARY} ${version} to ${bindir}/${BINARY}"
 case ":${PATH}:" in
   *:"${bindir}":*) ;;
   *)
-    log "warning: ${bindir} is not on PATH"
-    log "add this to your shell profile:"
+    log "warning: ${bindir} is not on PATH in the current shell"
+    if [ -n "${HOME:-}" ]; then
+      log "add this to $(profile_file_hint):"
+    else
+      log "add this to your shell profile:"
+    fi
+    log "  export PATH=\"${bindir}:\$PATH\""
+    log "then open a new terminal or run:"
     log "  export PATH=\"${bindir}:\$PATH\""
     ;;
 esac
