@@ -1,0 +1,71 @@
+version: 2
+
+project_name: popiart
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: popiart
+    main: ./cmd/popiart
+    binary: popiart
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .Date }}
+
+archives:
+  - id: popiart
+    builds:
+      - popiart
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  draft: false
+  prerelease: auto
+
+brews:
+  - name: popiart
+    directory: Formula
+    repository:
+      owner: wtgoku-create
+      name: homebrew-popi
+      branch: main
+      token: "{{ .Env.HOMEBREW_POPI_GITHUB_TOKEN }}"
+    homepage: "https://github.com/wtgoku-create/popiartcli"
+    description: "CLI for creator skills, multimodal auth, and billing for coding agents"
+    license: "MIT"
+    commit_author:
+      name: popiart-bot
+      email: bot@popi.art
+    test: |
+      system "#{bin}/popiart", "--version"
+    install: |
+      bin.install "popiart"

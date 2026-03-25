@@ -1,0 +1,26 @@
+{
+  "name": "popiart",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CLI for creator skills, multimodal auth, and billing for coding agents",
+  "type": "module",
+  "bin": {
+    "popiart": "./bin/popiart.js"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "scripts": {
+    "dev": "node bin/popiart.js",
+    "test": "node --test src/**/*.test.js",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "commander": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}
