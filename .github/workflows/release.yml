@@ -10,21 +10,29 @@ permissions:
 
 jobs:
   goreleaser:
-    if: ${{ secrets.HOMEBREW_POPI_GITHUB_TOKEN != '' }}
     runs-on: ubuntu-latest
+    env:
+      HOMEBREW_POPI_GITHUB_TOKEN: ${{ secrets.HOMEBREW_POPI_GITHUB_TOKEN }}
     steps:
+      - name: Skip when Homebrew secret is missing
+        if: env.HOMEBREW_POPI_GITHUB_TOKEN == ''
+        run: echo "HOMEBREW_POPI_GITHUB_TOKEN is not configured; skipping automated GoReleaser publish."
+
       - name: Check out code
+        if: env.HOMEBREW_POPI_GITHUB_TOKEN != ''
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Go
+        if: env.HOMEBREW_POPI_GITHUB_TOKEN != ''
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Run GoReleaser
+        if: env.HOMEBREW_POPI_GITHUB_TOKEN != ''
         uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
