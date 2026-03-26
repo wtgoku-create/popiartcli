@@ -1,0 +1,4 @@
+interface:
+  display_name: "PopiSkill Creator"
+  short_description: "Create and bootstrap PopiArt skills"
+  default_prompt: "Use $popiskill-creator to turn this workflow into a PopiArt skill and the exact popiartcli setup, auth, and test steps."

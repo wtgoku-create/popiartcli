@@ -14,6 +14,7 @@ import (
 
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/seed"
 )
 
 var supportedBootstrapAgents = map[string]string{
@@ -48,21 +49,6 @@ type bootstrapResult struct {
 	DefaultSkillsProfile string                   `json:"default_skills_profile,omitempty"`
 	GeneratedFiles       []bootstrapGeneratedFile `json:"generated_files,omitempty"`
 	NextSteps            []string                 `json:"next_steps,omitempty"`
-}
-
-type defaultSkillset struct {
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	GeneratedAt string              `json:"generated_at"`
-	Source      string              `json:"source"`
-	Queries     []defaultSkillQuery `json:"queries"`
-}
-
-type defaultSkillQuery struct {
-	Label  string `json:"label"`
-	Tag    string `json:"tag"`
-	Limit  int    `json:"limit"`
-	Search string `json:"search,omitempty"`
 }
 
 func newBootstrapCmd() *cobra.Command {
@@ -208,18 +194,7 @@ func normalizeChoices(values []string, allowed map[string]string, label string) 
 
 func writeDefaultSkillset() (string, error) {
 	path := filepath.Join(config.Dir(), "skillsets", "default.json")
-	skillset := defaultSkillset{
-		Name:        "default",
-		Description: "Starter discovery profile for PopiArt's remote skill registry.",
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Source:      "popiart bootstrap",
-		Queries: []defaultSkillQuery{
-			{Label: "Image", Tag: "image", Limit: 20},
-			{Label: "Video", Tag: "video", Limit: 20},
-			{Label: "Audio", Tag: "audio", Limit: 20},
-			{Label: "Trending", Search: "popular", Limit: 20},
-		},
-	}
+	skillset := seed.NewDefaultSkillset(time.Now().UTC())
 	return path, writeJSONFile(path, skillset)
 }
 
@@ -305,7 +280,7 @@ func bootstrapNextSteps(result bootstrapResult) []string {
 		steps = append(steps, "运行 `popiart auth login` 保存 API key")
 	}
 	if result.DefaultSkillsProfile != "" {
-		steps = append(steps, "运行 `popiart skills list --tag image` 或查看默认 skill profile")
+		steps = append(steps, "运行 `popiart skills list --tag image`，或查看默认 skill profile 里的 `popiskill-creator` seed")
 	}
 	for _, file := range result.GeneratedFiles {
 		if file.Kind == "completion" {

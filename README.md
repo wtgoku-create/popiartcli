@@ -120,8 +120,9 @@ go install ./cmd/popiart
 - 生成 shell completion
 - 可选生成 agent 引导文件
 - 可选生成默认的远程 skill discovery profile
+- 在默认 profile 中写入 CLI 自带的 seed skill 元数据，例如 `popiskill-creator`
 
-这里的 skill 仍然以远程注册表形式存在，不会像本地脚手架那样直接复制到用户目录。
+这里的 skill 发现仍以远程注册表为主；CLI 仓库同时维护一小组内置 seed skills，作为 bootstrap 和作者引导入口。
 
 发布维护说明见 [docs/releasing.md](./docs/releasing.md)。
 
@@ -155,6 +156,8 @@ internal/config/          ~/.popiart/config.json 配置读写
 internal/input/           --input JSON / @file / stdin 解析
 internal/output/          JSON/plain 输出与错误封装
 internal/poll/            job 轮询
+internal/seed/            bootstrap 默认 skill profile 与 seed 数据
+skills/                   CLI 内置 seed skills
 src/                      旧的 Node.js 原型实现（仅迁移参考，不对外发布）
 bin/                      旧的 Node.js 启动入口（仅迁移参考，不对外发布）
 ```

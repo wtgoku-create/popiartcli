@@ -1,0 +1,4 @@
+interface:
+  display_name: "Character Three View"
+  short_description: "Generate a front-side-back character sheet"
+  default_prompt: "Use this skill to generate a consistent full-body three-view character sheet with front, side, and back views, plus optional palette, props, expressions, seasonal outfits, and action callouts."
