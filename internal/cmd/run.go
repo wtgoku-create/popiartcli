@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -11,6 +9,7 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/input"
 	"github.com/wtgoku-create/popiartcli/internal/output"
 	"github.com/wtgoku-create/popiartcli/internal/poll"
+	"github.com/wtgoku-create/popiartcli/internal/seed"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
@@ -22,6 +21,9 @@ func newRunCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload, err := input.Resolve(flagString(cmd, "input"))
 			if err != nil {
+				return err
+			}
+			if err := validateBundledSkillRun(args[0]); err != nil {
 				return err
 			}
 
@@ -52,8 +54,11 @@ func newRunCmd() *cobra.Command {
 				return output.NewError("CLI_ERROR", "作业响应中缺少 job_id", nil)
 			}
 
-			intervalMs, _ := strconv.Atoi(flagString(cmd, "interval"))
-			done, err := poll.WaitForJob(context.Background(), currentClient(), jobID, time.Duration(intervalMs)*time.Millisecond, 300)
+			interval, err := intervalDuration(cmd, "interval")
+			if err != nil {
+				return err
+			}
+			done, err := poll.WaitForJob(context.Background(), currentClient(), jobID, interval, 300)
 			if err != nil {
 				return err
 			}
@@ -67,4 +72,22 @@ func newRunCmd() *cobra.Command {
 	runCmd.Flags().String("priority", "normal", "作业优先级: low | normal | high")
 	runCmd.Flags().String("idempotency-key", "", "用于安全重试的幂等键")
 	return runCmd
+}
+
+func validateBundledSkillRun(skillID string) error {
+	if _, ok := seed.FindBundledSkill(skillID); !ok {
+		return nil
+	}
+
+	exists, err := remoteSkillExists(context.Background(), skillID)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	return output.NewError("LOCAL_ONLY_SKILL", "该 skill 仅是 CLI 内置 seed helper，不能直接提交到远端执行", map[string]any{
+		"skill_id": skillID,
+		"hint":     "使用 `popiart skills get " + skillID + "` 查看说明，或选择对应的远程 runtime skill 再执行 `popiart run`",
+	})
 }

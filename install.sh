@@ -106,8 +106,18 @@ install_dir() {
   fi
 
   if [ "$(resolve_os)" = "darwin" ]; then
-    printf '/usr/local/bin\n'
-    return
+    if command -v brew >/dev/null 2>&1; then
+      brew_bindir="$(brew --prefix 2>/dev/null)/bin"
+      if [ -n "${brew_bindir}" ] && [ -d "${brew_bindir}" ] && [ -w "${brew_bindir}" ]; then
+        printf '%s\n' "${brew_bindir}"
+        return
+      fi
+    fi
+
+    if [ -d /opt/homebrew/bin ] && [ -w /opt/homebrew/bin ]; then
+      printf '/opt/homebrew/bin\n'
+      return
+    fi
   fi
 
   if [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
@@ -117,6 +127,11 @@ install_dir() {
 
   if [ -n "${HOME:-}" ]; then
     printf '%s\n' "${HOME}/.local/bin"
+    return
+  fi
+
+  if [ "$(resolve_os)" = "darwin" ] && [ -d /opt/homebrew/bin ]; then
+    printf '/opt/homebrew/bin\n'
     return
   fi
 
@@ -133,8 +148,24 @@ profile_file_hint() {
     bash)
       printf '%s\n' "${HOME}/.bash_profile"
       ;;
+    fish)
+      printf '%s\n' "${HOME}/.config/fish/config.fish"
+      ;;
     *)
       printf '%s\n' "${HOME}/.profile"
+      ;;
+  esac
+}
+
+path_export_snippet() {
+  shell_name="${SHELL:-}"
+  shell_name="${shell_name##*/}"
+  case "${shell_name}" in
+    fish)
+      printf 'fish_add_path "%s"\n' "${bindir}"
+      ;;
+    *)
+      printf 'export PATH="%s:$PATH"\n' "${bindir}"
       ;;
   esac
 }
@@ -277,9 +308,9 @@ case ":${PATH}:" in
     else
       log "add this to your shell profile:"
     fi
-    log "  export PATH=\"${bindir}:\$PATH\""
+    log "  $(path_export_snippet)"
     log "then open a new terminal or run:"
-    log "  export PATH=\"${bindir}:\$PATH\""
+    log "  $(path_export_snippet)"
     ;;
 esac
 

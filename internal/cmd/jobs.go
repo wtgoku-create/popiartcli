@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"io"
-	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -36,8 +34,11 @@ func newJobsCmd() *cobra.Command {
 		Short: "阻塞当前进程直到作业达到终止状态",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			intervalMs, _ := strconv.Atoi(flagString(cmd, "interval"))
-			job, err := poll.WaitForJob(context.Background(), currentClient(), args[0], time.Duration(intervalMs)*time.Millisecond, 300)
+			interval, err := intervalDuration(cmd, "interval")
+			if err != nil {
+				return err
+			}
+			job, err := poll.WaitForJob(context.Background(), currentClient(), args[0], interval, 300)
 			if err != nil {
 				return err
 			}

@@ -2,6 +2,7 @@ package input
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 
@@ -15,7 +16,7 @@ func Resolve(raw string) (any, error) {
 
 	switch {
 	case raw == "-":
-		data, err := os.ReadFile("/dev/stdin")
+		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return nil, output.NewError("INPUT_ERROR", "Failed to read from stdin", nil)
 		}

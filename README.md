@@ -118,10 +118,11 @@ go install ./cmd/popiart
 `popiart bootstrap` 负责第二阶段的生态引导：
 
 - 生成 shell completion
-- 可选生成 agent 引导文件
+- 可选生成 agent 引导文件，并同时写出适用于 shell 的 `env.sh` 与适用于 PowerShell 的 `env.ps1`
 - 可选生成默认的远程 skill discovery profile
 - 在默认 profile 中写入 CLI 自带的 seed skill 元数据，例如 `popiskill-creator`
 - `popiart skills list/get/schema` 会同时显示这些本地 bundled seed skills 和远程注册表技能
+- 这些 bundled seed skills 是本地 authoring/helper 入口，不是远端 runtime skill；`popiart run` 只能执行服务端已注册的 runtime skill
 
 这里的 skill 发现仍以远程注册表为主；CLI 仓库同时维护一小组内置 seed skills，作为 bootstrap 和作者引导入口，并在本地查询时一并暴露。
 

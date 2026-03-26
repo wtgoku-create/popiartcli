@@ -12,6 +12,7 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/api"
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/termutil"
 )
 
 func currentClient() *api.Client {
@@ -43,6 +44,10 @@ func stringValue(value any) string {
 
 func prompt(label string) (string, error) {
 	fmt.Fprint(os.Stderr, label)
+	return readPromptLine()
+}
+
+func readPromptLine() (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 	text, err := reader.ReadString('\n')
 	if err != nil {
@@ -52,7 +57,15 @@ func prompt(label string) (string, error) {
 }
 
 func promptPassword(label string) (string, error) {
-	return prompt(label)
+	fmt.Fprint(os.Stderr, label)
+	if termutil.IsTerminal(int(os.Stdin.Fd())) {
+		value, err := termutil.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr)
+		if err == nil {
+			return strings.TrimSpace(string(value)), nil
+		}
+	}
+	return readPromptLine()
 }
 
 func requireTokenError() error {

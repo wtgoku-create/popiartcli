@@ -3,9 +3,11 @@ package cmd
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/wtgoku-create/popiartcli/internal/output"
 	"github.com/wtgoku-create/popiartcli/internal/seed"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
@@ -38,7 +40,12 @@ func newSkillsCmd() *cobra.Command {
 			}, &resp); err != nil {
 				return err
 			}
-			resp.Items = paginateSkillSummaries(append(localItems, resp.Items...), limit, offset)
+			localItems, err := bundledSkillSummariesMissingOnRemote(context.Background(), localItems)
+			if err != nil {
+				return err
+			}
+			merged := mergeSkillSummaries(resp.Items, localItems)
+			resp.Items = paginateSkillSummaries(merged, limit, offset)
 			resp.Total += len(localItems)
 			resp.Limit = limit
 			resp.Offset = offset
@@ -55,11 +62,13 @@ func newSkillsCmd() *cobra.Command {
 		Short: "获取技能的完整模式和描述",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if skill, ok := seed.FindBundledSkill(args[0]); ok {
-				return writeOutput(cmd, skill)
-			}
 			var skill types.Skill
 			if err := currentClient().GetJSON(context.Background(), "/skills/"+args[0], nil, &skill); err != nil {
+				if cliErr, ok := err.(*output.CLIError); ok && cliErr.Code == "NOT_FOUND" {
+					if skill, ok := seed.FindBundledSkill(args[0]); ok {
+						return writeOutput(cmd, skill)
+					}
+				}
 				return err
 			}
 			return writeOutput(cmd, skill)
@@ -71,11 +80,13 @@ func newSkillsCmd() *cobra.Command {
 		Short: "打印某个技能的输入/输出 JSON 模式",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if schema, ok := seed.FindBundledSkillSchema(args[0]); ok {
-				return writeOutput(cmd, schema)
-			}
 			var schema types.SkillSchemaResponse
 			if err := currentClient().GetJSON(context.Background(), "/skills/"+args[0]+"/schema", nil, &schema); err != nil {
+				if cliErr, ok := err.(*output.CLIError); ok && cliErr.Code == "NOT_FOUND" {
+					if schema, ok := seed.FindBundledSkillSchema(args[0]); ok {
+						return writeOutput(cmd, schema)
+					}
+				}
 				return err
 			}
 			return writeOutput(cmd, schema)
@@ -117,4 +128,52 @@ func paginateSkillSummaries(items []types.SkillSummary, limit, offset int) []typ
 		end = offset + limit
 	}
 	return items[offset:end]
+}
+
+func mergeSkillSummaries(primary []types.SkillSummary, secondary []types.SkillSummary) []types.SkillSummary {
+	seen := map[string]bool{}
+	merged := make([]types.SkillSummary, 0, len(primary)+len(secondary))
+	appendUnique := func(items []types.SkillSummary) {
+		for _, item := range items {
+			key := strings.ToLower(strings.TrimSpace(item.ID))
+			if key == "" {
+				key = strings.ToLower(strings.TrimSpace(item.Name))
+			}
+			if key != "" && seen[key] {
+				continue
+			}
+			if key != "" {
+				seen[key] = true
+			}
+			merged = append(merged, item)
+		}
+	}
+	appendUnique(primary)
+	appendUnique(secondary)
+	return merged
+}
+
+func bundledSkillSummariesMissingOnRemote(ctx context.Context, items []types.SkillSummary) ([]types.SkillSummary, error) {
+	filtered := make([]types.SkillSummary, 0, len(items))
+	for _, item := range items {
+		exists, err := remoteSkillExists(ctx, item.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered, nil
+}
+
+func remoteSkillExists(ctx context.Context, skillID string) (bool, error) {
+	var remoteSkill types.Skill
+	if err := currentClient().GetJSON(ctx, "/skills/"+skillID, nil, &remoteSkill); err != nil {
+		if cliErr, ok := err.(*output.CLIError); ok && cliErr.Code == "NOT_FOUND" {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }

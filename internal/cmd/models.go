@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"strconv"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -88,8 +86,11 @@ func newModelsCmd() *cobra.Command {
 				return output.NewError("CLI_ERROR", "推理响应中缺少 job_id", nil)
 			}
 
-			intervalMs, _ := strconv.Atoi(flagString(cmd, "interval"))
-			done, err := poll.WaitForJob(context.Background(), currentClient(), jobID, time.Duration(intervalMs)*time.Millisecond, 300)
+			interval, err := intervalDuration(cmd, "interval")
+			if err != nil {
+				return err
+			}
+			done, err := poll.WaitForJob(context.Background(), currentClient(), jobID, interval, 300)
 			if err != nil {
 				return err
 			}
