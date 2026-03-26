@@ -49,6 +49,8 @@ Runway 等。
 
 ## 安装
 
+完整的平台安装、首次使用和 agent 接入说明见 [docs/install-and-usage.md](./docs/install-and-usage.md)。
+
 ```sh
 # Homebrew (macOS / Linux)
 brew tap wtgoku-create/popi
