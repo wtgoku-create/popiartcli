@@ -121,8 +121,9 @@ go install ./cmd/popiart
 - 可选生成 agent 引导文件
 - 可选生成默认的远程 skill discovery profile
 - 在默认 profile 中写入 CLI 自带的 seed skill 元数据，例如 `popiskill-creator`
+- `popiart skills list/get/schema` 会同时显示这些本地 bundled seed skills 和远程注册表技能
 
-这里的 skill 发现仍以远程注册表为主；CLI 仓库同时维护一小组内置 seed skills，作为 bootstrap 和作者引导入口。
+这里的 skill 发现仍以远程注册表为主；CLI 仓库同时维护一小组内置 seed skills，作为 bootstrap 和作者引导入口，并在本地查询时一并暴露。
 
 发布维护说明见 [docs/releasing.md](./docs/releasing.md)。
 

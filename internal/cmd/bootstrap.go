@@ -280,7 +280,7 @@ func bootstrapNextSteps(result bootstrapResult) []string {
 		steps = append(steps, "运行 `popiart auth login` 保存 API key")
 	}
 	if result.DefaultSkillsProfile != "" {
-		steps = append(steps, "运行 `popiart skills list --tag image`，或查看默认 skill profile 里的 `popiskill-creator` seed")
+		steps = append(steps, "运行 `popiart skills list --search popiskill-creator` 或 `popiart skills list --tag image`")
 	}
 	for _, file := range result.GeneratedFiles {
 		if file.Kind == "completion" {

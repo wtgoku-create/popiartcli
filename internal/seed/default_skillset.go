@@ -37,13 +37,6 @@ func NewDefaultSkillset(generatedAt time.Time) DefaultSkillset {
 			{Label: "Audio", Tag: "audio", Limit: 20},
 			{Label: "Trending", Search: "popular", Limit: 20},
 		},
-		SeedSkills: []SeedSkill{
-			{
-				Name:        "popiskill-creator",
-				RepoPath:    "skills/popiskill-creator",
-				GitHubURL:   "https://github.com/wtgoku-create/popiartcli/tree/main/skills/popiskill-creator",
-				Description: "Bootstrap skill for installing popiartcli, authenticating with a PopiArt key, understanding the unified gateway boundary, and turning creator workflows into PopiArt skills.",
-			},
-		},
+		SeedSkills: SeedSkillsForProfile(),
 	}
 }
