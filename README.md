@@ -50,6 +50,8 @@ Runway 等。
 ## 安装
 
 完整的平台安装、首次使用和 agent 接入说明见 [docs/install-and-usage.md](./docs/install-and-usage.md)。
+MCP discoverability 与 runtime baseline 设计见 [docs/mcp-discoverability-v1.md](./docs/mcp-discoverability-v1.md)。
+当前仓库实际落地状态见 [docs/current-status.md](./docs/current-status.md)。
 
 ```sh
 # Homebrew (macOS / Linux)
@@ -58,6 +60,9 @@ brew install wtgoku-create/popi/popiart
 
 # 安装完成后，按需执行生态引导
 popiart bootstrap --agent codex --completion zsh
+
+# 如果希望安装后直接在 agent 的 MCP / skill 目录中发现 PopiArt
+popiart bootstrap --agent codex --discoverable
 ```
 
 ```sh

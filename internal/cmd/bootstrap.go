@@ -47,6 +47,7 @@ type bootstrapResult struct {
 	Agents               []string                 `json:"agents,omitempty"`
 	CompletionShells     []string                 `json:"completion_shells,omitempty"`
 	DefaultSkillsProfile string                   `json:"default_skills_profile,omitempty"`
+	RuntimeBaseline      string                   `json:"runtime_baseline,omitempty"`
 	GeneratedFiles       []bootstrapGeneratedFile `json:"generated_files,omitempty"`
 	NextSteps            []string                 `json:"next_steps,omitempty"`
 }
@@ -56,12 +57,23 @@ func newBootstrapCmd() *cobra.Command {
 	var completions []string
 	var key string
 	var withDefaultSkills bool
+	var withRuntimeBaseline bool
+	var installMCP bool
+	var installSkill bool
+	var discoverable bool
 	var noAgentConfig bool
 
 	bootstrapCmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "初始化本地 PopiArt 环境与 agent 引导文件",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if discoverable {
+				withDefaultSkills = true
+				withRuntimeBaseline = true
+				installMCP = true
+				installSkill = true
+			}
+
 			normalizedAgents, err := normalizeChoices(agents, supportedBootstrapAgents, "agent")
 			if err != nil {
 				return err
@@ -76,6 +88,11 @@ func newBootstrapCmd() *cobra.Command {
 				if _, err := config.SavePatch(config.Patch{Token: &key}); err != nil {
 					return output.NewError("CLI_ERROR", "保存 key 失败", map[string]any{"details": err.Error()})
 				}
+			}
+			if (installMCP || installSkill) && len(normalizedAgents) == 0 {
+				return output.NewError("VALIDATION_ERROR", "discoverability 产物需要显式指定至少一个 agent", map[string]any{
+					"hint": "传入 `--agent codex`、`--agent claude-code`、`--agent openclaw` 或 `--agent opencode`",
+				})
 			}
 
 			cfg := config.Load()
@@ -101,6 +118,18 @@ func newBootstrapCmd() *cobra.Command {
 					Path: path,
 				})
 			}
+			if withRuntimeBaseline {
+				path, err := writeRuntimeBaselineProfile()
+				if err != nil {
+					return output.NewError("CLI_ERROR", "写入 runtime baseline 失败", map[string]any{"details": err.Error()})
+				}
+				result.RuntimeBaseline = "runtime-baseline"
+				result.GeneratedFiles = append(result.GeneratedFiles, bootstrapGeneratedFile{
+					Kind: "runtime-baseline",
+					Name: "runtime-baseline",
+					Path: path,
+				})
+			}
 
 			if !noAgentConfig {
 				for _, agent := range normalizedAgents {
@@ -112,6 +141,30 @@ func newBootstrapCmd() *cobra.Command {
 						})
 					}
 					result.GeneratedFiles = append(result.GeneratedFiles, files...)
+				}
+			}
+			if installMCP {
+				for _, agent := range normalizedAgents {
+					file, err := writeAgentMCPConfigFile(agent, cfg)
+					if err != nil {
+						return output.NewError("CLI_ERROR", "写入 agent MCP 配置片段失败", map[string]any{
+							"details": err.Error(),
+							"agent":   agent,
+						})
+					}
+					result.GeneratedFiles = append(result.GeneratedFiles, file)
+				}
+			}
+			if installSkill {
+				for _, agent := range normalizedAgents {
+					file, err := writeAgentSkillWrapper(agent)
+					if err != nil {
+						return output.NewError("CLI_ERROR", "写入 agent skill wrapper 失败", map[string]any{
+							"details": err.Error(),
+							"agent":   agent,
+						})
+					}
+					result.GeneratedFiles = append(result.GeneratedFiles, file)
 				}
 			}
 
@@ -149,6 +202,10 @@ func newBootstrapCmd() *cobra.Command {
 	bootstrapCmd.Flags().StringArrayVar(&agents, "agent", nil, "生成指定 agent 的引导文件，可重复传递")
 	bootstrapCmd.Flags().StringArrayVar(&completions, "completion", nil, "生成指定 shell 的 completion，可重复传递")
 	bootstrapCmd.Flags().BoolVar(&withDefaultSkills, "with-default-skills", false, "生成默认的远程 skill discovery profile")
+	bootstrapCmd.Flags().BoolVar(&withRuntimeBaseline, "with-runtime-baseline", false, "生成官方 runtime baseline 清单")
+	bootstrapCmd.Flags().BoolVar(&installMCP, "install-mcp", false, "为指定 agent 生成 PopiArt MCP 配置片段")
+	bootstrapCmd.Flags().BoolVar(&installSkill, "install-skill", false, "为指定 agent 生成 PopiArt skill wrapper")
+	bootstrapCmd.Flags().BoolVar(&discoverable, "discoverable", false, "一次性生成 discoverability 所需的 MCP、skill 和 runtime baseline 资产")
 	bootstrapCmd.Flags().BoolVar(&noAgentConfig, "no-agent-config", false, "跳过 agent 引导文件生成")
 
 	return bootstrapCmd
@@ -194,6 +251,19 @@ func writeDefaultSkillset() (string, error) {
 	return path, writeJSONFile(path, skillset)
 }
 
+func writeRuntimeBaselineProfile() (string, error) {
+	path := filepath.Join(config.Dir(), "skillsets", "runtime-baseline.json")
+	profile := map[string]any{
+		"name":         "runtime-baseline",
+		"description":  "Official PopiArt runtime baseline for the first three multimodal runtime skills.",
+		"generated_at": time.Now().UTC().Format(time.RFC3339),
+		"source":       "popiart bootstrap",
+		"mcp_server":   popiartMCPServerName,
+		"skills":       officialRuntimeSkills(),
+	}
+	return path, writeJSONFile(path, profile)
+}
+
 func writeAgentEnvFiles(agent string, cfg config.Config) ([]bootstrapGeneratedFile, error) {
 	dir := filepath.Join(config.Dir(), "agents", agent)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -231,6 +301,70 @@ func writeAgentEnvFiles(agent string, cfg config.Config) ([]bootstrapGeneratedFi
 	return []bootstrapGeneratedFile{
 		{Kind: "agent-env", Name: agent + " (sh)", Path: shPath},
 		{Kind: "agent-env", Name: agent + " (powershell)", Path: psPath},
+	}, nil
+}
+
+func writeAgentMCPConfigFile(agent string, cfg config.Config) (bootstrapGeneratedFile, error) {
+	dir := filepath.Join(config.Dir(), "agents", agent)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return bootstrapGeneratedFile{}, err
+	}
+
+	path := filepath.Join(dir, "mcp.json")
+	if err := writeJSONFile(path, buildAgentMCPConfig(agent, cfg)); err != nil {
+		return bootstrapGeneratedFile{}, err
+	}
+
+	return bootstrapGeneratedFile{
+		Kind: "agent-mcp",
+		Name: agent + " MCP",
+		Path: path,
+	}, nil
+}
+
+func writeAgentSkillWrapper(agent string) (bootstrapGeneratedFile, error) {
+	dir := filepath.Join(config.Dir(), "agents", agent)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return bootstrapGeneratedFile{}, err
+	}
+
+	path := filepath.Join(dir, "SKILL.md")
+	lines := []string{
+		"# PopiArt",
+		"",
+		"Use PopiArt when you need creator skill discovery, multimodal runtime skill execution, jobs, or artifacts.",
+		"",
+		"Preferred sequence:",
+		"",
+		"1. `popiart skills get <skill-id>`",
+		"2. `popiart skills schema <skill-id>`",
+		"3. `popiart run <skill-id> --input @params.json`",
+		"4. `popiart jobs wait <job-id>`",
+		"5. `popiart artifacts pull-all <job-id>`",
+		"",
+		"Official runtime baseline:",
+		"",
+	}
+	for _, skill := range officialRuntimeSkills() {
+		lines = append(lines, "- `"+skill.ID+"`: "+skill.Description)
+	}
+	lines = append(lines,
+		"",
+		"This file is generated by `popiart bootstrap` and is intended to be copied or linked into an agent-facing skill directory.",
+		"",
+		"MCP server entrypoint:",
+		"",
+		"`popiart mcp serve`",
+		"",
+	)
+
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+		return bootstrapGeneratedFile{}, err
+	}
+	return bootstrapGeneratedFile{
+		Kind: "agent-skill",
+		Name: agent + " skill wrapper",
+		Path: path,
 	}, nil
 }
 
@@ -300,6 +434,9 @@ func bootstrapNextSteps(result bootstrapResult) []string {
 	if result.DefaultSkillsProfile != "" {
 		steps = append(steps, "运行 `popiart skills list --search popiskill-creator` 或 `popiart skills list --tag image`")
 	}
+	if result.RuntimeBaseline != "" {
+		steps = append(steps, "运行 `popiart mcp doctor` 检查官方 runtime baseline 与 discoverability 状态")
+	}
 	for _, file := range result.GeneratedFiles {
 		if file.Kind == "completion" {
 			switch file.Name {
@@ -322,6 +459,12 @@ func bootstrapNextSteps(result bootstrapResult) []string {
 			default:
 				steps = append(steps, fmt.Sprintf("如需给对应 agent 注入环境，可引用 `%s`", file.Path))
 			}
+		}
+		if file.Kind == "agent-mcp" {
+			steps = append(steps, fmt.Sprintf("将 `%s` 合并到对应 agent 的 MCP server 配置，使 `%s` 可被发现", file.Path, popiartMCPServerName))
+		}
+		if file.Kind == "agent-skill" {
+			steps = append(steps, fmt.Sprintf("将 `%s` 复制或链接到对应 agent 的 skill 目录", file.Path))
 		}
 	}
 	if len(steps) == 0 {
@@ -357,6 +500,9 @@ func writeBootstrapPlain(w io.Writer, result bootstrapResult) {
 	}
 	if result.DefaultSkillsProfile != "" {
 		fmt.Fprintf(w, "skill profile: %s\n", result.DefaultSkillsProfile)
+	}
+	if result.RuntimeBaseline != "" {
+		fmt.Fprintf(w, "runtime baseline: %s\n", result.RuntimeBaseline)
 	}
 	if len(result.GeneratedFiles) > 0 {
 		fmt.Fprintln(w, "generated files:")

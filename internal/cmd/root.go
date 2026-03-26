@@ -54,6 +54,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newBudgetCmd(),
 		newProjectCmd(),
 		newModelsCmd(),
+		newMCPCmd(),
 		newBootstrapCmd(),
 		newCompletionCmd(),
 	)

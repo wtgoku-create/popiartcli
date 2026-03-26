@@ -49,3 +49,59 @@ func TestWriteAgentEnvFilesCreatesShellAndPowerShellFiles(t *testing.T) {
 		t.Fatalf("expected powershell env to contain project, got %q", string(psData))
 	}
 }
+
+func TestWriteAgentMCPConfigFileCreatesSnippet(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+
+	file, err := writeAgentMCPConfigFile("codex", config.Config{
+		Endpoint: "https://example.com/v1",
+		Project:  "demo-project",
+	})
+	if err != nil {
+		t.Fatalf("writeAgentMCPConfigFile returned error: %v", err)
+	}
+	if file.Kind != "agent-mcp" {
+		t.Fatalf("expected agent-mcp kind, got %q", file.Kind)
+	}
+
+	data, err := os.ReadFile(filepath.Join(configDir, "agents", "codex", "mcp.json"))
+	if err != nil {
+		t.Fatalf("read mcp.json: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `"command": "popiart"`) {
+		t.Fatalf("expected mcp snippet to contain popiart command, got %q", text)
+	}
+	if !strings.Contains(text, `"mcp"`) || !strings.Contains(text, `"serve"`) {
+		t.Fatalf("expected mcp snippet to contain mcp serve args, got %q", text)
+	}
+	if !strings.Contains(text, `"POPIART_PROJECT": "demo-project"`) {
+		t.Fatalf("expected mcp snippet to contain project, got %q", text)
+	}
+}
+
+func TestWriteAgentSkillWrapperCreatesWrapper(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+
+	file, err := writeAgentSkillWrapper("codex")
+	if err != nil {
+		t.Fatalf("writeAgentSkillWrapper returned error: %v", err)
+	}
+	if file.Kind != "agent-skill" {
+		t.Fatalf("expected agent-skill kind, got %q", file.Kind)
+	}
+
+	data, err := os.ReadFile(filepath.Join(configDir, "agents", "codex", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read SKILL.md: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "# PopiArt") {
+		t.Fatalf("expected wrapper heading, got %q", text)
+	}
+	if !strings.Contains(text, "popiskill-image-img2img-basic-v1") {
+		t.Fatalf("expected runtime baseline skill in wrapper, got %q", text)
+	}
+}
