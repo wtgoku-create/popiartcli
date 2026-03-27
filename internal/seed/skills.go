@@ -109,6 +109,77 @@ var bundledSkills = []BundledSkill{
 			},
 		},
 	},
+	{
+		ID:                 "popiskill-image-generate-edit-workflow-v1",
+		Name:               "popiskill-image-generate-edit-workflow-v1",
+		Description:        "Generate a new image or edit an existing image through PopiArt's baseline text2image and img2img runtime skills, with artifact-based editing as the default path.",
+		Tags:               []string{"seed", "local", "image", "text2image", "img2img", "workflow"},
+		Version:            "v1",
+		ModelType:          "image",
+		EstimatedDurationS: 180,
+		RepoPath:           "skills/popiskill-image-generate-edit-workflow-v1",
+		GitHubURL:          "https://github.com/wtgoku-create/popiartcli/tree/main/skills/popiskill-image-generate-edit-workflow-v1",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"prompt": map[string]any{
+					"type":        "string",
+					"description": "The user's original full prompt or edit instruction.",
+				},
+				"mode": map[string]any{
+					"type":        "string",
+					"description": "Optional workflow hint: generate for text-to-image, edit for image-to-image.",
+				},
+				"source_artifact_id": map[string]any{
+					"type":        "string",
+					"description": "Preferred PopiArt artifact used as the source image for img2img.",
+				},
+				"reference_image_url": map[string]any{
+					"type":        "string",
+					"description": "Fallback remote image URL when no source_artifact_id exists.",
+				},
+				"image_url": map[string]any{
+					"type":        "string",
+					"description": "Compatibility alias for a remote source image URL.",
+				},
+				"size": map[string]any{
+					"type":        "string",
+					"description": "Stable output size such as 1024x1024, 1536x1024, 1024x1536, 1792x1024, or 1024x1792.",
+				},
+				"aspect_ratio": map[string]any{
+					"type":        "string",
+					"description": "Optional planning input used to derive a stable size preset before execution.",
+				},
+				"resolution": map[string]any{
+					"type":        "string",
+					"description": "Optional planning input such as 1K, 2K, or 4K, used before mapping to a stable size.",
+				},
+				"notes": map[string]any{
+					"type":        "string",
+					"description": "Optional extra constraints appended after user confirmation.",
+				},
+			},
+			"required": []string{"prompt"},
+		},
+		OutputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"recommended_skill_id": map[string]any{
+					"type":        "string",
+					"description": "The runtime skill that should execute the request.",
+				},
+				"job_id": map[string]any{
+					"type":        "string",
+					"description": "The PopiArt job id after execution.",
+				},
+				"artifact_ids": map[string]any{
+					"type":        "array",
+					"description": "Generated or edited image artifacts.",
+					"items":       map[string]any{"type": "string"},
+				},
+			},
+		},
+	},
 }
 
 func SeedSkillsForProfile() []SeedSkill {
@@ -118,6 +189,12 @@ func SeedSkillsForProfile() []SeedSkill {
 			RepoPath:    "skills/popiskill-creator",
 			GitHubURL:   "https://github.com/wtgoku-create/popiartcli/tree/main/skills/popiskill-creator",
 			Description: "Bootstrap skill for installing popiartcli, authenticating with a PopiArt key, understanding the unified gateway boundary, and turning creator workflows into PopiArt skills.",
+		},
+		{
+			Name:        "popiskill-image-generate-edit-workflow-v1",
+			RepoPath:    "skills/popiskill-image-generate-edit-workflow-v1",
+			GitHubURL:   "https://github.com/wtgoku-create/popiartcli/tree/main/skills/popiskill-image-generate-edit-workflow-v1",
+			Description: "Default PopiArt image workflow skill for mapping user requests to text2image or artifact-based img2img runs.",
 		},
 	}
 }

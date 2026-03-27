@@ -1,0 +1,4 @@
+interface:
+  display_name: "Image Generate + Edit"
+  short_description: "Map image requests to PopiArt text2image or img2img"
+  default_prompt: "Use this skill to decide whether the user needs text-to-image or image-to-image, preserve the original prompt, prefer source_artifact_id over remote URLs, choose a stable size preset, and run the correct PopiArt image skill."
