@@ -50,6 +50,7 @@ Runway 等。
 ## 安装
 
 完整的平台安装、首次使用和 agent 接入说明见 [docs/install-and-usage.md](./docs/install-and-usage.md)。
+一页式开发者总览见 [docs/developer-docs.md](./docs/developer-docs.md)。
 MCP discoverability 与 runtime baseline 设计见 [docs/mcp-discoverability-v1.md](./docs/mcp-discoverability-v1.md)。
 当前仓库实际落地状态见 [docs/current-status.md](./docs/current-status.md)。
 

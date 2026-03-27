@@ -1,0 +1,314 @@
+# PopiArt CLI 开发者文档
+
+`popiart` 是面向 Coding Agent 的创作者技能 CLI。
+它既可以作为独立命令行工具在终端中使用，也可以作为 Codex、Claude Code、OpenClaw、OpenCode 等 agent 的统一技能入口。
+
+`popiart` 负责四件事：
+
+- 发现可用的创作者 skill
+- 提交 skill 执行并跟踪 job 生命周期
+- 拉取运行结果 artifacts
+- 为多模态能力统一处理项目上下文、授权、路由和计费
+
+如果你想先理解系统边界，而不是立即接入，请先看 [docs/project-relationship.md](./project-relationship.md)。
+
+## 快速开始
+
+安装 `popiart`：
+
+```sh
+# macOS / Linux
+brew tap wtgoku-create/popi
+brew install wtgoku-create/popi/popiart
+```
+
+或使用安装脚本：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+```
+
+配置 API key 并检查身份：
+
+```sh
+popiart auth login --key pk-...
+popiart auth whoami
+```
+
+选择当前项目：
+
+```sh
+popiart project list
+popiart project use <project-id>
+popiart project current
+```
+
+为 Coding Agent 生成 discoverability 资产：
+
+```sh
+popiart bootstrap --agent codex --completion zsh --discoverable
+```
+
+如果你只想先验证 CLI 是否可用，可以直接运行：
+
+```sh
+popiart --help
+popiart skills list
+```
+
+## 能力一览
+
+### 技能发现
+
+```sh
+popiart skills list
+```
+
+列出当前可用的远程 runtime skills，并合并 CLI 内置的 bundled seed skills。
+
+```sh
+popiart skills list --tag image
+```
+
+按标签筛选，例如只看图像类技能。
+
+```sh
+popiart skills list --search "three view"
+```
+
+按关键词全文搜索技能。
+
+```sh
+popiart skills get <skill-id>
+```
+
+查看某个技能的完整说明、输入输出约束和描述信息。
+
+```sh
+popiart skills schema <skill-id>
+```
+
+查看技能的输入/输出 JSON schema，适合在 agent 或脚本里生成稳定 payload。
+
+### 技能执行
+
+```sh
+popiart run <skill-id> --input '{"prompt":"a sunset over Tokyo"}'
+```
+
+提交一个 skill 执行任务，默认立即返回 `job_id`。
+
+```sh
+popiart run <skill-id> --input @params.json --wait
+```
+
+从文件读取输入并阻塞等待任务完成。
+
+```sh
+cat params.json | popiart run <skill-id> --input -
+```
+
+从标准输入读取 JSON payload，适合 shell pipeline 和 agent 自动化。
+
+```sh
+popiart run <skill-id> --input @params.json --idempotency-key req-20260327-001
+```
+
+使用幂等键安全重试，避免网络抖动或 agent 重放时重复扣费。
+
+### 作业管理
+
+```sh
+popiart jobs get <job-id>
+```
+
+获取作业当前状态。
+
+```sh
+popiart jobs wait <job-id>
+```
+
+轮询直到作业到达终止状态。
+
+```sh
+popiart jobs list --status running
+```
+
+查看近期作业，并按状态、技能或项目过滤。
+
+```sh
+popiart jobs logs <job-id>
+```
+
+查看作业日志。
+
+```sh
+popiart jobs logs <job-id> --follow
+```
+
+流式跟踪作业日志，适合长任务调试。
+
+### 工件拉取
+
+```sh
+popiart artifacts list <job-id>
+```
+
+列出某个 job 产出的 artifacts。
+
+```sh
+popiart artifacts pull <artifact-id>
+```
+
+下载单个 artifact 到本地磁盘。
+
+```sh
+popiart artifacts pull-all <job-id>
+```
+
+将一个 job 的全部 artifacts 一次性下载到目录中。
+
+### 项目上下文
+
+```sh
+popiart project current
+```
+
+查看当前活动项目。
+
+```sh
+popiart project context
+```
+
+读取当前项目的完整运行时上下文。
+
+```sh
+popiart project use <project-id>
+```
+
+切换当前项目，后续 `run`、`models infer`、预算查询都会继承这个上下文。
+
+### 模型直连
+
+```sh
+popiart models list --type image
+```
+
+列出当前可用模型。
+
+```sh
+popiart models routes
+```
+
+查看当前项目生效的模型路由表。
+
+```sh
+popiart models infer <model-id> --input @input.json --wait
+```
+
+直接提交模型推理任务，不经过 skill 封装，适合做底层能力验证或路由调试。
+
+### MCP 接入
+
+```sh
+popiart mcp serve --describe
+```
+
+打印当前 MCP server 的工具面和元数据。
+
+```sh
+popiart mcp print-config --agent codex
+```
+
+生成通用 MCP 配置片段，方便接入不同 agent。
+
+```sh
+popiart mcp doctor --agent codex
+```
+
+检查本地 discoverability 资产、认证状态和 runtime baseline 准备情况。
+
+### 预算与配额
+
+```sh
+popiart budget status
+```
+
+查看当前周期的预算摘要。
+
+```sh
+popiart budget usage --group-by skill
+```
+
+按技能、日期或项目查看详细使用情况。
+
+```sh
+popiart budget limits
+```
+
+查看速率限制和配额配置。
+
+## 官方 Runtime Baseline
+
+当前仓库将以下三个 skill id 视为首批官方 runtime baseline：
+
+```text
+popiskill-image-text2image-basic-v1
+popiskill-image-img2img-basic-v1
+popiskill-video-image2video-basic-v1
+```
+
+你可以这样做一次最小验证：
+
+```sh
+popiart skills get popiskill-image-text2image-basic-v1
+popiart skills schema popiskill-image-text2image-basic-v1
+popiart run popiskill-image-text2image-basic-v1 --input @params.json --wait
+```
+
+任务完成后，拉取结果：
+
+```sh
+popiart artifacts pull-all <job-id>
+```
+
+## 推荐工作流
+
+如果你是在终端里手动使用 `popiart`，推荐顺序是：
+
+1. `popiart auth login --key pk-...`
+2. `popiart project use <project-id>`
+3. `popiart skills list --search "<keyword>"`
+4. `popiart skills schema <skill-id>`
+5. `popiart run <skill-id> --input @params.json --wait`
+6. `popiart artifacts pull-all <job-id>`
+
+如果你是在 agent 中接入 `popiart`，推荐顺序是：
+
+1. `popiart bootstrap --agent codex --completion zsh --discoverable`
+2. `popiart mcp doctor --agent codex`
+3. 在 agent 里通过 MCP 工具发现 skill、提交 job、轮询状态、拉取 artifact
+
+## 面向 Agent 的设计原则
+
+`popiart` 的默认行为不是“终端友好优先”，而是“agent 可解析优先”：
+
+- 默认输出 JSON，便于脚本和 agent 稳定消费
+- 每次失败都带 `error.code`
+- 长任务统一返回 `job_id`
+- `--input` 支持内联 JSON、`@file.json` 和标准输入
+- artifacts 与 jobs 分离，便于重试、恢复和二次拉取
+
+如果你只是让人类阅读输出，可以在命令前加 `--plain`：
+
+```sh
+popiart --plain skills list --tag image
+```
+
+## 相关文档
+
+- 安装与首次使用：[docs/install-and-usage.md](./install-and-usage.md)
+- 项目边界说明：[docs/project-relationship.md](./project-relationship.md)
+- MCP discoverability 设计：[docs/mcp-discoverability-v1.md](./mcp-discoverability-v1.md)
+- 当前实现状态：[docs/current-status.md](./current-status.md)
+- 发布维护说明：[docs/releasing.md](./releasing.md)
