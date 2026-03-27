@@ -15,6 +15,10 @@ func NewRootCmd(version string) *cobra.Command {
 		SilenceUsage:  true,
 		Version:       version,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if !shouldPersistGlobalOverrides(cmd) {
+				return nil
+			}
+
 			endpointChanged := cmd.Flags().Changed("endpoint")
 			projectChanged := cmd.Flags().Changed("project")
 			if !endpointChanged && !projectChanged {
@@ -57,7 +61,16 @@ func NewRootCmd(version string) *cobra.Command {
 		newMCPCmd(),
 		newBootstrapCmd(),
 		newCompletionCmd(),
+		newUpdateCmd(),
 	)
 
 	return rootCmd
+}
+
+func shouldPersistGlobalOverrides(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return true
+	}
+
+	return cmd.Name() != "update"
 }

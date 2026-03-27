@@ -24,6 +24,12 @@ popiart --help
 
 如果能看到命令帮助，说明 CLI 已经在 `PATH` 中。
 
+升级说明：
+
+- 如果是通过 `install.sh`、`install.ps1` 或手动 release 二进制安装，可以直接运行 `popiart update`
+- 如果是通过 Homebrew 安装，请运行 `brew upgrade wtgoku-create/popi/popiart`
+- `popiart update` 只更新 CLI 本体，不会改动现有配置，也不会自动重新执行 bootstrap
+
 ## 2. macOS 安装
 
 ### 2.1 Homebrew
@@ -31,6 +37,9 @@ popiart --help
 ```sh
 brew tap wtgoku-create/popi
 brew install wtgoku-create/popi/popiart
+
+# 升级
+brew upgrade wtgoku-create/popi/popiart
 ```
 
 如果你想马上生成 agent 引导文件和 shell completion：
@@ -45,6 +54,9 @@ popiart bootstrap --agent codex --completion zsh --with-default-skills
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+
+# 后续升级到最新 release
+popiart update
 ```
 
 安装 CLI，并继续做 bootstrap：
@@ -59,6 +71,9 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | \
   env VERSION=v0.1.0 sh
+
+# 或者在已安装后更新到指定版本
+popiart update --version v0.1.0
 ```
 
 脚本会优先尝试：
@@ -97,6 +112,9 @@ popiart --help
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+
+# 后续升级到最新 release
+popiart update
 ```
 
 安装 CLI 并 bootstrap：
@@ -151,6 +169,9 @@ popiart --help
 
 ```powershell
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
+
+# 后续升级到最新 release
+popiart update
 ```
 
 安装指定版本：

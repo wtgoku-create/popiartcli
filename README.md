@@ -59,6 +59,9 @@ MCP discoverability 与 runtime baseline 设计见 [docs/mcp-discoverability-v1.
 brew tap wtgoku-create/popi
 brew install wtgoku-create/popi/popiart
 
+# 后续升级
+brew upgrade wtgoku-create/popi/popiart
+
 # 安装完成后，按需执行生态引导
 popiart bootstrap --agent codex --completion zsh
 
@@ -77,6 +80,12 @@ $env:VERSION="v0.1.0"; irm https://raw.githubusercontent.com/wtgoku-create/popia
 ```sh
 # 一键安装：默认只安装 CLI
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+
+# 安装后的自更新：从 GitHub Releases 下载最新版本，不修改本地配置
+popiart update
+
+# 更新到指定版本
+popiart update --version v0.1.0
 
 # 安装指定版本
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.1.0 sh
@@ -122,6 +131,9 @@ go install ./cmd/popiart
 
 `curl | sh` 这条安装链路现在默认只负责安装 Go CLI 二进制。
 如需继续执行生态引导，可显式追加 `--bootstrap`。
+
+`popiart update` 只会从 GitHub Releases 下载并替换 CLI 本体，不会改写 `~/.popiart/config.json`，也不会自动重新执行 `bootstrap`。
+如果当前安装由 Homebrew 管理，请使用 `brew upgrade wtgoku-create/popi/popiart`。
 
 `popiart bootstrap` 负责第二阶段的生态引导：
 
