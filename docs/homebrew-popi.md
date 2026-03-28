@@ -96,8 +96,8 @@ GoReleaser 不会在 tap 仓库里跑 workflow。
 当你在源码仓库推送 tag，例如：
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 GoReleaser 会做两件事：

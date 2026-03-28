@@ -74,7 +74,7 @@ popiart bootstrap --agent codex --discoverable
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 
 # 安装指定版本
-$env:VERSION="v0.1.0"; irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
+$env:VERSION="v0.3.0"; irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 ```
 
 ```sh
@@ -85,10 +85,10 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 popiart update
 
 # 更新到指定版本
-popiart update --version v0.1.0
+popiart update --version v0.3.0
 
 # 安装指定版本
-curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.1.0 sh
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.3.0 sh
 
 # 显式写法：仅安装 CLI
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh -s -- --cli-only
@@ -110,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 ```sh
 # 直接从 GitHub Releases 下载对应平台压缩包后解压安装
 # 例如 macOS Apple Silicon
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.1.0/popiart_0.1.0_darwin_arm64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.0/popiart_0.3.0_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
@@ -376,6 +376,13 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 ```
 
 如果 agent 聊天附件已经带有可直接访问的图片 URL，也可以直接使用 `reference_image_url` / `image_url`，无需先上传。
+
+当前在测试环境里已验证的两条 `img2img` 服务端适配是：
+
+- `gemini-3-pro-image-preview`：通过 Gemini `generateContent` 路由执行
+- `seedream-4-5-251128`：通过 `/v1/images/generations` + 参考图执行
+
+补充一点：`seedream-4-5-251128` 对输出尺寸有最小像素要求。CLI 仍然可以提交类似 `1024x1536` 这样的安全预设，但最终是否需要上调尺寸由服务端路由适配决定。
 
 ---
 

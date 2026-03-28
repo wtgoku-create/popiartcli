@@ -213,6 +213,13 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 }" --wait
 ```
 
+当前已经在测试环境验证通过的服务端图像编辑适配包括：
+
+- `gemini-3-pro-image-preview`
+- `seedream-4-5-251128`
+
+其中 `seedream-4-5-251128` 不是走旧的 `/v1/images/edits multipart` 语义，而是走 `/v1/images/generations` + 参考图输入；最小尺寸约束也由服务端路由适配负责处理。
+
 ### 项目上下文
 
 ```sh

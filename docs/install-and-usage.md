@@ -70,10 +70,10 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | \
-  env VERSION=v0.1.0 sh
+  env VERSION=v0.3.0 sh
 
 # 或者在已安装后更新到指定版本
-popiart update --version v0.1.0
+popiart update --version v0.3.0
 ```
 
 脚本会优先尝试：
@@ -88,7 +88,7 @@ popiart update --version v0.1.0
 ### 2.3 GitHub Releases 手动安装
 
 ```sh
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.1.0/popiart_0.1.0_darwin_arm64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.0/popiart_0.3.0_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
@@ -145,7 +145,7 @@ brew install wtgoku-create/popi/popiart
 amd64 示例：
 
 ```sh
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.1.0/popiart_0.1.0_linux_amd64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.0/popiart_0.3.0_linux_amd64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart "$HOME/.local/bin/popiart"
 ```
@@ -177,7 +177,7 @@ popiart update
 安装指定版本：
 
 ```powershell
-$env:VERSION="v0.1.0"
+$env:VERSION="v0.3.0"
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 ```
 
@@ -202,7 +202,7 @@ irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 
 ### 4.2 GitHub Releases 手动安装
 
 ```powershell
-$version = "0.1.0"
+$version = "0.3.0"
 $zip = "popiart_${version}_windows_amd64.zip"
 Invoke-WebRequest "https://github.com/wtgoku-create/popiartcli/releases/download/v$version/$zip" -OutFile $zip
 Expand-Archive $zip -DestinationPath .
@@ -466,6 +466,20 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 ```
 
 如果聊天附件本身已经有可访问 URL，也可以直接走 `reference_image_url` / `image_url`，不一定要先上传。
+
+### 7.4 当前已验证的服务端 `img2img` 路由
+
+截至 `2026-03-28`，测试环境里已经验证过两条服务端图像编辑适配：
+
+- `gemini-3-pro-image-preview`
+  通过 Gemini `generateContent` 路由处理参考图编辑
+- `seedream-4-5-251128`
+  通过 `/v1/images/generations` + 参考图输入处理图生图
+
+注意：
+
+- 这两条能力属于 `popiartServer` / `PopiNewAPI` 的服务端路由适配，不是 CLI 本身直接决定的
+- `seedream-4-5-251128` 对输出尺寸有最小像素限制。CLI 可以继续传递像 `1024x1536` 这样的安全预设，但服务端可能会把它抬升到满足模型要求的尺寸后再提交
 
 ### 7.3 让 agent 获得稳定环境
 
