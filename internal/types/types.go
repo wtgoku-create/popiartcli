@@ -24,13 +24,20 @@ type LoginResponse struct {
 }
 
 type SkillSummary struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	Description        string   `json:"description"`
-	Tags               []string `json:"tags"`
-	Version            string   `json:"version"`
-	ModelType          string   `json:"model_type"`
-	EstimatedDurationS int      `json:"estimated_duration_s"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	Description         string   `json:"description"`
+	Tags                []string `json:"tags"`
+	Version             string   `json:"version"`
+	ModelType           string   `json:"model_type"`
+	EstimatedDurationS  int      `json:"estimated_duration_s"`
+	Source              string   `json:"source,omitempty"`
+	InstallDir          string   `json:"install_dir,omitempty"`
+	LocalInstalled      bool     `json:"local_installed,omitempty"`
+	LocalActive         bool     `json:"local_active,omitempty"`
+	ExecutionMode       string   `json:"execution_mode,omitempty"`
+	RuntimeSkillID      string   `json:"runtime_skill_id,omitempty"`
+	RequiresPopiartAuth bool     `json:"requires_popiart_auth,omitempty"`
 }
 
 type SkillListResponse struct {
@@ -41,15 +48,22 @@ type SkillListResponse struct {
 }
 
 type Skill struct {
-	ID                 string         `json:"id"`
-	Name               string         `json:"name"`
-	Description        string         `json:"description"`
-	Tags               []string       `json:"tags"`
-	Version            string         `json:"version"`
-	InputSchema        map[string]any `json:"input_schema"`
-	OutputSchema       map[string]any `json:"output_schema"`
-	ModelType          string         `json:"model_type"`
-	EstimatedDurationS int            `json:"estimated_duration_s"`
+	ID                  string         `json:"id"`
+	Name                string         `json:"name"`
+	Description         string         `json:"description"`
+	Tags                []string       `json:"tags"`
+	Version             string         `json:"version"`
+	InputSchema         map[string]any `json:"input_schema"`
+	OutputSchema        map[string]any `json:"output_schema"`
+	ModelType           string         `json:"model_type"`
+	EstimatedDurationS  int            `json:"estimated_duration_s"`
+	Source              string         `json:"source,omitempty"`
+	InstallDir          string         `json:"install_dir,omitempty"`
+	LocalInstalled      bool           `json:"local_installed,omitempty"`
+	LocalActive         bool           `json:"local_active,omitempty"`
+	ExecutionMode       string         `json:"execution_mode,omitempty"`
+	RuntimeSkillID      string         `json:"runtime_skill_id,omitempty"`
+	RequiresPopiartAuth bool           `json:"requires_popiart_auth,omitempty"`
 }
 
 type SkillSchemaResponse struct {

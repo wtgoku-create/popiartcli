@@ -105,7 +105,7 @@ func TestValidateBundledSkillRunReturnsLocalOnlyErrorWhenRemoteMissing(t *testin
 
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
-	err := validateBundledSkillRun("popiskill-creator")
+	err := validateBundledSkillRun(context.Background(), "popiskill-creator")
 	if err == nil {
 		t.Fatal("expected local-only error, got nil")
 	}

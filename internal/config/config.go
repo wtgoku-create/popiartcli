@@ -83,6 +83,26 @@ func Path() string {
 	return filepath.Join(Dir(), "config.json")
 }
 
+func SkillsDir() string {
+	return filepath.Join(Dir(), "skills")
+}
+
+func SkillDownloadsDir() string {
+	return filepath.Join(SkillsDir(), "downloads")
+}
+
+func InstalledSkillsDir() string {
+	return filepath.Join(SkillsDir(), "installed")
+}
+
+func SkillStatePath() string {
+	return filepath.Join(SkillsDir(), "state.json")
+}
+
+func AgentDir(agent string) string {
+	return filepath.Join(Dir(), "agents", agent)
+}
+
 func Dir() string {
 	if dir := os.Getenv("POPIART_CONFIG_DIR"); dir != "" {
 		return dir

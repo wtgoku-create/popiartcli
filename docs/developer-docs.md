@@ -90,6 +90,34 @@ popiart skills schema <skill-id>
 
 查看技能的输入/输出 JSON schema，适合在 agent 或脚本里生成稳定 payload。
 
+### 本地 skill 安装
+
+```sh
+popiart skills pull <skill-id> --url https://example.com/skill.zip
+popiart skills install ./skill.zip
+popiart skills use-local <skill-id>
+```
+
+当前本地安装 skill 的最小执行模型是：
+
+- skill 以 zip 包分发
+- 包内包含 `SKILL.md`
+- 包内包含 `popiart-skill.yaml` / `popiart-skill.json`，或 `SKILL.md` 顶部 YAML frontmatter
+- `popiart run` 当前只支持 `execution.mode=remote-runtime`
+- `skills pull/install` 暂不支持 `.tar.gz`、目录安装、GitHub 页面 URL 自动解析
+
+安装后：
+
+- skill 会合并进 `skills list/get/schema`
+- 若该本地 skill 未与远端同名 skill 冲突，`popiart run <slug>` 可直接使用
+- 若与远端同名，可执行 `popiart skills use-local <slug>` 切换为本地优先
+
+如果需要给 agent 直接放到 skills 目录：
+
+```sh
+popiart skills install ./skill.zip --agent codex --agent-skill-dir ~/.codex/skills
+```
+
 ### 技能执行
 
 ```sh

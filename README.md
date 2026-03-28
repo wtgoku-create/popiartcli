@@ -245,6 +245,47 @@ popiart skills get skill_abc123
 popiart skills schema skill_abc123
 ```
 
+本地安装的 skill 现在也会进入这套查询链路。
+`skills list/get/schema` 会按以下优先级合并显示：
+
+- 远端 runtime skills
+- 本地 installed skills
+- CLI 内置 bundled seed skills
+
+本地 skill 安装链路：
+
+```sh
+# 从显式 URL 下载 zip 到 ~/.popiart/skills/downloads/<slug>/
+popiart skills pull popiskill-audio-avatar-omnishuman-v1 --url https://example.com/popi.zip
+
+# 从本地 zip 安装到 ~/.popiart/skills/installed/<slug>
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip
+
+# 如果已 pull 过，也可以直接按 slug 安装最新下载包
+popiart skills install popiskill-audio-avatar-omnishuman-v1
+
+# 将该本地 skill 标记为 run 时优先使用
+popiart skills use-local popiskill-audio-avatar-omnishuman-v1
+
+# 安装时同步到 agent skills 目录
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip \
+  --agent codex \
+  --agent-skill-dir ~/.codex/skills
+```
+
+当前边界：
+
+- `skills pull/install` 只支持 zip 包
+- 暂不支持 `.tar.gz`、本地目录直接安装、GitHub release 页面 URL 或仓库页面 URL
+- 若下载链接不是 zip 直链，需要先转换成 zip 包再安装
+
+最小包格式要求：
+
+- zip 包
+- 包内存在 `SKILL.md`
+- 同时提供 `popiart-skill.yaml` / `popiart-skill.json`，或在 `SKILL.md` 顶部使用 YAML frontmatter
+- 若要被 `popiart run` 使用，当前只支持 `execution.mode=remote-runtime`
+
 ---
 
 ## 运行技能

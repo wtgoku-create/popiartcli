@@ -279,6 +279,68 @@ popiart project list
 popiart project use <project-id>
 ```
 
+### 6.3 安装和使用本地 skill 包
+
+如果某个 skill 以 zip 包分发，而不是直接由远端注册表托管，可以走本地安装链路。
+
+下载到本地缓存：
+
+```sh
+popiart skills pull popiskill-audio-avatar-omnishuman-v1 --url https://example.com/popi.zip
+```
+
+直接从 zip 安装：
+
+```sh
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip
+```
+
+如果已经 pull 过，也可以按 slug 从 `~/.popiart/skills/downloads/` 中安装：
+
+```sh
+popiart skills install popiskill-audio-avatar-omnishuman-v1
+```
+
+当前边界：
+
+- `skills pull` / `skills install` 目前只支持 zip
+- 暂不支持 `.tar.gz`、本地目录、GitHub release 页面 URL、GitHub 仓库页面 URL
+- 如果拿到的不是 zip 直链，需要先整理成 zip 包后再安装
+
+安装完成后：
+
+- skill 会进入 `popiart skills list`
+- `popiart skills get <slug>` / `schema <slug>` 会优先读取本地安装版本
+- 如果该 skill 的 `execution.mode=remote-runtime`，则可以通过 `popiart run <slug>` 触发它映射的远端 runtime skill
+
+当本地安装 skill 与远端同名 skill 冲突时，显式切到本地优先：
+
+```sh
+popiart skills use-local popiskill-audio-avatar-omnishuman-v1
+```
+
+如果要同时放进 agent 的 skills 目录：
+
+```sh
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip \
+  --agent codex \
+  --agent-skill-dir ~/.codex/skills
+```
+
+最小包格式：
+
+- zip 格式
+- 包内存在 `SKILL.md`
+- 提供 `popiart-skill.yaml` / `popiart-skill.json`，或在 `SKILL.md` 顶部提供 YAML frontmatter
+- 若要被 `popiart run` 直接使用，当前只支持：
+
+```yaml
+execution:
+  mode: remote-runtime
+  runtime_skill_id: popiskill-remote-runtime-v1
+  runner: popiart
+```
+
 也可以临时覆盖：
 
 ```sh

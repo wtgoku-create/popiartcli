@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/input"
+	"github.com/wtgoku-create/popiartcli/internal/localskills"
 	"github.com/wtgoku-create/popiartcli/internal/output"
 	"github.com/wtgoku-create/popiartcli/internal/poll"
 	"github.com/wtgoku-create/popiartcli/internal/seed"
@@ -23,13 +25,14 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := validateBundledSkillRun(args[0]); err != nil {
+			resolvedSkillID, err := resolveRunnableSkillID(context.Background(), args[0])
+			if err != nil {
 				return err
 			}
 
 			cfg := config.Load()
 			body := map[string]any{
-				"skill_id": args[0],
+				"skill_id": resolvedSkillID,
 				"input":    payload,
 				"priority": flagString(cmd, "priority"),
 			}
@@ -74,12 +77,72 @@ func newRunCmd() *cobra.Command {
 	return runCmd
 }
 
-func validateBundledSkillRun(skillID string) error {
+func resolveRunnableSkillID(ctx context.Context, skillID string) (string, error) {
+	skillID = strings.TrimSpace(skillID)
+
+	if installed, shouldUseLocal, err := resolveRunnableInstalledSkill(ctx, skillID); err != nil {
+		return "", err
+	} else if shouldUseLocal {
+		return localskillsEffectiveRuntimeSkillID(installed), nil
+	}
+
+	if err := validateBundledSkillRun(ctx, skillID); err != nil {
+		return "", err
+	}
+	return skillID, nil
+}
+
+func resolveRunnableInstalledSkill(ctx context.Context, skillID string) (localskills.InstalledSkill, bool, error) {
+	skill, ok, err := localskills.FindInstalled(skillID)
+	if err != nil {
+		return localskills.InstalledSkill{}, false, err
+	}
+	if !ok {
+		return localskills.InstalledSkill{}, false, nil
+	}
+
+	active, err := localskills.IsActive(skill.Manifest.Slug)
+	if err != nil {
+		return localskills.InstalledSkill{}, false, err
+	}
+	if !active {
+		exists, err := remoteSkillExists(ctx, skillID)
+		if err != nil {
+			return localskills.InstalledSkill{}, false, err
+		}
+		if exists {
+			return localskills.InstalledSkill{}, false, nil
+		}
+	}
+
+	if skill.Manifest.RequiresPopiartAuth {
+		if _, err := config.RequireToken(); err != nil {
+			return localskills.InstalledSkill{}, false, requireTokenError()
+		}
+	}
+
+	if skill.Manifest.Execution.Runner != "" && skill.Manifest.Execution.Runner != "popiart" {
+		return localskills.InstalledSkill{}, false, output.NewError("LOCAL_SKILL_UNSUPPORTED", "当前仅支持由 popiart 执行的本地 skill", map[string]any{
+			"skill_id": skillID,
+			"runner":   skill.Manifest.Execution.Runner,
+		})
+	}
+	if skill.Manifest.Execution.Mode != "remote-runtime" {
+		return localskills.InstalledSkill{}, false, output.NewError("LOCAL_SKILL_UNSUPPORTED", "当前仅支持 execution.mode=remote-runtime 的本地 skill", map[string]any{
+			"skill_id": skillID,
+			"mode":     skill.Manifest.Execution.Mode,
+		})
+	}
+
+	return skill, true, nil
+}
+
+func validateBundledSkillRun(ctx context.Context, skillID string) error {
 	if _, ok := seed.FindBundledSkill(skillID); !ok {
 		return nil
 	}
 
-	exists, err := remoteSkillExists(context.Background(), skillID)
+	exists, err := remoteSkillExists(ctx, skillID)
 	if err != nil {
 		return err
 	}

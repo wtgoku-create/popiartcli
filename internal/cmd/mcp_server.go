@@ -439,23 +439,41 @@ func listSkillsTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 
+	localState, err := loadInstalledSkillState()
+	if err != nil {
+		return nil, err
+	}
+
 	localItems := seed.MatchingBundledSkillSummaries(tag, search)
+	installedItems := installedSkillSummaries(localState, tag, search)
 	var resp types.SkillListResponse
-	if err := currentClient().GetJSON(ctx, "/skills", map[string]string{
+	remoteAvailable := true
+	err = currentClient().GetJSON(ctx, "/skills", map[string]string{
 		"tag":    tag,
 		"search": search,
 		"limit":  strconv.Itoa(remotePageSize(limit, offset)),
 		"offset": "0",
-	}, &resp); err != nil {
-		return nil, err
-	}
-	localItems, err = bundledSkillSummariesMissingOnRemote(ctx, localItems)
+	}, &resp)
 	if err != nil {
-		return nil, err
+		if cliErr, ok := err.(*output.CLIError); !ok || cliErr.Code != "NETWORK_ERROR" {
+			return nil, err
+		}
+		remoteAvailable = false
 	}
-	merged := mergeSkillSummaries(resp.Items, localItems)
+	resp.Items = annotateRemoteSkillSummaries(resp.Items, localState)
+	if remoteAvailable {
+		localItems, err = bundledSkillSummariesMissingOnRemote(ctx, localItems)
+		if err != nil {
+			return nil, err
+		}
+		installedItems, err = installedSkillSummariesMissingOnRemote(ctx, installedItems)
+		if err != nil {
+			return nil, err
+		}
+	}
+	merged := mergeSkillSummaries(resp.Items, installedItems, localItems)
 	resp.Items = paginateSkillSummaries(merged, limit, offset)
-	resp.Total += len(localItems)
+	resp.Total += len(installedItems) + len(localItems)
 	resp.Limit = limit
 	resp.Offset = offset
 	return resp, nil
@@ -466,16 +484,26 @@ func getSkillTool(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	localState, err := loadInstalledSkillState()
+	if err != nil {
+		return nil, err
+	}
+	if skill, ok := activeInstalledSkill(localState, skillID); ok {
+		return skill.Skill(true), nil
+	}
 	var skill types.Skill
 	if err := currentClient().GetJSON(ctx, "/skills/"+skillID, nil, &skill); err != nil {
-		if cliErr, ok := err.(*output.CLIError); ok && cliErr.Code == "NOT_FOUND" {
+		if cliErr, ok := err.(*output.CLIError); ok && (cliErr.Code == "NOT_FOUND" || cliErr.Code == "NETWORK_ERROR") {
+			if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
+				return installed.Skill(localState.isActive(installed.Manifest.Slug)), nil
+			}
 			if skill, ok := seed.FindBundledSkill(skillID); ok {
 				return skill, nil
 			}
 		}
 		return nil, err
 	}
-	return skill, nil
+	return annotateRemoteSkill(skill, localState), nil
 }
 
 func getSkillSchemaTool(ctx context.Context, args map[string]any) (any, error) {
@@ -483,9 +511,19 @@ func getSkillSchemaTool(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	localState, err := loadInstalledSkillState()
+	if err != nil {
+		return nil, err
+	}
+	if skill, ok := activeInstalledSkill(localState, skillID); ok {
+		return skill.Schema(), nil
+	}
 	var schema types.SkillSchemaResponse
 	if err := currentClient().GetJSON(ctx, "/skills/"+skillID+"/schema", nil, &schema); err != nil {
-		if cliErr, ok := err.(*output.CLIError); ok && cliErr.Code == "NOT_FOUND" {
+		if cliErr, ok := err.(*output.CLIError); ok && (cliErr.Code == "NOT_FOUND" || cliErr.Code == "NETWORK_ERROR") {
+			if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
+				return installed.Schema(), nil
+			}
 			if schema, ok := seed.FindBundledSkillSchema(skillID); ok {
 				return schema, nil
 			}
@@ -504,13 +542,14 @@ func runSkillTool(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateBundledSkillRun(skillID); err != nil {
+	resolvedSkillID, err := resolveRunnableSkillID(ctx, skillID)
+	if err != nil {
 		return nil, err
 	}
 
 	cfg := config.Load()
 	body := map[string]any{
-		"skill_id": skillID,
+		"skill_id": resolvedSkillID,
 		"input":    payload,
 		"priority": defaultString(optionalStringArg(args, "priority"), "normal"),
 	}
