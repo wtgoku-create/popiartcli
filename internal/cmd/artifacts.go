@@ -2,15 +2,28 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 
+	"github.com/wtgoku-create/popiartcli/internal/api"
+	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
+
+type artifactUploadOptions struct {
+	Filename     string
+	ContentType  string
+	Role         string
+	MetadataJSON string
+	ProjectID    string
+}
 
 func newArtifactsCmd() *cobra.Command {
 	artifactsCmd := &cobra.Command{
@@ -168,6 +181,117 @@ func newArtifactsCmd() *cobra.Command {
 	}
 	pullAllCmd.Flags().StringP("dir", "d", "", "输出目录（默认：./<job-id>）")
 
-	artifactsCmd.AddCommand(listCmd, getCmd, pullCmd, pullAllCmd)
+	uploadCmd := &cobra.Command{
+		Use:   "upload <path>",
+		Short: "上传本地文件并创建一个可复用的工件",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := uploadArtifact(context.Background(), args[0], artifactUploadOptions{
+				Filename:     flagString(cmd, "filename"),
+				ContentType:  flagString(cmd, "content-type"),
+				Role:         flagString(cmd, "role"),
+				MetadataJSON: flagString(cmd, "metadata-json"),
+			})
+			if err != nil {
+				return err
+			}
+			return writeOutput(cmd, result)
+		},
+	}
+	uploadCmd.Flags().String("filename", "", "上传时覆盖文件名（默认：使用本地文件名）")
+	uploadCmd.Flags().String("content-type", "", "上传内容类型（默认：按扩展名或文件头推断）")
+	uploadCmd.Flags().String("role", "", "上传工件角色，例如 source | mask | reference")
+	uploadCmd.Flags().String("metadata-json", "", "附带的 JSON 元数据字符串")
+
+	artifactsCmd.AddCommand(listCmd, getCmd, pullCmd, pullAllCmd, uploadCmd)
 	return artifactsCmd
+}
+
+func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions) (map[string]any, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, output.NewError("CLI_ERROR", "读取上传文件失败", map[string]any{
+			"path":    path,
+			"details": err.Error(),
+		})
+	}
+	if info.IsDir() {
+		return nil, output.NewError("VALIDATION_ERROR", "上传路径必须是文件，不能是目录", map[string]any{
+			"path": path,
+		})
+	}
+	if opts.MetadataJSON != "" && !json.Valid([]byte(opts.MetadataJSON)) {
+		return nil, output.NewError("INPUT_PARSE_ERROR", "metadata-json 不是合法 JSON", map[string]any{
+			"metadata_json": opts.MetadataJSON,
+		})
+	}
+
+	filename := opts.Filename
+	if filename == "" {
+		filename = filepath.Base(path)
+	}
+	contentType := opts.ContentType
+	if contentType == "" {
+		contentType = detectUploadContentType(path)
+	}
+	projectID := opts.ProjectID
+	if projectID == "" {
+		projectID = config.Load().Project
+	}
+
+	fields := map[string]string{
+		"filename":      filename,
+		"content_type":  contentType,
+		"role":          opts.Role,
+		"metadata_json": opts.MetadataJSON,
+		"project_id":    projectID,
+	}
+
+	var artifact types.Artifact
+	if err := currentClient().UploadFile(ctx, "/artifacts/upload", path, api.UploadFileOptions{
+		Filename:    filename,
+		ContentType: contentType,
+		Fields:      fields,
+	}, &artifact); err != nil {
+		return nil, err
+	}
+
+	result := map[string]any{
+		"artifact_id":   artifact.ID,
+		"filename":      artifact.Filename,
+		"content_type":  artifact.ContentType,
+		"size_bytes":    artifact.SizeBytes,
+		"created_at":    artifact.CreatedAt,
+		"expires_at":    artifact.ExpiresAt,
+		"uploaded_from": path,
+	}
+	if artifact.JobID != "" {
+		result["job_id"] = artifact.JobID
+	}
+	if opts.Role != "" {
+		result["role"] = opts.Role
+	}
+	if projectID != "" {
+		result["project_id"] = projectID
+	}
+	return result, nil
+}
+
+func detectUploadContentType(path string) string {
+	if contentType := mime.TypeByExtension(filepath.Ext(path)); contentType != "" {
+		return contentType
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "application/octet-stream"
+	}
+	defer file.Close()
+
+	buffer := make([]byte, 512)
+	n, err := file.Read(buffer)
+	if err != nil && err != io.EOF {
+		return "application/octet-stream"
+	}
+	return http.DetectContentType(buffer[:n])
 }

@@ -6,8 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,10 +25,20 @@ type Client struct {
 }
 
 type RequestOptions struct {
-	Query  map[string]string
-	Body   any
-	Token  string
-	Accept string
+	Query       map[string]string
+	Body        any
+	RawBody     io.Reader
+	Token       string
+	Accept      string
+	ContentType string
+}
+
+type UploadFileOptions struct {
+	Fields      map[string]string
+	Token       string
+	Accept      string
+	Filename    string
+	ContentType string
 }
 
 type envelope struct {
@@ -53,6 +67,95 @@ func (c *Client) PostJSON(ctx context.Context, path string, body any, dst any) e
 
 func (c *Client) DeleteJSON(ctx context.Context, path string, body any, dst any) error {
 	return c.doJSON(ctx, http.MethodDelete, path, RequestOptions{Body: body}, dst)
+}
+
+func (c *Client) UploadFile(ctx context.Context, path, filePath string, opts UploadFileOptions, dst any) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return output.NewError("CLI_ERROR", "Failed to open upload file", map[string]any{
+			"path":    filePath,
+			"details": err.Error(),
+		})
+	}
+
+	filename := opts.Filename
+	if filename == "" {
+		filename = filepath.Base(filePath)
+	}
+	contentType := defaultString(opts.ContentType, "application/octet-stream")
+
+	reader, writer := io.Pipe()
+	formWriter := multipart.NewWriter(writer)
+	req, err := c.newRequest(ctx, http.MethodPost, path, RequestOptions{
+		RawBody:     reader,
+		Token:       opts.Token,
+		Accept:      defaultString(opts.Accept, "application/json"),
+		ContentType: formWriter.FormDataContentType(),
+	})
+	if err != nil {
+		file.Close()
+		reader.Close()
+		writer.Close()
+		return err
+	}
+
+	writeErrCh := make(chan error, 1)
+	go func() {
+		defer close(writeErrCh)
+		defer file.Close()
+		defer writer.Close()
+
+		for key, value := range opts.Fields {
+			if value == "" {
+				continue
+			}
+			if err := formWriter.WriteField(key, value); err != nil {
+				_ = writer.CloseWithError(err)
+				writeErrCh <- err
+				return
+			}
+		}
+
+		part, err := createMultipartFilePart(formWriter, "file", filename, contentType)
+		if err != nil {
+			_ = writer.CloseWithError(err)
+			writeErrCh <- err
+			return
+		}
+		if _, err := io.Copy(part, file); err != nil {
+			_ = writer.CloseWithError(err)
+			writeErrCh <- err
+			return
+		}
+		if err := formWriter.Close(); err != nil {
+			_ = writer.CloseWithError(err)
+			writeErrCh <- err
+			return
+		}
+		writeErrCh <- nil
+	}()
+
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return output.NewError("NETWORK_ERROR", fmt.Sprintf("Request failed: %v", err), map[string]any{
+			"url": req.URL.String(),
+		})
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return c.decodeError(res)
+	}
+	if err := decodeJSONBody(res.Body, dst); err != nil {
+		return err
+	}
+	if writeErr := <-writeErrCh; writeErr != nil {
+		return output.NewError("NETWORK_ERROR", "Failed to stream upload body", map[string]any{
+			"path":    filePath,
+			"details": writeErr.Error(),
+		})
+	}
+	return nil
 }
 
 func (c *Client) Stream(ctx context.Context, method, path string, opts RequestOptions) (*http.Response, error) {
@@ -94,38 +197,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, opts RequestOp
 		return c.decodeError(res)
 	}
 
-	if dst == nil {
-		io.Copy(io.Discard, res.Body)
-		return nil
-	}
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return output.NewError("NETWORK_ERROR", "Failed to read response body", nil)
-	}
-	if len(bytes.TrimSpace(body)) == 0 {
-		return nil
-	}
-
-	var env envelope
-	if err := json.Unmarshal(body, &env); err == nil && env.OK != nil {
-		if *env.OK && len(env.Data) > 0 {
-			return json.Unmarshal(env.Data, dst)
-		}
-		if !*env.OK && len(env.Error) > 0 {
-			var details map[string]any
-			if json.Unmarshal(env.Error, &details) == nil {
-				code := asString(details["code"], httpStatusCode(res.StatusCode))
-				message := asString(details["message"], fmt.Sprintf("HTTP %d", res.StatusCode))
-				delete(details, "code")
-				delete(details, "message")
-				details["status"] = res.StatusCode
-				return output.NewError(code, message, details)
-			}
-		}
-	}
-
-	return json.Unmarshal(body, dst)
+	return decodeJSONBody(res.Body, dst)
 }
 
 func (c *Client) newRequest(ctx context.Context, method, path string, opts RequestOptions) (*http.Request, error) {
@@ -156,7 +228,9 @@ func (c *Client) newRequest(ctx context.Context, method, path string, opts Reque
 	}
 
 	var bodyReader io.Reader
-	if opts.Body != nil {
+	if opts.RawBody != nil {
+		bodyReader = opts.RawBody
+	} else if opts.Body != nil {
 		payload, err := json.Marshal(opts.Body)
 		if err != nil {
 			return nil, output.NewError("INPUT_PARSE_ERROR", "Failed to encode request body", nil)
@@ -171,7 +245,9 @@ func (c *Client) newRequest(ctx context.Context, method, path string, opts Reque
 
 	req.Header.Set("Accept", defaultString(opts.Accept, "application/json"))
 	req.Header.Set("User-Agent", "popiart-cli/0.1.0")
-	if opts.Body != nil {
+	if opts.ContentType != "" {
+		req.Header.Set("Content-Type", opts.ContentType)
+	} else if opts.Body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
@@ -220,6 +296,51 @@ func (c *Client) decodeError(res *http.Response) error {
 	return output.NewError(httpStatusCode(res.StatusCode), string(body), map[string]any{
 		"status": res.StatusCode,
 	})
+}
+
+func decodeJSONBody(bodyReader io.Reader, dst any) error {
+	if dst == nil {
+		_, _ = io.Copy(io.Discard, bodyReader)
+		return nil
+	}
+
+	body, err := io.ReadAll(bodyReader)
+	if err != nil {
+		return output.NewError("NETWORK_ERROR", "Failed to read response body", nil)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil
+	}
+
+	var env envelope
+	if err := json.Unmarshal(body, &env); err == nil && env.OK != nil {
+		if *env.OK && len(env.Data) > 0 {
+			return json.Unmarshal(env.Data, dst)
+		}
+		if !*env.OK && len(env.Error) > 0 {
+			var details map[string]any
+			if json.Unmarshal(env.Error, &details) == nil {
+				code := asString(details["code"], "CLI_ERROR")
+				message := asString(details["message"], "Request failed")
+				delete(details, "code")
+				delete(details, "message")
+				return output.NewError(code, message, details)
+			}
+		}
+	}
+
+	return json.Unmarshal(body, dst)
+}
+
+func createMultipartFilePart(writer *multipart.Writer, fieldName, filename, contentType string) (io.Writer, error) {
+	headers := make(textproto.MIMEHeader)
+	headers.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, escapeMultipartValue(fieldName), escapeMultipartValue(filename)))
+	headers.Set("Content-Type", contentType)
+	return writer.CreatePart(headers)
+}
+
+func escapeMultipartValue(value string) string {
+	return strings.NewReplacer("\\", "\\\\", `"`, "\\\"").Replace(value)
 }
 
 func httpStatusCode(status int) string {

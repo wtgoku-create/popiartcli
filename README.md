@@ -348,6 +348,9 @@ popiart jobs cancel job_xyz789
 ## 拉取工件
 
 ```sh
+# 上传本地文件，生成可复用 artifact
+popiart artifacts upload ./source.png --role source
+
 # 列出作业的工件
 popiart artifacts list job_xyz789
 
@@ -360,6 +363,19 @@ popiart artifacts pull art_abc --stdout > output.png
 # 下载作业的所有工件
 popiart artifacts pull-all job_xyz789 --dir ./results/
 ```
+
+如果要做 `img2img`，推荐先把本地图片上传成 artifact，再把返回的 `artifact_id` 填进 `source_artifact_id`：
+
+```sh
+ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
+
+popiart run popiskill-image-img2img-basic-v1 --input "{
+  \"source_artifact_id\":\"$ART\",
+  \"prompt\":\"保留主体，改成黄昏电影感\"
+}" --wait
+```
+
+如果 agent 聊天附件已经带有可直接访问的图片 URL，也可以直接使用 `reference_image_url` / `image_url`，无需先上传。
 
 ---
 

@@ -185,6 +185,12 @@ popiart artifacts list <job-id>
 列出某个 job 产出的 artifacts。
 
 ```sh
+popiart artifacts upload ./source.png --role source
+```
+
+上传一个本地文件并创建可复用 artifact，适合在 agent 聊天附件进入 `img2img` 前先做归档。
+
+```sh
 popiart artifacts pull <artifact-id>
 ```
 
@@ -195,6 +201,17 @@ popiart artifacts pull-all <job-id>
 ```
 
 将一个 job 的全部 artifacts 一次性下载到目录中。
+
+如果要把本地图片交给 `img2img`，建议走这条链路：
+
+```sh
+ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
+
+popiart run popiskill-image-img2img-basic-v1 --input "{
+  \"source_artifact_id\":\"$ART\",
+  \"prompt\":\"保留主体，改成黄昏电影感\"
+}" --wait
+```
 
 ### 项目上下文
 
@@ -255,6 +272,17 @@ popiart mcp doctor --agent codex
 ```
 
 检查本地 discoverability 资产、认证状态和 runtime baseline 准备情况。
+
+对于聊天附件场景，MCP 侧新增了 `upload_artifact`。宿主先把附件保存到本地路径，再调用：
+
+```json
+{
+  "path": "/tmp/chat-upload.png",
+  "role": "source"
+}
+```
+
+返回的 `artifact_id` 可以直接填到 `run_skill.input.source_artifact_id`。
 
 ### 预算与配额
 

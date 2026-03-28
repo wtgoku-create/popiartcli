@@ -403,6 +403,7 @@ popiart jobs get <job-id>
 popiart jobs wait <job-id>
 popiart jobs logs <job-id>
 popiart artifacts list <job-id>
+popiart artifacts upload ./source.png --role source
 popiart artifacts pull <artifact-id>
 popiart artifacts pull-all <job-id>
 ```
@@ -411,6 +412,17 @@ popiart artifacts pull-all <job-id>
 
 ```sh
 popiart artifacts pull <artifact-id> --stdout
+```
+
+本地图片要进入 `img2img` 时，优先先上传成 artifact：
+
+```sh
+ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
+
+popiart run popiskill-image-img2img-basic-v1 --input "{
+  \"source_artifact_id\":\"$ART\",
+  \"prompt\":\"保留主体，改成黄昏电影感\"
+}" --wait
 ```
 
 ## 7. Agent 如何使用
@@ -431,7 +443,31 @@ popiart artifacts pull <artifact-id> --stdout
 
 例如 `popiskill-creator` 是 CLI 内置 helper skill；如果服务端没有注册对应 runtime skill，`popiart run popiskill-creator` 会返回本地提示，而不是假装执行成功。
 
-### 7.2 让 agent 获得稳定环境
+### 7.2 聊天附件如何进入 img2img
+
+如果 agent 聊天里收到用户上传的图片，不要直接把图片二进制塞进 `run`。
+
+当前推荐顺序是：
+
+1. 宿主先把聊天附件保存到本地临时文件路径。
+2. 调用 `popiart artifacts upload <path> --role source`。
+3. 读取返回的 `artifact_id`。
+4. 再调用 `popiart run popiskill-image-img2img-basic-v1`，把它放进 `source_artifact_id`。
+
+示例：
+
+```sh
+ART=$(popiart artifacts upload /tmp/chat-upload.png --role source | jq -r '.data.artifact_id')
+
+popiart run popiskill-image-img2img-basic-v1 --input "{
+  \"source_artifact_id\":\"$ART\",
+  \"prompt\":\"保留主体身份与主要视觉特征，改成海边黄昏场景\"
+}" --wait
+```
+
+如果聊天附件本身已经有可访问 URL，也可以直接走 `reference_image_url` / `image_url`，不一定要先上传。
+
+### 7.3 让 agent 获得稳定环境
 
 `popiart bootstrap` 会做三件有价值的事：
 
@@ -453,7 +489,7 @@ popiart artifacts pull <artifact-id> --stdout
 - `fish`
 - `powershell`
 
-### 7.3 macOS / Linux 上给 agent 注入环境
+### 7.4 macOS / Linux 上给 agent 注入环境
 
 Codex 示例：
 
@@ -493,7 +529,7 @@ source ~/.popiart/completions/_popiart
 - 再从这个 shell 启动 agent，或把其中的环境变量写到 agent 的环境注入配置里
 - 让 agent 在同一个 shell 会话里调用 `popiart`
 
-### 7.4 Windows 上给 agent 注入环境
+### 7.5 Windows 上给 agent 注入环境
 
 Codex 示例：
 
@@ -521,7 +557,7 @@ $completion = Join-Path $HOME ".popiart\completions\popiart.ps1"
 - 再从这个 PowerShell 会话中启动 agent
 - 如果 agent 有自己的环境变量配置面板，也可以直接复制 `env.ps1` 中的变量
 
-### 7.5 agent 的推荐调用模式
+### 7.6 agent 的推荐调用模式
 
 发现：
 
@@ -555,7 +591,7 @@ popiart artifacts pull-all <job-id>
 popiart run <skill-id> --input @params.json --wait
 ```
 
-### 7.6 agent 使用中的几个约束
+### 7.7 agent 使用中的几个约束
 
 - 人读为主的命令可以加 `--plain`，但机器读为主时建议不要加
 - `--interval` 必须是一个大于 `0` 的整数毫秒值，例如 `2000`

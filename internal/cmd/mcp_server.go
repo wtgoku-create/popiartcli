@@ -407,6 +407,21 @@ func mcpToolDefinitions() []mcpToolDefinition {
 			Handler:      pullArtifactTool,
 		},
 		{
+			Name:        "upload_artifact",
+			Title:       "Upload Artifact",
+			Description: "Upload a local file and create a reusable PopiArt artifact.",
+			InputSchema: objectSchemaWithRequired(map[string]any{
+				"path":          map[string]any{"type": "string"},
+				"filename":      map[string]any{"type": "string"},
+				"content_type":  map[string]any{"type": "string"},
+				"role":          map[string]any{"type": "string"},
+				"metadata_json": map[string]any{"type": "string"},
+				"project_id":    map[string]any{"type": "string"},
+			}, "path"),
+			OutputSchema: map[string]any{"type": "object"},
+			Handler:      uploadArtifactTool,
+		},
+		{
 			Name:         "whoami",
 			Title:        "Who Am I",
 			Description:  "Read the authenticated PopiArt user.",
@@ -678,6 +693,20 @@ func pullArtifactTool(ctx context.Context, args map[string]any) (any, error) {
 		"content_type": meta.ContentType,
 		"filename":     meta.Filename,
 	}, nil
+}
+
+func uploadArtifactTool(ctx context.Context, args map[string]any) (any, error) {
+	path, err := requiredStringArg(args, "path")
+	if err != nil {
+		return nil, err
+	}
+	return uploadArtifact(ctx, path, artifactUploadOptions{
+		Filename:     optionalStringArg(args, "filename"),
+		ContentType:  optionalStringArg(args, "content_type"),
+		Role:         optionalStringArg(args, "role"),
+		MetadataJSON: optionalStringArg(args, "metadata_json"),
+		ProjectID:    optionalStringArg(args, "project_id"),
+	})
 }
 
 func whoamiTool(ctx context.Context, args map[string]any) (any, error) {
