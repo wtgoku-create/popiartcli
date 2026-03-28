@@ -74,7 +74,7 @@ popiart bootstrap --agent codex --discoverable
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 
 # 安装指定版本
-$env:VERSION="v0.3.0"; irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
+$env:VERSION="v0.3.1"; irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 ```
 
 ```sh
@@ -85,10 +85,10 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 popiart update
 
 # 更新到指定版本
-popiart update --version v0.3.0
+popiart update --version v0.3.1
 
 # 安装指定版本
-curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.3.0 sh
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.3.1 sh
 
 # 显式写法：仅安装 CLI
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh -s -- --cli-only
@@ -110,7 +110,7 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 ```sh
 # 直接从 GitHub Releases 下载对应平台压缩包后解压安装
 # 例如 macOS Apple Silicon
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.0/popiart_0.3.0_darwin_arm64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.1/popiart_0.3.1_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
@@ -384,6 +384,27 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 
 补充一点：`seedream-4-5-251128` 对输出尺寸有最小像素要求。CLI 仍然可以提交类似 `1024x1536` 这样的安全预设，但最终是否需要上调尺寸由服务端路由适配决定。
 
+如果要做 `image2video`，也建议先把本地图片上传成 artifact，再把返回的 `artifact_id` 填进 `source_artifact_id`：
+
+```sh
+popiart models route-override set --project proj_local_dev --skill-type video.image2video --model viduq2-pro-fast
+
+ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
+
+popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
+  \"source_artifact_id\":\"$ART\",
+  \"prompt\":\"让人物衣摆和发丝在微风中轻轻摆动，镜头缓慢推进，整体保持真实电影感。\",
+  \"aspect_ratio\":\"16:9\",
+  \"seconds\":4
+}" --wait
+```
+
+截至 `2026-03-28`，测试环境里已验证通过的 `image2video` 路由是：
+
+- `video.image2video -> viduq2-pro-fast`
+
+如果部署环境的默认视频路由仍然指向旧的 `viduq2`，就需要先做一次项目级 route override。
+
 ---
 
 ## 预算与使用情况
@@ -436,10 +457,11 @@ popiart models infer img-gen-xl --input @params.json
 popiart models infer video-gen-v2 --input @params.json --wait
 
 # 设置项目级路由覆盖
-popiart models route-override set --project proj_abc123 --skill-type image --model img-gen-v3
+popiart models route-override set --project proj_abc123 --skill-type image.img2img --model seedream-4-5-251128
+popiart models route-override set --project proj_abc123 --skill-type video.image2video --model viduq2-pro-fast
 
 # 删除项目级路由覆盖
-popiart models route-override unset --project proj_abc123 --skill-type image
+popiart models route-override unset --project proj_abc123 --skill-type image.img2img
 
 # 列出项目级路由覆盖
 popiart models route-override list --project proj_abc123

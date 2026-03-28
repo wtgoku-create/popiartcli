@@ -220,6 +220,23 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 
 其中 `seedream-4-5-251128` 不是走旧的 `/v1/images/edits multipart` 语义，而是走 `/v1/images/generations` + 参考图输入；最小尺寸约束也由服务端路由适配负责处理。
 
+如果要把本地图片继续交给 `image2video`，推荐同样先上传成 artifact，再走 `source_artifact_id`：
+
+```sh
+popiart models route-override set --project proj_local_dev --skill-type video.image2video --model viduq2-pro-fast
+
+ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
+
+popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
+  \"source_artifact_id\":\"$ART\",
+  \"prompt\":\"让人物衣摆和发丝在微风中轻轻摆动，镜头缓慢推进，整体保持真实电影感。\",
+  \"aspect_ratio\":\"16:9\",
+  \"seconds\":4
+}" --wait
+```
+
+截至 `2026-03-28`，测试环境里验证通过的 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`。如果默认视频路由仍指向旧的 `viduq2`，就需要先做一次项目级 route override。
+
 ### 项目上下文
 
 ```sh

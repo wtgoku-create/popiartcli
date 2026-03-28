@@ -100,11 +100,16 @@ Against the current test environment, the following end-to-end paths have been v
 - skill listing
 - artifact upload and artifact pull
 - `img2img` using `source_artifact_id`
+- `image2video` using `source_artifact_id`
 
 Validated server-side `img2img` route adapters include:
 
 - `gemini-3-pro-image-preview`
 - `seedream-4-5-251128`
+
+Validated test-environment `image2video` routing currently includes:
+
+- `video.image2video -> viduq2-pro-fast`
 
 The CLI does not guarantee those provider-specific adapters by itself; they were validated against a deployed `popiartServer` plus `PopiNewAPI` environment.
 
@@ -130,6 +135,8 @@ These items still belong to `popiartServer` or `PopiNewAPI` and are not solved b
 - provider-specific execution for masks, motion controls, duration limits, output fetching, and billing attribution
 - guaranteed end-to-end availability of the three baseline skills
 
+The current test deployment still needs explicit project-level overrides for some routes. For example, `image2video` was validated only after setting `video.image2video -> viduq2-pro-fast`.
+
 Because of that, the current state is:
 
 - `popiartcli` can make `PopiArt` discoverable
@@ -140,6 +147,6 @@ Because of that, the current state is:
 ## Recommended Next Steps
 
 1. Add agent-specific installers so `bootstrap` can write directly into the real config format for `codex`, `claude-code`, `openclaw`, and `opencode`.
-2. Publish the tested `popiartServer` route adapters and defaults as a real tracked server release.
+2. Publish the tested `popiartServer` route adapters and defaults as a real tracked server release, including `video.image2video -> viduq2-pro-fast`.
 3. Register the three baseline runtime skills by default in `popiartServer`.
 4. Validate that `popiart mcp doctor` passes against a real deployed environment with the intended default route table.

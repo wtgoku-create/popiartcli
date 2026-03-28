@@ -70,10 +70,10 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | \
-  env VERSION=v0.3.0 sh
+  env VERSION=v0.3.1 sh
 
 # 或者在已安装后更新到指定版本
-popiart update --version v0.3.0
+popiart update --version v0.3.1
 ```
 
 脚本会优先尝试：
@@ -88,7 +88,7 @@ popiart update --version v0.3.0
 ### 2.3 GitHub Releases 手动安装
 
 ```sh
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.0/popiart_0.3.0_darwin_arm64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.1/popiart_0.3.1_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
@@ -145,7 +145,7 @@ brew install wtgoku-create/popi/popiart
 amd64 示例：
 
 ```sh
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.0/popiart_0.3.0_linux_amd64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.1/popiart_0.3.1_linux_amd64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart "$HOME/.local/bin/popiart"
 ```
@@ -177,7 +177,7 @@ popiart update
 安装指定版本：
 
 ```powershell
-$env:VERSION="v0.3.0"
+$env:VERSION="v0.3.1"
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 ```
 
@@ -202,7 +202,7 @@ irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 
 ### 4.2 GitHub Releases 手动安装
 
 ```powershell
-$version = "0.3.0"
+$version = "0.3.1"
 $zip = "popiart_${version}_windows_amd64.zip"
 Invoke-WebRequest "https://github.com/wtgoku-create/popiartcli/releases/download/v$version/$zip" -OutFile $zip
 Expand-Archive $zip -DestinationPath .
@@ -425,6 +425,21 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 }" --wait
 ```
 
+本地图片要进入 `image2video` 时，也建议走同一条 artifact 链路：
+
+```sh
+popiart models route-override set --project proj_local_dev --skill-type video.image2video --model viduq2-pro-fast
+
+ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
+
+popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
+  \"source_artifact_id\":\"$ART\",
+  \"prompt\":\"让人物衣摆和发丝在微风中轻轻摆动，镜头缓慢推进，整体保持真实电影感。\",
+  \"aspect_ratio\":\"16:9\",
+  \"seconds\":4
+}" --wait
+```
+
 ## 7. Agent 如何使用
 
 ### 7.1 先理解 agent 接入原则
@@ -443,7 +458,7 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 
 例如 `popiskill-creator` 是 CLI 内置 helper skill；如果服务端没有注册对应 runtime skill，`popiart run popiskill-creator` 会返回本地提示，而不是假装执行成功。
 
-### 7.2 聊天附件如何进入 img2img
+### 7.2 聊天附件如何进入 img2img / image2video
 
 如果 agent 聊天里收到用户上传的图片，不要直接把图片二进制塞进 `run`。
 
@@ -452,7 +467,7 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 1. 宿主先把聊天附件保存到本地临时文件路径。
 2. 调用 `popiart artifacts upload <path> --role source`。
 3. 读取返回的 `artifact_id`。
-4. 再调用 `popiart run popiskill-image-img2img-basic-v1`，把它放进 `source_artifact_id`。
+4. 再调用 `popiart run popiskill-image-img2img-basic-v1` 或 `popiart run popiskill-video-image2video-basic-v1`，把它放进 `source_artifact_id`。
 
 示例：
 
@@ -465,9 +480,18 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 }" --wait
 ```
 
+```sh
+popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
+  \"source_artifact_id\":\"$ART\",
+  \"prompt\":\"保持人物身份和构图，让头发和衣摆有自然风动，镜头轻微推进。\",
+  \"aspect_ratio\":\"16:9\",
+  \"seconds\":4
+}" --wait
+```
+
 如果聊天附件本身已经有可访问 URL，也可以直接走 `reference_image_url` / `image_url`，不一定要先上传。
 
-### 7.4 当前已验证的服务端 `img2img` 路由
+### 7.4 当前已验证的服务端 `img2img` / `image2video` 路由
 
 截至 `2026-03-28`，测试环境里已经验证过两条服务端图像编辑适配：
 
@@ -480,6 +504,8 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 
 - 这两条能力属于 `popiartServer` / `PopiNewAPI` 的服务端路由适配，不是 CLI 本身直接决定的
 - `seedream-4-5-251128` 对输出尺寸有最小像素限制。CLI 可以继续传递像 `1024x1536` 这样的安全预设，但服务端可能会把它抬升到满足模型要求的尺寸后再提交
+- 当前测试环境里已验证通过的 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`
+- 如果部署环境默认视频路由仍然是旧的 `viduq2`，需要先做项目级 route override
 
 ### 7.3 让 agent 获得稳定环境
 

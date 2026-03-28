@@ -107,9 +107,14 @@ Recommended runtime skill id:
 popiskill-image-img2img-basic-v1
 ```
 
-Required input:
+Preferred input:
 
-- `image_artifact_id`
+- `source_artifact_id`
+
+Alternative source inputs:
+
+- `image_url`
+- `reference_image_url`
 
 Optional input:
 
@@ -164,20 +169,26 @@ Recommended runtime skill id:
 popiskill-video-image2video-basic-v1
 ```
 
-Required input:
+Preferred input:
 
-- `image_artifact_id`
+- `source_artifact_id`
+
+Alternative source input:
+
+- `image_url`
 
 Optional input:
 
 - `prompt`
 - `negative_prompt`
 - `duration_s`
+- `seconds`
 - `fps`
 - `camera_motion`
 - `motion_intensity`
 - `loop`
 - `style`
+- `aspect_ratio`
 - `seed`
 - `notes`
 
@@ -212,6 +223,11 @@ The metadata artifact should include:
 - `width`
 - `height`
 - `seed`
+
+Operational note:
+
+- some deployments may still require a project-level route override before `image2video` runs end to end
+- as of `2026-03-28`, the tested environment used `video.image2video -> viduq2-pro-fast`
 
 ## Doctor Checks
 
