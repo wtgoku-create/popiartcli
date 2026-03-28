@@ -112,7 +112,7 @@ var bundledSkills = []BundledSkill{
 	{
 		ID:                 "popiskill-image-generate-edit-workflow-v1",
 		Name:               "popiskill-image-generate-edit-workflow-v1",
-		Description:        "Generate a new image or edit an existing image through PopiArt's baseline text2image and img2img runtime skills, with artifact-based editing as the default path.",
+		Description:        "Plan PopiArt image requests by preserving the original prompt, choosing text2image or artifact-based img2img, and mapping aspect-ratio or resolution intent into a stable execution size.",
 		Tags:               []string{"seed", "local", "image", "text2image", "img2img", "workflow"},
 		Version:            "v1",
 		ModelType:          "image",
@@ -124,15 +124,15 @@ var bundledSkills = []BundledSkill{
 			"properties": map[string]any{
 				"prompt": map[string]any{
 					"type":        "string",
-					"description": "The user's original full prompt or edit instruction.",
+					"description": "The user's original full prompt or edit instruction. Preserve it verbatim and only append confirmed clarifications.",
 				},
 				"mode": map[string]any{
 					"type":        "string",
-					"description": "Optional workflow hint: generate for text-to-image, edit for image-to-image.",
+					"description": "Optional workflow hint such as generate or edit, used for planning before choosing the runtime skill.",
 				},
 				"source_artifact_id": map[string]any{
 					"type":        "string",
-					"description": "Preferred PopiArt artifact used as the source image for img2img.",
+					"description": "Preferred PopiArt artifact used as the source image for img2img, especially for chat attachments or previous PopiArt outputs.",
 				},
 				"reference_image_url": map[string]any{
 					"type":        "string",
@@ -144,19 +144,19 @@ var bundledSkills = []BundledSkill{
 				},
 				"size": map[string]any{
 					"type":        "string",
-					"description": "Stable output size such as 1024x1024, 1536x1024, 1024x1536, 1792x1024, or 1024x1792.",
+					"description": "Preferred execution parameter. Choose a stable size such as 1024x1024, 1536x1024, 1024x1536, 1792x1024, or 1024x1792.",
 				},
 				"aspect_ratio": map[string]any{
 					"type":        "string",
-					"description": "Optional planning input used to derive a stable size preset before execution.",
+					"description": "Optional planning hint such as 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 5:4, 4:5, 21:9, or more extreme ratios like 1:4 and 4:1. Map it to the nearest safe size before execution.",
 				},
 				"resolution": map[string]any{
 					"type":        "string",
-					"description": "Optional planning input such as 1K, 2K, or 4K, used before mapping to a stable size.",
+					"description": "Optional planning hint such as 1K, 2K, or 4K. Do not assume the runtime skill accepts it directly; map it to a supported size when needed.",
 				},
 				"notes": map[string]any{
 					"type":        "string",
-					"description": "Optional extra constraints appended after user confirmation.",
+					"description": "Optional extra constraints appended after user confirmation, such as style, camera language, forbidden elements, or copy requirements.",
 				},
 			},
 			"required": []string{"prompt"},
@@ -166,7 +166,7 @@ var bundledSkills = []BundledSkill{
 			"properties": map[string]any{
 				"recommended_skill_id": map[string]any{
 					"type":        "string",
-					"description": "The runtime skill that should execute the request.",
+					"description": "The runtime skill that should execute the request, such as popiskill-image-text2image-basic-v1 or popiskill-image-img2img-basic-v1.",
 				},
 				"job_id": map[string]any{
 					"type":        "string",

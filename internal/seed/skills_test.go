@@ -45,3 +45,29 @@ func TestSeedSkillsForProfileIncludesImageWorkflow(t *testing.T) {
 		t.Fatal("expected default seed skill profile to include the image workflow skill")
 	}
 }
+
+func TestImageWorkflowSchemaIncludesArtifactAndPlanningHints(t *testing.T) {
+	schema, ok := FindBundledSkillSchema("popiskill-image-generate-edit-workflow-v1")
+	if !ok {
+		t.Fatal("expected bundled image workflow schema to exist")
+	}
+
+	properties, ok := schema.InputSchema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected properties map, got %#v", schema.InputSchema["properties"])
+	}
+
+	for _, key := range []string{"prompt", "source_artifact_id", "reference_image_url", "size", "aspect_ratio", "resolution"} {
+		if _, ok := properties[key]; !ok {
+			t.Fatalf("expected workflow schema to include %q", key)
+		}
+	}
+
+	required, ok := schema.InputSchema["required"].([]string)
+	if !ok {
+		t.Fatalf("expected required fields to be []string, got %#v", schema.InputSchema["required"])
+	}
+	if len(required) != 1 || required[0] != "prompt" {
+		t.Fatalf("expected only prompt to be required, got %#v", required)
+	}
+}
