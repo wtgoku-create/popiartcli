@@ -49,6 +49,8 @@ popiart project current
 popiart bootstrap --agent codex --completion zsh --discoverable
 ```
 
+这条命令现在不只是生成 `~/.popiart/agents/codex/` 下的中间资产，还会把 `PopiArt` 直接写进 agent 的原生 MCP 和 skill 目录。
+
 如果你只想先验证 CLI 是否可用，可以直接运行：
 
 ```sh
@@ -112,11 +114,21 @@ popiart skills use-local <skill-id>
 - 若该本地 skill 未与远端同名 skill 冲突，`popiart run <slug>` 可直接使用
 - 若与远端同名，可执行 `popiart skills use-local <slug>` 切换为本地优先
 
-如果需要给 agent 直接放到 skills 目录：
+如果需要给 agent 直接放到原生 skills 目录：
 
 ```sh
-popiart skills install ./skill.zip --agent codex --agent-skill-dir ~/.codex/skills
+popiart skills install ./skill.zip --agent codex
+popiart skills install ./skill.zip --agent claude-code
+popiart skills install ./skill.zip --agent openclaw
+popiart skills install ./skill.zip --agent opencode
 ```
+
+默认原生路径是：
+
+- `codex`: `~/.codex/skills/`
+- `claude-code`: `~/.claude/skills/`
+- `openclaw`: `~/.openclaw/skills/`
+- `opencode`: `~/.config/opencode/skill/`
 
 ### 技能执行
 

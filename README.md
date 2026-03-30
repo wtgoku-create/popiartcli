@@ -69,12 +69,24 @@ popiart bootstrap --agent codex --completion zsh
 popiart bootstrap --agent codex --discoverable
 ```
 
+`popiart bootstrap --discoverable` 现在会同时做两件事：
+
+- 继续在 `~/.popiart/agents/<agent>/` 下生成 bootstrap 资产
+- 直接写入对应 agent 的原生 MCP 配置和原生 skill 目录
+
+当前默认落点是：
+
+- `codex`: `~/.codex/config.toml` 和 `~/.codex/skills/popiart/`
+- `claude-code`: `~/.claude.json` 和 `~/.claude/skills/popiart/`
+- `openclaw`: `~/.openclaw/mcp.json` 和 `~/.openclaw/skills/popiart/`
+- `opencode`: `~/.config/opencode/mcp.json` 和 `~/.config/opencode/skill/popiart/`
+
 ```sh
 # Windows PowerShell
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 
 # 安装指定版本
-$env:VERSION="v0.3.1"; irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
+$env:VERSION="v0.3.2"; irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 ```
 
 ```sh
@@ -85,10 +97,10 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 popiart update
 
 # 更新到指定版本
-popiart update --version v0.3.1
+popiart update --version v0.3.2
 
 # 安装指定版本
-curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.3.1 sh
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.3.2 sh
 
 # 显式写法：仅安装 CLI
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh -s -- --cli-only
@@ -110,7 +122,7 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 ```sh
 # 直接从 GitHub Releases 下载对应平台压缩包后解压安装
 # 例如 macOS Apple Silicon
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.1/popiart_0.3.1_darwin_arm64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.2/popiart_0.3.2_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
@@ -267,10 +279,11 @@ popiart skills install popiskill-audio-avatar-omnishuman-v1
 # 将该本地 skill 标记为 run 时优先使用
 popiart skills use-local popiskill-audio-avatar-omnishuman-v1
 
-# 安装时同步到 agent skills 目录
-popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip \
-  --agent codex \
-  --agent-skill-dir ~/.codex/skills
+# 安装时同步到 agent 原生 skills 目录
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip --agent codex
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip --agent claude-code
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip --agent openclaw
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip --agent opencode
 ```
 
 当前边界：

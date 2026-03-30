@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wtgoku-create/popiartcli/internal/agentpaths"
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
 )
@@ -254,29 +255,15 @@ func resolveAgentSkillDir(agent, explicitDir string) (string, error) {
 		return filepath.Clean(explicitDir), nil
 	}
 
-	agent = strings.TrimSpace(strings.ToLower(agent))
-	if agent == "" {
+	if strings.TrimSpace(agent) == "" {
 		return "", output.NewError("VALIDATION_ERROR", "需要显式指定 --agent 或 --agent-skill-dir", nil)
 	}
 
-	switch agent {
-	case "codex":
-		if base := os.Getenv("CODEX_HOME"); strings.TrimSpace(base) != "" {
-			return filepath.Join(base, "skills"), nil
-		}
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", output.NewError("CLI_ERROR", "解析用户目录失败", map[string]any{
-				"details": err.Error(),
-			})
-		}
-		return filepath.Join(home, ".codex", "skills"), nil
-	default:
-		return "", output.NewError("VALIDATION_ERROR", "该 agent 需要显式传入 --agent-skill-dir", map[string]any{
-			"agent": agent,
-			"hint":  "例如 --agent-skill-dir ~/.config/<agent>/skills",
-		})
+	paths, err := agentpaths.Resolve(agent)
+	if err != nil {
+		return "", err
 	}
+	return paths.SkillDir, nil
 }
 
 func archiveFilename(sourceURL string, manifest Manifest) string {

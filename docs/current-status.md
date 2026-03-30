@@ -1,6 +1,6 @@
 # PopiArt CLI Current Status
 
-Date: `2026-03-28`
+Date: `2026-03-30`
 
 This document summarizes the current repository-local status of `popiartcli` after the first MCP discoverability and runtime-baseline implementation pass.
 
@@ -23,16 +23,20 @@ It is intentionally different from the design docs:
   - prints the current server metadata and tool surface
 - `popiart mcp print-config`
   - prints a generic MCP server config snippet for an agent
+  - also reports the resolved native MCP config path and native skill directory
 - `popiart mcp doctor`
   - checks local discoverability state and remote runtime-baseline readiness
 - `popiart bootstrap --install-mcp`
   - generates `~/.popiart/agents/<agent>/mcp.json`
+  - also writes the resolved native MCP config for `codex`, `claude-code`, `openclaw`, and `opencode`
 - `popiart bootstrap --install-skill`
   - generates `~/.popiart/agents/<agent>/SKILL.md`
+  - also writes a native `popiart` skill wrapper into the resolved agent skill directory
 - `popiart bootstrap --with-runtime-baseline`
   - generates `~/.popiart/skillsets/runtime-baseline.json`
 - `popiart bootstrap --discoverable`
   - convenience flag that combines discoverability assets
+  - now makes `PopiArt` immediately visible from the supported agents' native MCP and skill directories
 - `popiart artifacts upload`
   - uploads a local file and creates a reusable artifact
   - supports the common `agent chat attachment -> artifact -> img2img` path
@@ -89,6 +93,13 @@ Tests currently cover:
   - agent env files
   - agent MCP config snippets
   - agent skill wrappers
+- native path resolution for:
+  - `codex`
+  - `claude-code`
+  - `openclaw`
+  - `opencode`
+- native MCP config installation for Codex TOML and JSON-based agent configs
+- local skill install / use-local linking into native agent skill directories by default
 - installed local skill metadata parsing and activation
 - artifact upload client / command / MCP integration
 
@@ -117,9 +128,6 @@ The CLI does not guarantee those provider-specific adapters by itself; they were
 
 ### Not Done In `popiartcli`
 
-- agent-native installation into each product's real MCP config or skill directory
-  - current bootstrap only generates assets under `~/.popiart/agents/<agent>/`
-  - users or future installers still need to copy, link, or merge those assets into the real agent config
 - MCP `resources`
 - MCP `prompts`
 - MCP `sampling`
@@ -146,7 +154,7 @@ Because of that, the current state is:
 
 ## Recommended Next Steps
 
-1. Add agent-specific installers so `bootstrap` can write directly into the real config format for `codex`, `claude-code`, `openclaw`, and `opencode`.
+1. Validate the native MCP install path against real installed `Claude Code`, `OpenClaw`, and `OpenCode` binaries on each target OS.
 2. Publish the tested `popiartServer` route adapters and defaults as a real tracked server release, including `video.image2video -> viduq2-pro-fast`.
 3. Register the three baseline runtime skills by default in `popiartServer`.
 4. Validate that `popiart mcp doctor` passes against a real deployed environment with the intended default route table.

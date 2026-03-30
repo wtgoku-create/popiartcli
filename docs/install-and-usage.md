@@ -48,6 +48,17 @@ brew upgrade wtgoku-create/popi/popiart
 popiart bootstrap --agent codex --completion zsh --with-default-skills
 ```
 
+如果你希望安装完成后，对应 agent 立刻能在原生 MCP / skill 目录中发现 `PopiArt`：
+
+```sh
+popiart bootstrap --agent codex --discoverable
+```
+
+`--discoverable` 现在会同时写两类产物：
+
+- `~/.popiart/agents/<agent>/` 下的 bootstrap 资产
+- agent 原生配置和原生 skill 目录
+
 ### 2.2 官方安装脚本
 
 只安装 CLI：
@@ -70,10 +81,10 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | \
-  env VERSION=v0.3.1 sh
+  env VERSION=v0.3.2 sh
 
 # 或者在已安装后更新到指定版本
-popiart update --version v0.3.1
+popiart update --version v0.3.2
 ```
 
 脚本会优先尝试：
@@ -88,7 +99,7 @@ popiart update --version v0.3.1
 ### 2.3 GitHub Releases 手动安装
 
 ```sh
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.1/popiart_0.3.1_darwin_arm64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.2/popiart_0.3.2_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
@@ -145,7 +156,7 @@ brew install wtgoku-create/popi/popiart
 amd64 示例：
 
 ```sh
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.1/popiart_0.3.1_linux_amd64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.2/popiart_0.3.2_linux_amd64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart "$HOME/.local/bin/popiart"
 ```
@@ -177,7 +188,7 @@ popiart update
 安装指定版本：
 
 ```powershell
-$env:VERSION="v0.3.1"
+$env:VERSION="v0.3.2"
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 ```
 
@@ -202,7 +213,7 @@ irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 
 ### 4.2 GitHub Releases 手动安装
 
 ```powershell
-$version = "0.3.1"
+$version = "0.3.2"
 $zip = "popiart_${version}_windows_amd64.zip"
 Invoke-WebRequest "https://github.com/wtgoku-create/popiartcli/releases/download/v$version/$zip" -OutFile $zip
 Expand-Archive $zip -DestinationPath .
@@ -319,12 +330,13 @@ popiart skills install popiskill-audio-avatar-omnishuman-v1
 popiart skills use-local popiskill-audio-avatar-omnishuman-v1
 ```
 
-如果要同时放进 agent 的 skills 目录：
+如果要同时放进 agent 原生 skills 目录：
 
 ```sh
-popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip \
-  --agent codex \
-  --agent-skill-dir ~/.codex/skills
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip --agent codex
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip --agent claude-code
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip --agent openclaw
+popiart skills install ./popiskill-audio-avatar-omnishuman-v1.zip --agent opencode
 ```
 
 最小包格式：
@@ -509,11 +521,12 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 
 ### 7.3 让 agent 获得稳定环境
 
-`popiart bootstrap` 会做三件有价值的事：
+`popiart bootstrap` 现在会做四件有价值的事：
 
 - 生成 shell completion
 - 生成 agent 专用环境注入文件
 - 可选生成默认 skill discovery profile
+- 当传入 `--install-mcp`、`--install-skill` 或 `--discoverable` 时，同时写 agent 原生 MCP / skill 目录
 
 支持的 agent 名称：
 
@@ -568,6 +581,11 @@ source ~/.popiart/completions/_popiart
 - 先在一个干净 shell 中 `source` 对应的 `env.sh`
 - 再从这个 shell 启动 agent，或把其中的环境变量写到 agent 的环境注入配置里
 - 让 agent 在同一个 shell 会话里调用 `popiart`
+- 如果你用了 `--discoverable`，还会同时得到这些原生落点：
+  - `codex`: `~/.codex/config.toml` + `~/.codex/skills/popiart/`
+  - `claude-code`: `~/.claude.json` + `~/.claude/skills/popiart/`
+  - `openclaw`: `~/.openclaw/mcp.json` + `~/.openclaw/skills/popiart/`
+  - `opencode`: `~/.config/opencode/mcp.json` + `~/.config/opencode/skill/popiart/`
 
 ### 7.5 Windows 上给 agent 注入环境
 

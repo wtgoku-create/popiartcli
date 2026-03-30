@@ -73,14 +73,21 @@ func newMCPCmd() *cobra.Command {
 			cfg := config.Load()
 			agent := flagString(cmd, "agent")
 			snippet := buildAgentMCPConfig(agent, cfg)
-			return writeOutput(cmd, map[string]any{
+			payload := map[string]any{
 				"agent":                    agent,
 				"server_name":              popiartMCPServerName,
 				"server_id":                popiartMCPServerID,
 				"mcp_server_config":        snippet,
 				"official_runtime_skills":  officialRuntimeSkills(),
 				"bootstrap_asset_location": filepath.Join(config.Dir(), "agents", agent),
-			})
+			}
+			if agent != "" {
+				if paths, err := resolveNativeAgentPaths(agent); err == nil {
+					payload["native_mcp_config_path"] = paths.MCPConfigPath
+					payload["native_skill_dir"] = paths.SkillDir
+				}
+			}
+			return writeOutput(cmd, payload)
 		},
 	}
 	printConfigCmd.Flags().String("agent", "", "目标 agent 名称，可选")
@@ -138,6 +145,15 @@ func newMCPCmd() *cobra.Command {
 				checks = append(checks, checkFileExists("agent_env_ps1", filepath.Join(base, "env.ps1"), "agent PowerShell 环境文件"))
 				checks = append(checks, checkFileExists("agent_mcp_config", filepath.Join(base, "mcp.json"), "agent MCP 配置片段"))
 				checks = append(checks, checkFileExists("agent_skill_wrapper", filepath.Join(base, "SKILL.md"), "agent skill wrapper"))
+				if paths, err := resolveNativeAgentPaths(agent); err != nil {
+					checks = append(checks, failCheck("agent_native_paths", "解析 agent 原生目录失败", map[string]any{
+						"agent":   agent,
+						"details": err.Error(),
+					}))
+				} else {
+					checks = append(checks, checkFileExists("agent_native_mcp_config", paths.MCPConfigPath, "agent 原生 MCP 配置"))
+					checks = append(checks, checkFileExists("agent_native_skill_wrapper", filepath.Join(paths.SkillDir, popiartMCPServerID, "SKILL.md"), "agent 原生 skill wrapper"))
+				}
 			}
 
 			status := "pass"
@@ -207,12 +223,9 @@ func mcpTools() []mcpTool {
 }
 
 func buildAgentMCPConfig(agent string, cfg config.Config) map[string]any {
-	env := map[string]any{
-		"POPIART_CONFIG_DIR": config.Dir(),
-		"POPIART_ENDPOINT":   cfg.Endpoint,
-	}
-	if cfg.Project != "" {
-		env["POPIART_PROJECT"] = cfg.Project
+	env := map[string]any{}
+	for key, value := range buildMCPEnvMap(cfg) {
+		env[key] = value
 	}
 
 	return map[string]any{

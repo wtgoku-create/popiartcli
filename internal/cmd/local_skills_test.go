@@ -157,6 +157,38 @@ func TestUseLocalOverridesRemoteSkillAtRunTime(t *testing.T) {
 	}
 }
 
+func TestSkillsInstallUsesNativeAgentSkillDirByDefault(t *testing.T) {
+	configDir := t.TempDir()
+	xdgDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+	t.Setenv("POPIART_ENDPOINT", "http://127.0.0.1:1")
+
+	archivePath := writeTestSkillArchive(t, testSkillArchiveOptions{
+		Slug:           "popiskill-local-opencode-v1",
+		DisplayName:    "Local OpenCode Skill",
+		Description:    "Installable local skill for OpenCode.",
+		RuntimeSkillID: "popiskill-remote-opencode-v1",
+	})
+
+	installResp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"skills", "install", archivePath,
+		"--agent", "opencode",
+	})
+	data, ok := installResp["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected install data object, got %#v", installResp["data"])
+	}
+	agentPath, _ := data["agent_skill_path"].(string)
+	expectedPath := filepath.Join(xdgDir, "opencode", "skill", "popiskill-local-opencode-v1")
+	if agentPath != expectedPath {
+		t.Fatalf("expected native opencode skill path %q, got %q", expectedPath, agentPath)
+	}
+	if _, err := os.Stat(filepath.Join(expectedPath, "SKILL.md")); err != nil {
+		t.Fatalf("expected linked native opencode skill to contain SKILL.md: %v", err)
+	}
+}
+
 type testSkillArchiveOptions struct {
 	Slug           string
 	DisplayName    string

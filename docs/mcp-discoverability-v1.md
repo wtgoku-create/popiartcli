@@ -31,6 +31,7 @@ This is a cross-repo design. `popiartcli` owns the CLI surface, bootstrap assets
 - `popiart bootstrap --with-runtime-baseline`
 - `popiart bootstrap --discoverable`
 - generated bootstrap assets under `~/.popiart/agents/<agent>/`
+- native MCP / skill installation for `codex`, `claude-code`, `openclaw`, and `opencode`
 
 `popiartcli` does not own:
 
@@ -57,7 +58,14 @@ Bootstrap should generate per-agent assets under:
   SKILL.md
 ```
 
-These files are bootstrap artifacts. They are not a guarantee that a given agent has already ingested them into its own native config format.
+In addition, `bootstrap --install-mcp`, `bootstrap --install-skill`, and `bootstrap --discoverable` should also write the resolved native agent locations:
+
+- `codex`: `~/.codex/config.toml` and `~/.codex/skills/popiart/`
+- `claude-code`: `~/.claude.json` and `~/.claude/skills/popiart/`
+- `openclaw`: `~/.openclaw/mcp.json` and `~/.openclaw/skills/popiart/`
+- `opencode`: `~/.config/opencode/mcp.json` and `~/.config/opencode/skill/popiart/`
+
+The bootstrap assets under `~/.popiart/agents/<agent>/` remain useful for diagnostics and manual recovery, but they are no longer the only discoverability path.
 
 ## MCP Tool Surface
 

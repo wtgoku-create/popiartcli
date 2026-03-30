@@ -105,3 +105,86 @@ func TestWriteAgentSkillWrapperCreatesWrapper(t *testing.T) {
 		t.Fatalf("expected runtime baseline skill in wrapper, got %q", text)
 	}
 }
+
+func TestWriteNativeAgentMCPConfigFileCreatesCodexConfig(t *testing.T) {
+	configDir := t.TempDir()
+	codexHome := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("CODEX_HOME", codexHome)
+
+	file, err := writeNativeAgentMCPConfigFile("codex", config.Config{
+		Endpoint: "https://example.com/v1",
+		Project:  "demo-project",
+	})
+	if err != nil {
+		t.Fatalf("writeNativeAgentMCPConfigFile returned error: %v", err)
+	}
+	if file.Kind != "agent-mcp-native" {
+		t.Fatalf("expected agent-mcp-native kind, got %q", file.Kind)
+	}
+
+	data, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
+	if err != nil {
+		t.Fatalf("read config.toml: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `[mcp_servers.popiart]`) {
+		t.Fatalf("expected popiart mcp section, got %q", text)
+	}
+	if !strings.Contains(text, `command = "popiart"`) {
+		t.Fatalf("expected popiart command, got %q", text)
+	}
+	if !strings.Contains(text, `POPIART_PROJECT = "demo-project"`) {
+		t.Fatalf("expected project env, got %q", text)
+	}
+}
+
+func TestWriteNativeAgentMCPConfigFileCreatesOpenCodeConfig(t *testing.T) {
+	configDir := t.TempDir()
+	xdgDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("XDG_CONFIG_HOME", xdgDir)
+
+	file, err := writeNativeAgentMCPConfigFile("opencode", config.Config{
+		Endpoint: "https://example.com/v1",
+	})
+	if err != nil {
+		t.Fatalf("writeNativeAgentMCPConfigFile returned error: %v", err)
+	}
+	if file.Kind != "agent-mcp-native" {
+		t.Fatalf("expected agent-mcp-native kind, got %q", file.Kind)
+	}
+
+	data, err := os.ReadFile(filepath.Join(xdgDir, "opencode", "mcp.json"))
+	if err != nil {
+		t.Fatalf("read mcp.json: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `"mcpServers"`) || !strings.Contains(text, `"popiart"`) {
+		t.Fatalf("expected opencode mcp config to contain popiart server, got %q", text)
+	}
+}
+
+func TestWriteNativeAgentSkillWrapperCreatesWrapper(t *testing.T) {
+	configDir := t.TempDir()
+	codexHome := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("CODEX_HOME", codexHome)
+
+	file, err := writeNativeAgentSkillWrapper("codex")
+	if err != nil {
+		t.Fatalf("writeNativeAgentSkillWrapper returned error: %v", err)
+	}
+	if file.Kind != "agent-skill-native" {
+		t.Fatalf("expected agent-skill-native kind, got %q", file.Kind)
+	}
+
+	data, err := os.ReadFile(filepath.Join(codexHome, "skills", "popiart", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read native SKILL.md: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "# PopiArt") {
+		t.Fatalf("expected wrapper heading, got %q", text)
+	}
+}
