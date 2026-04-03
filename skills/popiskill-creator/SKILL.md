@@ -67,7 +67,7 @@ The user needs a PopiArt product-layer API key, not a raw provider key.
 Default command pattern:
 
 ```sh
-popiart auth login --key pk-...
+popiart auth login --key <product-key>
 popiart auth whoami
 popiart auth key show
 ```
@@ -75,7 +75,7 @@ popiart auth key show
 Environment overrides are acceptable when the user already manages secrets that way:
 
 ```sh
-export POPIART_KEY=pk-...
+export POPIART_KEY=<product-key>
 export POPIART_ENDPOINT=https://api.creatoragentos.io/v1
 ```
 

@@ -41,7 +41,7 @@ Do not promise a packaged installer unless the repo adds one.
 User-facing language should prefer `key`.
 
 ```sh
-popiart auth login --key pk-...
+popiart auth login --key <product-key>
 popiart auth whoami
 popiart auth key show
 popiart auth key rotate
@@ -52,6 +52,7 @@ Compatibility note:
 
 - `--token` exists as an alias in the CLI, but it should not be the main term in user guidance.
 - `POPIART_TOKEN` also exists as an env alias, but `POPIART_KEY` should be documented first.
+- A product-layer key may be issued with prefixes such as `pk-...` or `sk-...`; after `auth login`, the stored config may also contain a server-issued `sess_...` token.
 
 ## Current Environment Variables
 
