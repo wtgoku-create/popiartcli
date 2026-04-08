@@ -52,6 +52,7 @@ Runway 等。
 完整的平台安装、首次使用和 agent 接入说明见 [docs/install-and-usage.md](./docs/install-and-usage.md)。
 一页式开发者总览见 [docs/developer-docs.md](./docs/developer-docs.md)。
 MCP discoverability 与 runtime baseline 设计见 [docs/mcp-discoverability-v1.md](./docs/mcp-discoverability-v1.md)。
+稳定媒体 URL 的 V1 架构与分阶段计划见 [docs/stable-media-url-v1.md](./docs/stable-media-url-v1.md)。
 当前仓库实际落地状态见 [docs/current-status.md](./docs/current-status.md)。
 
 ```sh
@@ -93,14 +94,28 @@ $env:VERSION="v0.3.2"; irm https://raw.githubusercontent.com/wtgoku-create/popia
 # 一键安装：默认只安装 CLI
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
 
+# 国内镜像：从 Gitee 拉安装脚本和 release
+curl -fsSL https://gitee.com/wattx/popiartcli/raw/main/install.sh | sh -s -- --source gitee
+
 # 安装后的自更新：从 GitHub Releases 下载最新版本，不修改本地配置
 popiart update
+
+# 国内镜像自更新：从 Gitee Releases 下载最新版本
+popiart update --source gitee
 
 # 更新到指定版本
 popiart update --version v0.3.2
 
+# 或直接给 Gitee 仓库主页 / tag 页
+popiart update --repo https://gitee.com/wattx/popiartcli
+popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.2
+
 # 安装指定版本
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.3.2 sh
+
+# 国内镜像安装指定版本
+curl -fsSL https://gitee.com/wattx/popiartcli/raw/main/install.sh | \
+  env VERSION=v0.3.2 sh -s -- --source gitee
 
 # 显式写法：仅安装 CLI
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh -s -- --cli-only
@@ -125,6 +140,9 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.2/popiart_0.3.2_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
+
+# 国内镜像：从 Gitee Releases 下载
+curl -fsSL https://gitee.com/wattx/popiartcli/releases/download/v0.3.2/popiart_0.3.2_darwin_arm64.tar.gz -o popiart.tar.gz
 ```
 
 ```sh
@@ -144,8 +162,15 @@ go install ./cmd/popiart
 `curl | sh` 这条安装链路现在默认只负责安装 Go CLI 二进制。
 如需继续执行生态引导，可显式追加 `--bootstrap`。
 
-`popiart update` 只会从 GitHub Releases 下载并替换 CLI 本体，不会改写 `~/.popiart/config.json`，也不会自动重新执行 `bootstrap`。
+`popiart update` 只会从 GitHub 或 Gitee Releases 下载并替换 CLI 本体，不会改写 `~/.popiart/config.json`，也不会自动重新执行 `bootstrap`。
 如果当前安装由 Homebrew 管理，请使用 `brew upgrade wtgoku-create/popi/popiart`。
+
+补充两个边界：
+
+- `popiart update` 可以解析默认仓库，也可以解析 GitHub / Gitee 仓库主页、`releases` 页和 `releases/tag/vX.Y.Z` URL
+- 国内镜像默认约定为 `https://gitee.com/wattx/popiartcli`
+- 但它最终仍然依赖对应 release 中的目标平台二进制；如果某个 tag 只有源码归档、没有 release 二进制，`popiart update` 不能直接完成升级
+- 如果你当前是 `git clone` / `go install` 的源码安装，应该使用 `git pull --tags` 后重新构建
 
 `popiart bootstrap` 负责第二阶段的生态引导：
 
@@ -218,7 +243,7 @@ bin/                      旧的 Node.js 启动入口（仅迁移参考，不对
 popiart auth login
 
 # 直接传入 API key
-popiart auth login --key pk-...
+popiart auth login --key <product-key>
 
 # 查看当前登录用户
 popiart auth whoami
@@ -235,6 +260,7 @@ popiart auth key rotate
 
 已保存的 key 存储在 `~/.popiart/config.json` 中 (权限 0600)。
 可以使用 `POPIART_KEY` 或 `POPIART_TOKEN` 环境变量进行覆盖。
+如果服务端在登录后下发的是 `sess_...` 这类会话令牌，本地配置里看到它是正常的；CLI 不要求产品层 key 固定为某一个前缀。
 
 ---
 
@@ -361,6 +387,12 @@ popiart jobs cancel job_xyz789
 ## 拉取工件
 
 ```sh
+# 仅上传本地文件，拿到一个稳定媒体 URL
+popiart media upload ./source.png
+
+# 读取一个稳定媒体 URL 对应的元数据
+popiart media get med_abc
+
 # 上传本地文件，生成可复用 artifact
 popiart artifacts upload ./source.png --role source
 
@@ -376,6 +408,17 @@ popiart artifacts pull art_abc --stdout > output.png
 # 下载作业的所有工件
 popiart artifacts pull-all job_xyz789 --dir ./results/
 ```
+
+当服务端支持稳定媒体 URL 时，`popiart media upload` 和 `popiart artifacts upload` 都会返回 `url` 字段，供后续多模态 skill 直接复用。
+
+当前这条链路已经在测试环境完成过一轮真实 smoke：
+
+- `media upload`
+- `media get`
+- `artifacts upload`
+- `artifacts get`
+- `artifacts list`
+- `artifacts pull`
 
 如果要做 `img2img`，推荐先把本地图片上传成 artifact，再把返回的 `artifact_id` 填进 `source_artifact_id`：
 
@@ -400,7 +443,7 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 如果要做 `image2video`，也建议先把本地图片上传成 artifact，再把返回的 `artifact_id` 填进 `source_artifact_id`：
 
 ```sh
-popiart models route-override set --project proj_local_dev --skill-type video.image2video --model viduq2-pro-fast
+popiart models route-override set --project proj_local_dev --route video.image2video --model viduq2-pro-fast
 
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
 
@@ -455,29 +498,35 @@ popiart project context
 
 ## 模型路由
 
+`popiart models list` 显示的是后端已注册的模型库存。
+`popiart models routes` 显示的是当前项目真正生效的 `route_key -> model_id` 路由结果。
+
 ```sh
-# 列出可用模型
+# 列出已注册的可用模型库存
 popiart models list
 popiart models list --type image
+popiart models list --capability text2image
 popiart models list --provider runway
 
-# 查看当前生效的路由表
+# 查看当前生效的 route key 路由表
 popiart models routes
 popiart models routes --project proj_abc123
+popiart models routes --project proj_abc123 --route image.text2image
 
 # 直接提交模型推理任务
 popiart models infer img-gen-xl --input @params.json
 popiart models infer video-gen-v2 --input @params.json --wait
 
-# 设置项目级路由覆盖
-popiart models route-override set --project proj_abc123 --skill-type image.img2img --model seedream-4-5-251128
-popiart models route-override set --project proj_abc123 --skill-type video.image2video --model viduq2-pro-fast
+# 设置项目级 route key 覆盖
+popiart models route-override set --project proj_abc123 --route image.img2img --model seedream-4-5-251128
+popiart models route-override set --project proj_abc123 --route video.image2video --model viduq2-pro-fast
 
-# 删除项目级路由覆盖
-popiart models route-override unset --project proj_abc123 --skill-type image.img2img
+# 删除项目级 route key 覆盖
+popiart models route-override unset --project proj_abc123 --route image.img2img
 
-# 列出项目级路由覆盖
+# 列出项目级 route key 覆盖
 popiart models route-override list --project proj_abc123
+popiart models route-override list --project proj_abc123 --route image.img2img
 ```
 
 ---
@@ -572,7 +621,7 @@ popiart budget usage --group-by skill | \
 ```json
 {
   "endpoint": "https://api.creatoragentos.io/v1",
-  "token": "sk-...",
+  "token": "sess_...",
   "project": "proj_abc123"
 }
 ```

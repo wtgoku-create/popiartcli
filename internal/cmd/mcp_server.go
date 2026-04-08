@@ -409,7 +409,7 @@ func mcpToolDefinitions() []mcpToolDefinition {
 		{
 			Name:        "upload_artifact",
 			Title:       "Upload Artifact",
-			Description: "Upload a local file and create a reusable PopiArt artifact.",
+			Description: "Upload a local file and create a reusable PopiArt artifact with a stable media URL when the server supports it.",
 			InputSchema: objectSchemaWithRequired(map[string]any{
 				"path":          map[string]any{"type": "string"},
 				"filename":      map[string]any{"type": "string"},
@@ -417,9 +417,36 @@ func mcpToolDefinitions() []mcpToolDefinition {
 				"role":          map[string]any{"type": "string"},
 				"metadata_json": map[string]any{"type": "string"},
 				"project_id":    map[string]any{"type": "string"},
+				"visibility":    map[string]any{"type": "string"},
 			}, "path"),
 			OutputSchema: map[string]any{"type": "object"},
 			Handler:      uploadArtifactTool,
+		},
+		{
+			Name:        "get_media",
+			Title:       "Get Media",
+			Description: "Read PopiArt media metadata, including the stable media URL when present.",
+			InputSchema: objectSchemaWithRequired(map[string]any{
+				"media_id": map[string]any{"type": "string"},
+			}, "media_id"),
+			OutputSchema: map[string]any{"type": "object"},
+			Annotations:  readOnlyToolAnnotations(),
+			Handler:      getMediaTool,
+		},
+		{
+			Name:        "upload_media",
+			Title:       "Upload Media",
+			Description: "Upload a local file and receive a stable PopiArt media URL.",
+			InputSchema: objectSchemaWithRequired(map[string]any{
+				"path":          map[string]any{"type": "string"},
+				"filename":      map[string]any{"type": "string"},
+				"content_type":  map[string]any{"type": "string"},
+				"metadata_json": map[string]any{"type": "string"},
+				"project_id":    map[string]any{"type": "string"},
+				"visibility":    map[string]any{"type": "string"},
+			}, "path"),
+			OutputSchema: map[string]any{"type": "object"},
+			Handler:      uploadMediaTool,
 		},
 		{
 			Name:         "whoami",
@@ -706,6 +733,33 @@ func uploadArtifactTool(ctx context.Context, args map[string]any) (any, error) {
 		Role:         optionalStringArg(args, "role"),
 		MetadataJSON: optionalStringArg(args, "metadata_json"),
 		ProjectID:    optionalStringArg(args, "project_id"),
+		Visibility:   optionalStringArg(args, "visibility"),
+	})
+}
+
+func getMediaTool(ctx context.Context, args map[string]any) (any, error) {
+	mediaID, err := requiredStringArg(args, "media_id")
+	if err != nil {
+		return nil, err
+	}
+	var media types.Media
+	if err := currentClient().GetJSON(ctx, "/media/"+mediaID, nil, &media); err != nil {
+		return nil, err
+	}
+	return media, nil
+}
+
+func uploadMediaTool(ctx context.Context, args map[string]any) (any, error) {
+	path, err := requiredStringArg(args, "path")
+	if err != nil {
+		return nil, err
+	}
+	return uploadMedia(ctx, path, mediaUploadOptions{
+		Filename:     optionalStringArg(args, "filename"),
+		ContentType:  optionalStringArg(args, "content_type"),
+		MetadataJSON: optionalStringArg(args, "metadata_json"),
+		ProjectID:    optionalStringArg(args, "project_id"),
+		Visibility:   optionalStringArg(args, "visibility"),
 	})
 }
 

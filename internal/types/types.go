@@ -108,6 +108,9 @@ type ArtifactSummary struct {
 	ContentType string `json:"content_type"`
 	SizeBytes   int64  `json:"size_bytes"`
 	CreatedAt   string `json:"created_at"`
+	MediaID     string `json:"media_id,omitempty"`
+	URL         string `json:"url,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
 }
 
 type ArtifactListResponse struct {
@@ -115,11 +118,29 @@ type ArtifactListResponse struct {
 }
 
 type Artifact struct {
+	ID            string `json:"id"`
+	JobID         string `json:"job_id"`
+	Filename      string `json:"filename"`
+	ContentType   string `json:"content_type"`
+	SizeBytes     int64  `json:"size_bytes"`
+	CreatedAt     string `json:"created_at"`
+	ExpiresAt     string `json:"expires_at,omitempty"`
+	MediaID       string `json:"media_id,omitempty"`
+	URL           string `json:"url,omitempty"`
+	Visibility    string `json:"visibility,omitempty"`
+	SHA256        string `json:"sha256,omitempty"`
+	StorageStatus string `json:"storage_status,omitempty"`
+}
+
+type Media struct {
 	ID          string `json:"id"`
-	JobID       string `json:"job_id"`
-	Filename    string `json:"filename"`
-	ContentType string `json:"content_type"`
-	SizeBytes   int64  `json:"size_bytes"`
-	CreatedAt   string `json:"created_at"`
-	ExpiresAt   string `json:"expires_at"`
+	ArtifactID  string `json:"artifact_id,omitempty"`
+	ProjectID   string `json:"project_id,omitempty"`
+	Filename    string `json:"filename,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+	SizeBytes   int64  `json:"size_bytes,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	URL         string `json:"url,omitempty"`
+	Visibility  string `json:"visibility,omitempty"`
+	SHA256      string `json:"sha256,omitempty"`
 }

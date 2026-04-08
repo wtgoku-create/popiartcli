@@ -214,6 +214,19 @@ popiart artifacts pull-all <job-id>
 
 将一个 job 的全部 artifacts 一次性下载到目录中。
 
+### 稳定媒体 URL
+
+```sh
+popiart media upload ./source.png
+```
+
+上传一个本地文件并获取稳定媒体 URL。这个命令适合下面两类场景：
+
+- 你只想把本地文件变成一个可被模型直接 fetch 的 URL
+- 你在 job 外部先做素材准备，再把 URL 传给后续 skill
+
+当服务端支持稳定媒体 URL 时，`popiart artifacts upload` 也会在响应里返回 `url`，因此 artifact 既保留 PopiArt 的工件语义，也具备直接给模型消费的 URL 语义。
+
 如果要把本地图片交给 `img2img`，建议走这条链路：
 
 ```sh
@@ -235,7 +248,7 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 如果要把本地图片继续交给 `image2video`，推荐同样先上传成 artifact，再走 `source_artifact_id`：
 
 ```sh
-popiart models route-override set --project proj_local_dev --skill-type video.image2video --model viduq2-pro-fast
+popiart models route-override set --project proj_local_dev --route video.image2video --model viduq2-pro-fast
 
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
 
@@ -248,6 +261,8 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 ```
 
 截至 `2026-03-28`，测试环境里验证通过的 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`。如果默认视频路由仍指向旧的 `viduq2`，就需要先做一次项目级 route override。
+
+稳定媒体 URL 的完整跨仓架构与分阶段执行计划见 [docs/stable-media-url-v1.md](./stable-media-url-v1.md)。
 
 ### 项目上下文
 
@@ -273,15 +288,18 @@ popiart project use <project-id>
 
 ```sh
 popiart models list --type image
+popiart models list --capability text2image
 ```
 
-列出当前可用模型。
+列出当前已注册的可用模型库存。
 
 ```sh
 popiart models routes
+popiart models routes --route image.text2image
 ```
 
-查看当前项目生效的模型路由表。
+查看当前项目真正生效的 `route_key -> model_id` 路由表。
+这个结果和 `models list` 的模型库存不是一回事。
 
 ```sh
 popiart models infer <model-id> --input @input.json --wait

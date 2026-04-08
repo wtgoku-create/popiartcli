@@ -39,7 +39,12 @@ It is intentionally different from the design docs:
   - now makes `PopiArt` immediately visible from the supported agents' native MCP and skill directories
 - `popiart artifacts upload`
   - uploads a local file and creates a reusable artifact
+  - now surfaces stable-media-url metadata when the server returns it
   - supports the common `agent chat attachment -> artifact -> img2img` path
+- `popiart media upload`
+  - uploads a local file and requests a stable media URL from the server
+- `popiart media get`
+  - reads media metadata and stable URL fields
 - `popiart skills pull/install/use-local`
   - supports installed local skills without changing bundled seed skills
   - merges installed local skills into `skills list/get/schema`
@@ -59,6 +64,8 @@ The current server exposes these tools:
 - `list_artifacts`
 - `pull_artifact`
 - `upload_artifact`
+- `get_media`
+- `upload_media`
 - `whoami`
 - `current_project`
 
@@ -79,6 +86,7 @@ The current repo-local implementation has been verified with:
 - `go test ./...`
 - `go run ./cmd/popiart mcp serve --describe`
 - `go run ./cmd/popiart artifacts upload --help`
+- `go run ./cmd/popiart media upload --help`
 - `go run ./cmd/popiart skills pull --help`
 - `go run ./cmd/popiart skills install --help`
 - `go run ./cmd/popiart skills use-local --help`
@@ -102,6 +110,7 @@ Tests currently cover:
 - local skill install / use-local linking into native agent skill directories by default
 - installed local skill metadata parsing and activation
 - artifact upload client / command / MCP integration
+- media upload client / command / MCP integration
 
 ## Deployed Validation
 
