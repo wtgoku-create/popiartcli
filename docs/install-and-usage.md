@@ -29,6 +29,9 @@ popiart --help
 - 如果是通过 `install.sh`、`install.ps1` 或手动 release 二进制安装，可以直接运行 `popiart update`
 - 如果是通过 Homebrew 安装，请运行 `brew upgrade wtgoku-create/popi/popiart`
 - `popiart update` 只更新 CLI 本体，不会改动现有配置，也不会自动重新执行 bootstrap
+- `popiart update` 可以解析默认仓库，也可以解析 GitHub / Gitee 仓库主页、`releases` 页和 `releases/tag/vX.Y.Z` URL
+- 国内镜像默认约定为 `https://gitee.com/wattx/popiartcli`
+- 但它最终仍依赖对应 release 中的目标平台二进制；如果某个 tag 只有源码归档、没有 release 二进制，`popiart update` 不能直接升级
 
 ## 2. macOS 安装
 
@@ -70,6 +73,13 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 popiart update
 ```
 
+国内镜像：
+
+```sh
+curl -fsSL https://gitee.com/wattx/popiartcli/raw/main/install.sh | sh -s -- --source gitee
+popiart update --source gitee
+```
+
 安装 CLI，并继续做 bootstrap：
 
 ```sh
@@ -85,6 +95,13 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 
 # 或者在已安装后更新到指定版本
 popiart update --version v0.3.2
+```
+
+如果你希望显式指定 Gitee 仓库主页或 tag 页，也可以：
+
+```sh
+popiart update --repo https://gitee.com/wattx/popiartcli
+popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.2
 ```
 
 脚本会优先尝试：
@@ -104,6 +121,14 @@ tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
 
+国内镜像：
+
+```sh
+curl -fsSL https://gitee.com/wattx/popiartcli/releases/download/v0.3.2/popiart_0.3.2_darwin_arm64.tar.gz -o popiart.tar.gz
+tar -xzf popiart.tar.gz
+install -m 0755 popiart /usr/local/bin/popiart
+```
+
 Intel Mac 请改成 `darwin_amd64` 对应的压缩包。
 
 ### 2.4 从源码安装
@@ -113,6 +138,13 @@ git clone https://github.com/wtgoku-create/popiartcli.git
 cd popiartcli
 go install ./cmd/popiart
 popiart --help
+```
+
+源码安装的后续更新方式：
+
+```sh
+git pull --tags
+go install ./cmd/popiart
 ```
 
 ## 3. Linux 安装
@@ -126,6 +158,13 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 
 # 后续升级到最新 release
 popiart update
+```
+
+国内镜像：
+
+```sh
+curl -fsSL https://gitee.com/wattx/popiartcli/raw/main/install.sh | sh -s -- --source gitee
+popiart update --source gitee
 ```
 
 安装 CLI 并 bootstrap：
@@ -161,6 +200,14 @@ tar -xzf popiart.tar.gz
 install -m 0755 popiart "$HOME/.local/bin/popiart"
 ```
 
+国内镜像：
+
+```sh
+curl -fsSL https://gitee.com/wattx/popiartcli/releases/download/v0.3.2/popiart_0.3.2_linux_amd64.tar.gz -o popiart.tar.gz
+tar -xzf popiart.tar.gz
+install -m 0755 popiart "$HOME/.local/bin/popiart"
+```
+
 arm64 机器请改用 `linux_arm64` 对应压缩包。
 
 ### 3.4 从源码安装
@@ -170,6 +217,13 @@ git clone https://github.com/wtgoku-create/popiartcli.git
 cd popiartcli
 go install ./cmd/popiart
 popiart --help
+```
+
+源码安装的后续更新方式：
+
+```sh
+git pull --tags
+go install ./cmd/popiart
 ```
 
 ## 4. Windows 安装
@@ -183,6 +237,13 @@ irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 
 
 # 后续升级到最新 release
 popiart update
+```
+
+国内镜像：
+
+```powershell
+& ([scriptblock]::Create((irm https://gitee.com/wattx/popiartcli/raw/main/install.ps1))) -Source gitee
+popiart update --source gitee
 ```
 
 安装指定版本：
@@ -221,6 +282,17 @@ New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\popiart\bin" | O
 Copy-Item .\popiart.exe "$env:LOCALAPPDATA\Programs\popiart\bin\popiart.exe" -Force
 ```
 
+国内镜像：
+
+```powershell
+$version = "0.3.2"
+$zip = "popiart_${version}_windows_amd64.zip"
+Invoke-WebRequest "https://gitee.com/wattx/popiartcli/releases/download/v$version/$zip" -OutFile $zip
+Expand-Archive $zip -DestinationPath .
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\popiart\bin" | Out-Null
+Copy-Item .\popiart.exe "$env:LOCALAPPDATA\Programs\popiart\bin\popiart.exe" -Force
+```
+
 arm64 Windows 请改用 `windows_arm64` 的压缩包。
 
 ### 4.3 从源码安装
@@ -230,6 +302,13 @@ git clone https://github.com/wtgoku-create/popiartcli.git
 cd popiartcli
 go install ./cmd/popiart
 popiart --help
+```
+
+源码安装的后续更新方式：
+
+```powershell
+git pull --tags
+go install ./cmd/popiart
 ```
 
 ## 5. 安装后的检查
@@ -264,7 +343,7 @@ popiart auth login
 直接传 key：
 
 ```sh
-popiart auth login --key pk-...
+popiart auth login --key <product-key>
 ```
 
 验证当前身份：
@@ -278,6 +357,8 @@ popiart auth key show
 
 - `popiart` 里保存的是 PopiArt 产品层 key
 - 不要把 OpenAI、Gemini、Kling、Runway 等 provider key 直接塞进 CLI
+- 如果服务端给你的产品层 key 前缀是 `sk-...`，也可以直接用于 `auth login`；CLI 不会强制要求 `pk-...`
+- `auth login` 成功后，本地配置里看到 `sess_...` 这类服务端签发的会话令牌也是正常现象
 - 如果你需要切到测试环境，可以用 `--endpoint` 或 `POPIART_ENDPOINT`
 
 ### 6.2 选择项目
@@ -440,7 +521,7 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 本地图片要进入 `image2video` 时，也建议走同一条 artifact 链路：
 
 ```sh
-popiart models route-override set --project proj_local_dev --skill-type video.image2video --model viduq2-pro-fast
+popiart models route-override set --project proj_local_dev --route video.image2video --model viduq2-pro-fast
 
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
 
@@ -669,7 +750,7 @@ popiart run <skill-id> --input @params.json --wait
 
 | 文件 | 作用 |
 |---|---|
-| `config.json` | endpoint、key、project 等本地配置 |
+| `config.json` | endpoint、已保存的 key / session token、project 等本地配置 |
 | `bootstrap.json` | 最近一次 bootstrap 产物清单 |
 | `agents/<agent>/env.sh` | shell agent 环境文件 |
 | `agents/<agent>/env.ps1` | PowerShell agent 环境文件 |

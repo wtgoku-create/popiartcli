@@ -2,6 +2,8 @@
 param(
   [string]$Version = "",
   [string]$InstallDir = "",
+  [ValidateSet("github", "gitee")]
+  [string]$Source = "",
   [switch]$CliOnly,
   [switch]$Bootstrap,
   [switch]$WithDefaultSkills,
@@ -16,8 +18,19 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$Repo = if ($env:POPIART_REPO) { $env:POPIART_REPO } else { "wtgoku-create/popiartcli" }
+$Source = if ($Source) { $Source.ToLowerInvariant() } elseif ($env:POPIART_SOURCE) { $env:POPIART_SOURCE.ToLowerInvariant() } else { "github" }
+$Repo = if ($env:POPIART_REPO) { $env:POPIART_REPO } else { "" }
 $Binary = "popiart.exe"
+$InferredTag = ""
+
+function Get-DefaultRepo {
+  param([string]$RepoSource)
+
+  switch ($RepoSource) {
+    "gitee" { return "wattx/popiartcli" }
+    default { return "wtgoku-create/popiartcli" }
+  }
+}
 
 function Write-Log {
   param([string]$Message)
@@ -64,12 +77,107 @@ function Get-OsArch {
 }
 
 function Get-LatestTag {
-  $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
+  $uri = if ($Source -eq "gitee") {
+    "https://gitee.com/api/v5/repos/$Repo/releases/latest"
+  }
+  else {
+    "https://api.github.com/repos/$Repo/releases/latest"
+  }
+  $release = Invoke-RestMethod -Uri $uri
   if (-not $release.tag_name) {
     throw "failed to resolve latest release tag"
   }
   return [string]$release.tag_name
 }
+
+function Trim-GitHubArchiveTag {
+  param([string]$Value)
+
+  $trimmed = $Value.Trim()
+  foreach ($suffix in @(".tar.gz", ".tgz", ".zip")) {
+    if ($trimmed.EndsWith($suffix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      return $trimmed.Substring(0, $trimmed.Length - $suffix.Length)
+    }
+  }
+  return $trimmed
+}
+
+function Resolve-RepoInput {
+  param(
+    [string]$InputValue,
+    [string]$DefaultSource
+  )
+
+  $value = $InputValue.Trim().TrimEnd("/")
+  if (-not $value) {
+    return [pscustomobject]@{
+      Repo   = Get-DefaultRepo $DefaultSource
+      Tag    = ""
+      Source = $DefaultSource
+    }
+  }
+
+  if ($value -notmatch "://" -and -not $value.ToLowerInvariant().StartsWith("github.com/") -and -not $value.ToLowerInvariant().StartsWith("gitee.com/")) {
+    $parts = $value.TrimEnd("/").TrimEnd(".git").Split("/", [System.StringSplitOptions]::RemoveEmptyEntries)
+    if ($parts.Length -ne 2) {
+      throw "expected repository in owner/name format"
+    }
+    return [pscustomobject]@{
+      Repo   = "$($parts[0])/$($parts[1])"
+      Tag    = ""
+      Source = $DefaultSource
+    }
+  }
+
+  if ($value.ToLowerInvariant().StartsWith("github.com/") -or $value.ToLowerInvariant().StartsWith("gitee.com/")) {
+    $value = "https://$value"
+  }
+
+  $uri = [System.Uri]$value
+  $resolvedSource = switch ($uri.Host.ToLowerInvariant()) {
+    "github.com" { "github" }
+    "www.github.com" { "github" }
+    "gitee.com" { "gitee" }
+    "www.gitee.com" { "gitee" }
+    default { $null }
+  }
+  if (-not $resolvedSource) {
+    throw "unsupported host: $($uri.Host)"
+  }
+
+  $parts = $uri.AbsolutePath.Trim("/").Split("/", [System.StringSplitOptions]::RemoveEmptyEntries)
+  if ($parts.Length -lt 2) {
+    throw "expected owner/repo path"
+  }
+
+  $name = [string]$parts[1]
+  if ($name.EndsWith(".git", [System.StringComparison]::OrdinalIgnoreCase)) {
+    $name = $name.Substring(0, $name.Length - 4)
+  }
+  $repo = "$($parts[0])/$name"
+  $tag = ""
+
+  if ($parts.Length -ge 5 -and $parts[2] -eq "releases" -and $parts[3] -eq "tag") {
+    $tag = [string]$parts[4]
+  }
+  elseif ($parts.Length -ge 6 -and $parts[2] -eq "archive" -and $parts[3] -eq "refs" -and $parts[4] -eq "tags") {
+    $tag = Trim-GitHubArchiveTag ([string]$parts[5])
+  }
+  elseif ($parts.Length -ge 4 -and $parts[2] -eq "archive") {
+    $tag = Trim-GitHubArchiveTag ([string]$parts[3])
+  }
+
+  return [pscustomobject]@{
+    Repo   = $repo
+    Tag    = $tag
+    Source = $resolvedSource
+  }
+}
+
+$resolvedRepo = Resolve-RepoInput $Repo $Source
+$Repo = [string]$resolvedRepo.Repo
+$InferredTag = [string]$resolvedRepo.Tag
+$Source = [string]$resolvedRepo.Source
 
 function Ensure-UserPathContains {
   param([string]$Dir)
@@ -134,12 +242,17 @@ function Invoke-Bootstrap {
   & $ExePath @args
 }
 
-$tag = if ($env:VERSION) { $env:VERSION } elseif ($Version) { $Version } else { Get-LatestTag }
+$tag = if ($env:VERSION) { $env:VERSION } elseif ($Version) { $Version } elseif ($InferredTag) { $InferredTag } else { Get-LatestTag }
 $versionNoV = $tag.TrimStart("v")
 $arch = Get-OsArch
 $targetDir = Get-DefaultInstallDir
 $archiveName = "popiart_${versionNoV}_windows_${arch}.zip"
-$baseUrl = "https://github.com/$Repo/releases/download/v$versionNoV"
+$baseUrl = if ($Source -eq "gitee") {
+  "https://gitee.com/$Repo/releases/download/v$versionNoV"
+}
+else {
+  "https://github.com/$Repo/releases/download/v$versionNoV"
+}
 
 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("popiart-" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tempDir | Out-Null

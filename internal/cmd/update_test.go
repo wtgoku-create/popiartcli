@@ -38,7 +38,7 @@ func TestUpdateCommandDoesNotPersistGlobalOverrides(t *testing.T) {
 	previousResolver := resolveUpdateTagFunc
 	previousPathResolver := resolveExecutablePathsFunc
 	previousRunner := selfUpdateRunner
-	resolveUpdateTagFunc = func(ctx context.Context, repo, requested string) (string, error) {
+	resolveUpdateTagFunc = func(ctx context.Context, source updateSource, repo, requested string) (string, error) {
 		return "v0.2.0", nil
 	}
 	resolveExecutablePathsFunc = func() (string, string, error) {
@@ -80,6 +80,86 @@ func TestNormalizeReleaseTag(t *testing.T) {
 	}
 }
 
+func TestParseRepoReferenceOwnerNameDefaultsToGitHub(t *testing.T) {
+	source, repo, tag, err := parseRepoReference("wtgoku-create/popiartcli", updateSourceGitHub)
+	if err != nil {
+		t.Fatalf("parseRepoReference returned error: %v", err)
+	}
+	if source != updateSourceGitHub {
+		t.Fatalf("expected github source, got %q", source)
+	}
+	if repo != "wtgoku-create/popiartcli" {
+		t.Fatalf("expected owner/name repo, got %q", repo)
+	}
+	if tag != "" {
+		t.Fatalf("expected empty inferred tag, got %q", tag)
+	}
+}
+
+func TestParseRepoReferenceGitHubRepoURL(t *testing.T) {
+	source, repo, tag, err := parseRepoReference("https://github.com/wtgoku-create/popiartcli", updateSourceGitHub)
+	if err != nil {
+		t.Fatalf("parseRepoReference returned error: %v", err)
+	}
+	if source != updateSourceGitHub {
+		t.Fatalf("expected github source, got %q", source)
+	}
+	if repo != "wtgoku-create/popiartcli" {
+		t.Fatalf("expected normalized repo, got %q", repo)
+	}
+	if tag != "" {
+		t.Fatalf("expected empty inferred tag, got %q", tag)
+	}
+}
+
+func TestParseRepoReferenceGitHubReleaseTagURL(t *testing.T) {
+	source, repo, tag, err := parseRepoReference("https://github.com/wtgoku-create/popiartcli/releases/tag/v0.3.2", updateSourceGitHub)
+	if err != nil {
+		t.Fatalf("parseRepoReference returned error: %v", err)
+	}
+	if source != updateSourceGitHub {
+		t.Fatalf("expected github source, got %q", source)
+	}
+	if repo != "wtgoku-create/popiartcli" {
+		t.Fatalf("expected normalized repo, got %q", repo)
+	}
+	if tag != "v0.3.2" {
+		t.Fatalf("expected inferred v0.3.2, got %q", tag)
+	}
+}
+
+func TestParseRepoReferenceGiteeReleaseTagURL(t *testing.T) {
+	source, repo, tag, err := parseRepoReference("https://gitee.com/wattx/popiartcli/releases/tag/v0.3.2", updateSourceGitHub)
+	if err != nil {
+		t.Fatalf("parseRepoReference returned error: %v", err)
+	}
+	if source != updateSourceGitee {
+		t.Fatalf("expected gitee source, got %q", source)
+	}
+	if repo != "wattx/popiartcli" {
+		t.Fatalf("expected normalized repo, got %q", repo)
+	}
+	if tag != "v0.3.2" {
+		t.Fatalf("expected inferred v0.3.2, got %q", tag)
+	}
+}
+
+func TestNormalizeUpdateTargetInputUsesTagFromGitHubURL(t *testing.T) {
+	source, repo, requested, err := normalizeUpdateTargetInput("https://github.com/wtgoku-create/popiartcli/releases/tag/v0.3.2", "", "")
+	if err != nil {
+		t.Fatalf("normalizeUpdateTargetInput returned error: %v", err)
+	}
+	if source != updateSourceGitHub {
+		t.Fatalf("expected github source, got %q", source)
+	}
+	if repo != "wtgoku-create/popiartcli" {
+		t.Fatalf("expected normalized repo, got %q", repo)
+	}
+	if requested != "v0.3.2" {
+		t.Fatalf("expected inferred requested version v0.3.2, got %q", requested)
+	}
+}
+
 func TestNormalizeInstalledVersion(t *testing.T) {
 	if got := normalizeInstalledVersion("0.2.0 (abc123) built 2026-03-27"); got != "v0.2.0" {
 		t.Fatalf("expected v0.2.0, got %q", got)
@@ -98,7 +178,7 @@ func TestIsHomebrewManagedExecutable(t *testing.T) {
 	}
 }
 
-func TestResolveTargetReleaseTagFollowsLatestRedirect(t *testing.T) {
+func TestResolveTargetReleaseTagFollowsGitHubLatestRedirect(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/releases/latest":
@@ -115,7 +195,7 @@ func TestResolveTargetReleaseTagFollowsLatestRedirect(t *testing.T) {
 	previousClient := updateHTTPClient
 	previousLatestURL := updateLatestReleaseURL
 	updateHTTPClient = server.Client()
-	updateLatestReleaseURL = func(repo string) string {
+	updateLatestReleaseURL = func(source updateSource, repo string) string {
 		return server.URL + "/releases/latest"
 	}
 	defer func() {
@@ -123,12 +203,43 @@ func TestResolveTargetReleaseTagFollowsLatestRedirect(t *testing.T) {
 		updateLatestReleaseURL = previousLatestURL
 	}()
 
-	tag, err := resolveTargetReleaseTag(context.Background(), "ignored/repo", "")
+	tag, err := resolveTargetReleaseTag(context.Background(), updateSourceGitHub, "ignored/repo", "")
 	if err != nil {
 		t.Fatalf("resolveTargetReleaseTag returned error: %v", err)
 	}
 	if tag != "v1.2.3" {
 		t.Fatalf("expected v1.2.3, got %q", tag)
+	}
+}
+
+func TestResolveTargetReleaseTagUsesGiteeAPI(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v5/repos/wattx/popiartcli/releases/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"tag_name":"v0.3.2"}`))
+	}))
+	defer server.Close()
+
+	previousClient := updateHTTPClient
+	previousLatestURL := updateLatestReleaseURL
+	updateHTTPClient = server.Client()
+	updateLatestReleaseURL = func(source updateSource, repo string) string {
+		return server.URL + "/api/v5/repos/" + repo + "/releases/latest"
+	}
+	defer func() {
+		updateHTTPClient = previousClient
+		updateLatestReleaseURL = previousLatestURL
+	}()
+
+	tag, err := resolveTargetReleaseTag(context.Background(), updateSourceGitee, "wattx/popiartcli", "")
+	if err != nil {
+		t.Fatalf("resolveTargetReleaseTag returned error: %v", err)
+	}
+	if tag != "v0.3.2" {
+		t.Fatalf("expected v0.3.2, got %q", tag)
 	}
 }
 
@@ -155,5 +266,20 @@ func TestDownloadTemporaryScript(t *testing.T) {
 	cleanup()
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected cleanup to remove %q, got err=%v", path, err)
+	}
+}
+func TestNormalizeUpdateTargetInputDefaultsToGiteeRepo(t *testing.T) {
+	source, repo, requested, err := normalizeUpdateTargetInput("", "gitee", "")
+	if err != nil {
+		t.Fatalf("normalizeUpdateTargetInput returned error: %v", err)
+	}
+	if source != updateSourceGitee {
+		t.Fatalf("expected gitee source, got %q", source)
+	}
+	if repo != defaultUpdateRepoGitee {
+		t.Fatalf("expected default gitee repo, got %q", repo)
+	}
+	if requested != "" {
+		t.Fatalf("expected empty requested version, got %q", requested)
 	}
 }

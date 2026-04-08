@@ -2,7 +2,11 @@
 
 set -eu
 
-REPO="${POPIART_REPO:-wtgoku-create/popiartcli}"
+DEFAULT_GITHUB_REPO="wtgoku-create/popiartcli"
+DEFAULT_GITEE_REPO="wattx/popiartcli"
+SOURCE="${POPIART_SOURCE:-github}"
+REPO="${POPIART_REPO:-}"
+REPO_INFERRED_TAG=""
 BINARY="popiart"
 CLI_ONLY=0
 RUN_BOOTSTRAP=0
@@ -24,6 +28,119 @@ fail() {
   exit 1
 }
 
+trim_github_archive_tag() {
+  tag_name="$1"
+  tag_name="${tag_name%.tar.gz}"
+  tag_name="${tag_name%.tgz}"
+  tag_name="${tag_name%.zip}"
+  printf '%s\n' "${tag_name}"
+}
+
+normalize_source() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    ""|github) printf 'github\n' ;;
+    gitee) printf 'gitee\n' ;;
+    *) fail "unsupported source: $1 (expected github or gitee)" ;;
+  esac
+}
+
+default_repo_for_source() {
+  case "$1" in
+    gitee) printf '%s\n' "${DEFAULT_GITEE_REPO}" ;;
+    *) printf '%s\n' "${DEFAULT_GITHUB_REPO}" ;;
+  esac
+}
+
+normalize_repo_input() {
+  input="$1"
+  input="${input%/}"
+  REPO_INFERRED_TAG=""
+
+  if [ -z "${input}" ]; then
+    printf '%s\n' "$(default_repo_for_source "${SOURCE}")"
+    return
+  fi
+
+  case "${input}" in
+    https://github.com/*|http://github.com/*|github.com/*)
+      SOURCE="github"
+      normalized="${input#https://}"
+      normalized="${normalized#http://}"
+      normalized="${normalized#github.com/}"
+      normalized="${normalized%%\?*}"
+      normalized="${normalized%%#*}"
+      owner="${normalized%%/*}"
+      rest="${normalized#*/}"
+      [ -n "${owner}" ] && [ "${rest}" != "${normalized}" ] || fail "invalid GitHub repository URL: ${input}"
+      name="${rest%%/*}"
+      remainder=""
+      if [ "${rest}" != "${name}" ]; then
+        remainder="${rest#*/}"
+      fi
+      name="${name%.git}"
+      [ -n "${name}" ] || fail "invalid GitHub repository URL: ${input}"
+      repo="${owner}/${name}"
+
+      case "${remainder}" in
+        releases/tag/*)
+          REPO_INFERRED_TAG="${remainder#releases/tag/}"
+          ;;
+        archive/refs/tags/*)
+          REPO_INFERRED_TAG="$(trim_github_archive_tag "${remainder#archive/refs/tags/}")"
+          ;;
+        archive/*)
+          REPO_INFERRED_TAG="$(trim_github_archive_tag "${remainder#archive/}")"
+          ;;
+      esac
+
+      printf '%s\n' "${repo}"
+      ;;
+    https://gitee.com/*|http://gitee.com/*|gitee.com/*)
+      SOURCE="gitee"
+      normalized="${input#https://}"
+      normalized="${normalized#http://}"
+      normalized="${normalized#gitee.com/}"
+      normalized="${normalized%%\?*}"
+      normalized="${normalized%%#*}"
+      owner="${normalized%%/*}"
+      rest="${normalized#*/}"
+      [ -n "${owner}" ] && [ "${rest}" != "${normalized}" ] || fail "invalid Gitee repository URL: ${input}"
+      name="${rest%%/*}"
+      remainder=""
+      if [ "${rest}" != "${name}" ]; then
+        remainder="${rest#*/}"
+      fi
+      name="${name%.git}"
+      [ -n "${name}" ] || fail "invalid Gitee repository URL: ${input}"
+      repo="${owner}/${name}"
+
+      case "${remainder}" in
+        releases/tag/*)
+          REPO_INFERRED_TAG="${remainder#releases/tag/}"
+          ;;
+        archive/refs/tags/*)
+          REPO_INFERRED_TAG="$(trim_github_archive_tag "${remainder#archive/refs/tags/}")"
+          ;;
+        archive/*)
+          REPO_INFERRED_TAG="$(trim_github_archive_tag "${remainder#archive/}")"
+          ;;
+      esac
+
+      printf '%s\n' "${repo}"
+      ;;
+    *)
+      repo="${input%.git}"
+      owner="${repo%%/*}"
+      rest="${repo#*/}"
+      [ -n "${owner}" ] && [ "${rest}" != "${repo}" ] || fail "expected repository in owner/name format"
+      case "${rest}" in
+        */*) fail "expected repository in owner/name format" ;;
+      esac
+      printf '%s\n' "${owner}/${rest}"
+      ;;
+  esac
+}
+
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
 }
@@ -42,10 +159,11 @@ usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
-Install popiart from GitHub Releases.
+Install popiart from GitHub or Gitee Releases.
 By default the script installs the CLI only.
 
 Options:
+  --source <name>        Download source: github or gitee
   --cli-only             Compatibility alias: install the CLI only
   --bootstrap            Run `popiart bootstrap` after installation
   --with-default-skills  Generate the default remote skill discovery profile
@@ -78,9 +196,17 @@ resolve_arch() {
 
 resolve_latest_tag() {
   need_cmd curl
-  latest_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest")"
-  latest_tag="${latest_url##*/}"
-  latest_tag="${latest_tag%%\?*}"
+  case "${SOURCE}" in
+    gitee)
+      latest_json="$(curl -fsSL "https://gitee.com/api/v5/repos/${REPO}/releases/latest")" || fail "failed to resolve latest release tag from Gitee"
+      latest_tag="$(printf '%s' "${latest_json}" | tr -d '\r\n' | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+      ;;
+    *)
+      latest_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest")"
+      latest_tag="${latest_url##*/}"
+      latest_tag="${latest_tag%%\?*}"
+      ;;
+  esac
   [ -n "${latest_tag}" ] || fail "failed to resolve latest release tag"
   printf '%s\n' "${latest_tag}"
 }
@@ -186,6 +312,11 @@ while [ "$#" -gt 0 ]; do
       CLI_ONLY=1
       shift
       ;;
+    --source)
+      [ "$#" -ge 2 ] || fail "missing value for --source"
+      SOURCE="$2"
+      shift 2
+      ;;
     --bootstrap)
       RUN_BOOTSTRAP=1
       shift
@@ -242,6 +373,9 @@ need_cmd curl
 need_cmd tar
 need_cmd install
 
+SOURCE="$(normalize_source "${SOURCE}")"
+REPO="$(normalize_repo_input "${REPO}")"
+
 os="$(resolve_os)"
 arch="$(resolve_arch)"
 bindir="$(install_dir)"
@@ -251,6 +385,10 @@ if [ -z "${tag}" ]; then
   tag="${VERSION_FLAG}"
 fi
 
+if [ -z "${tag}" ] && [ -n "${REPO_INFERRED_TAG}" ]; then
+  tag="${REPO_INFERRED_TAG}"
+fi
+
 if [ -z "${tag}" ]; then
   tag="$(resolve_latest_tag)"
 fi
@@ -258,7 +396,14 @@ fi
 version="${tag#v}"
 archive="${BINARY}_${version}_${os}_${arch}.tar.gz"
 checksums="checksums.txt"
-base_url="https://github.com/${REPO}/releases/download/v${version}"
+case "${SOURCE}" in
+  gitee)
+    base_url="https://gitee.com/${REPO}/releases/download/v${version}"
+    ;;
+  *)
+    base_url="https://github.com/${REPO}/releases/download/v${version}"
+    ;;
+esac
 
 tmpdir="$(mktemp -d)"
 cleanup() {
