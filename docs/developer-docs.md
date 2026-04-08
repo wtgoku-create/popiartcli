@@ -66,7 +66,14 @@ popiart skills list
 popiart skills list
 ```
 
-列出当前可用的远程 runtime skills，并合并 CLI 内置的 bundled seed skills。
+列出当前可发现的技能集合。合并顺序是：远程 runtime skills、已安装本地 skills、CLI 内置 official runtime baseline、CLI bundled seed skills。
+
+关系说明：
+
+- 当前真正可执行的 runtime skill 注册表来自 `popiartServer /skills`。
+- 当前公开 skill 定义参考仓库是 `wtgoku-create/Popiart_skillhub`。
+- `popiart bootstrap` 生成的 `default` skillset 只是默认发现配置，包含远程查询模板和 seed 元数据，不等于服务端已经注册完成的 skill 清单。
+- 返回里的 `source` 字段会区分 `remote`、`installed`、`official-runtime`、`bundled-seed`。
 
 ```sh
 popiart skills list --tag image
@@ -256,7 +263,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
   \"source_artifact_id\":\"$ART\",
   \"prompt\":\"让人物衣摆和发丝在微风中轻轻摆动，镜头缓慢推进，整体保持真实电影感。\",
   \"aspect_ratio\":\"16:9\",
-  \"seconds\":4
+  \"seconds\":5
 }" --wait
 ```
 
@@ -360,15 +367,21 @@ popiart budget limits
 
 ## 官方 Runtime Baseline
 
-当前仓库将以下三个 skill id 视为首批官方 runtime baseline：
+当前仓库将以下七个 skill id 视为当前官方 runtime baseline：
 
 ```text
 popiskill-image-text2image-basic-v1
 popiskill-image-img2img-basic-v1
+popiskill-image-img2img-popistudio-alice-showcase-v1
 popiskill-video-image2video-basic-v1
+popiskill-video-image2video-popistudio-alice-showcase-v1
+popiskill-audio-tts-multimodel-v1
+popiskill-audio-stt-local-v1
 ```
 
-其中 `popiskill-video-image2video-basic-v1` 同时是安装后自带的内置官方 skill：即使远端目录缺失或仍返回占位符，CLI 也会返回本地契约，并在运行时自动桥接到底层 image2video 模型。
+这七个 skill 都会作为本地官方契约暴露在 `skills list/get/schema` 中；其中 `popiskill-video-image2video-basic-v1` 还是当前唯一带 CLI 内置 direct fallback 的 skill：即使远端目录缺失或仍返回占位符，CLI 也会在运行时自动桥接到底层 image2video 模型。
+
+如果要把 `popiartServer /skills` 和 `wtgoku-create/Popiart_skillhub` 完整同步到同一套七技能公开定义，直接看 [docs/runtime-skill-sync-checklist.md](./runtime-skill-sync-checklist.md)。
 
 你可以这样做一次最小验证：
 

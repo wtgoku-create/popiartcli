@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "The main text prompt for generating one image."
+    },
+    "negative_prompt": {
+      "type": "string",
+      "description": "Optional exclusions or unwanted elements."
+    },
+    "style": {
+      "type": "string",
+      "description": "Optional style hint such as anime, product render, or cinematic realism."
+    },
+    "size": {
+      "type": "string",
+      "description": "Optional exact runtime size such as 1024x1024 or 1536x1024 when the server route supports it."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "description": "Portable framing hint such as 1:1, 16:9, or 9:16."
+    },
+    "seed": {
+      "type": "number",
+      "description": "Optional reproducibility seed."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional extra constraints confirmed with the user."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}

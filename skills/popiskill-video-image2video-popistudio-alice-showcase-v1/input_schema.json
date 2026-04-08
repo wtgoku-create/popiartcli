@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "properties": {
+    "source_artifact_id": {
+      "type": "string",
+      "description": "Preferred PopiArt artifact ID for the Alice source frame."
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Stable Alice source URL for the current environment."
+    },
+    "reference_image_url": {
+      "type": "string",
+      "description": "Compatibility alias for image_url."
+    },
+    "motion_prompt": {
+      "type": "string",
+      "description": "Short motion direction for the Alice clip."
+    },
+    "duration_s": {
+      "type": "number",
+      "description": "Preferred clip length in seconds."
+    },
+    "seconds": {
+      "type": "number",
+      "description": "Compatibility alias for duration_s."
+    },
+    "camera_motion": {
+      "type": "string",
+      "description": "Optional camera movement hint."
+    },
+    "mood": {
+      "type": "string",
+      "description": "Optional emotional or lighting direction."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "description": "Portable framing hint such as 16:9 or 9:16."
+    },
+    "seed": {
+      "type": "number",
+      "description": "Optional reproducibility seed."
+    },
+    "retry_on_character_drift": {
+      "type": "boolean",
+      "description": "Whether one retry is allowed when Alice drifts too far from the source."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional extra constraints confirmed with the user."
+    }
+  }
+}

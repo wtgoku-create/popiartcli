@@ -1,0 +1,4 @@
+interface:
+  display_name: "Alice Image Showcase"
+  short_description: "Generate one PopiStudio Alice showcase still"
+  default_prompt: "Use this skill when the user needs one character-consistent PopiStudio Alice showcase frame from the current Alice master reference."

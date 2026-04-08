@@ -6,7 +6,7 @@ It covers four tracks:
 
 1. a discoverable `PopiArt` MCP/server identity
 2. bootstrap-generated agent assets for MCP and skill directories
-3. a runtime baseline for the first three official multimodal skills
+3. a detailed runtime baseline for the first three official multimodal skills, which now sit inside a larger seven-skill official runtime set
 4. the execution contract for `img2img` and `image2video`
 
 This is a cross-repo design. `popiartcli` owns the CLI surface, bootstrap assets, and local diagnostics. `popiartServer` owns runtime skill registration, routing, jobs, artifacts, and billing. `PopiNewAPI` owns provider channels, upstream model access, and provider-specific adaptation.
@@ -264,7 +264,7 @@ The command should return structured output even when some checks fail.
 
 The following items are intentionally out of scope for this repo and must be completed in `popiartServer` or `PopiNewAPI`:
 
-- remote registration of the three official runtime baseline skills
+- remote registration of the seven official runtime baseline skills
 - route mapping for `text2image`, `img2img`, and `image2video`
 - provider-specific adaptation for masks, motion controls, duration limits, and output fetching
 - stable artifact naming conventions in the server runtime

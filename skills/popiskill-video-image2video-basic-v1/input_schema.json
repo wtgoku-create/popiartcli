@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "properties": {
+    "source_artifact_id": {
+      "type": "string",
+      "description": "Preferred PopiArt artifact ID for the source image."
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Fallback stable image URL when no source_artifact_id exists."
+    },
+    "reference_image_url": {
+      "type": "string",
+      "description": "Compatibility alias for image_url."
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Short motion direction or scene behavior."
+    },
+    "negative_prompt": {
+      "type": "string",
+      "description": "Optional exclusions or unwanted motion behaviors."
+    },
+    "duration_s": {
+      "type": "number",
+      "description": "Preferred clip length in seconds."
+    },
+    "seconds": {
+      "type": "number",
+      "description": "Compatibility alias for duration_s."
+    },
+    "fps": {
+      "type": "number",
+      "description": "Optional frame-rate hint."
+    },
+    "camera_motion": {
+      "type": "string",
+      "description": "Optional camera movement hint."
+    },
+    "motion_intensity": {
+      "type": "string",
+      "description": "Optional motion strength hint."
+    },
+    "style": {
+      "type": "string",
+      "description": "Optional look-and-feel hint."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "description": "Portable framing hint such as 16:9 or 9:16."
+    },
+    "seed": {
+      "type": "number",
+      "description": "Optional reproducibility seed."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional extra constraints confirmed with the user."
+    }
+  }
+}

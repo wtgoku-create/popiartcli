@@ -123,6 +123,7 @@ func (s BundledSkill) Summary() types.SkillSummary {
 		Version:            s.Version,
 		ModelType:          s.ModelType,
 		EstimatedDurationS: s.EstimatedDurationS,
+		Source:             "bundled-seed",
 	}
 }
 
@@ -137,6 +138,7 @@ func (s BundledSkill) Skill() types.Skill {
 		EstimatedDurationS: s.EstimatedDurationS,
 		InputSchema:        cloneMap(s.InputSchema),
 		OutputSchema:       cloneMap(s.OutputSchema),
+		Source:             "bundled-seed",
 	}
 }
 

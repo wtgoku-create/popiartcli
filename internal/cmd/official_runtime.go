@@ -9,11 +9,18 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
 	"github.com/wtgoku-create/popiartcli/internal/poll"
+	"github.com/wtgoku-create/popiartcli/internal/seed"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
 const (
+	officialText2ImageSkillID          = "popiskill-image-text2image-basic-v1"
+	officialImage2ImageSkillID         = "popiskill-image-img2img-basic-v1"
+	officialAliceImageShowcaseSkillID  = "popiskill-image-img2img-popistudio-alice-showcase-v1"
 	officialImage2VideoSkillID         = "popiskill-video-image2video-basic-v1"
+	officialAliceVideoShowcaseSkillID  = "popiskill-video-image2video-popistudio-alice-showcase-v1"
+	officialTTSMultimodelSkillID       = "popiskill-audio-tts-multimodel-v1"
+	officialSTTLocalSkillID            = "popiskill-audio-stt-local-v1"
 	officialImage2VideoPrimaryModelID  = "viduq3-turbo"
 	officialImage2VideoFallbackModelID = "viduq2-pro-fast"
 
@@ -21,75 +28,54 @@ const (
 	officialNotConnectedText   = "runtime is not connected yet"
 )
 
+var officialRuntimeSkillIDs = []string{
+	officialText2ImageSkillID,
+	officialImage2ImageSkillID,
+	officialAliceImageShowcaseSkillID,
+	officialImage2VideoSkillID,
+	officialAliceVideoShowcaseSkillID,
+	officialTTSMultimodelSkillID,
+	officialSTTLocalSkillID,
+}
+
 type officialRuntimeDirectInfer struct {
 	ModelIDs []string
 }
 
 type officialRuntimeContract struct {
-	Skill       types.Skill
+	Name        string
+	Description string
 	DirectInfer *officialRuntimeDirectInfer
 }
 
 var officialRuntimeContracts = map[string]officialRuntimeContract{
+	officialText2ImageSkillID: {
+		Name: "Basic Text2Image",
+	},
+	officialImage2ImageSkillID: {
+		Name: "Basic Img2Img",
+	},
+	officialAliceImageShowcaseSkillID: {
+		Name: "Alice Image Showcase",
+	},
 	officialImage2VideoSkillID: {
-		Skill: types.Skill{
-			ID:          officialImage2VideoSkillID,
-			Name:        "Basic Image2Video",
-			Description: "Built-in PopiArt image2video skill. It accepts a source artifact or image URL and, when the remote catalog entry is still a placeholder, the CLI bridges execution to direct models infer with viduq3-turbo and falls back to viduq2-pro-fast.",
-			Tags:        []string{"official", "builtin", "runtime", "video", "image2video"},
-			Version:     "v1",
-			ModelType:   "video",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"source_artifact_id": map[string]any{
-						"type":        "string",
-						"description": "Preferred PopiArt artifact ID for the source image.",
-					},
-					"image_url": map[string]any{
-						"type":        "string",
-						"description": "Fallback source image URL when no source_artifact_id exists.",
-					},
-					"reference_image_url": map[string]any{
-						"type":        "string",
-						"description": "Compatibility alias for image_url.",
-					},
-					"prompt":           map[string]any{"type": "string"},
-					"negative_prompt":  map[string]any{"type": "string"},
-					"duration_s":       map[string]any{"type": "number"},
-					"seconds":          map[string]any{"type": "number"},
-					"fps":              map[string]any{"type": "number"},
-					"camera_motion":    map[string]any{"type": "string"},
-					"motion_intensity": map[string]any{"type": "string"},
-					"loop":             map[string]any{"type": "boolean"},
-					"style":            map[string]any{"type": "string"},
-					"aspect_ratio":     map[string]any{"type": "string"},
-					"seed":             map[string]any{"type": "number"},
-					"notes":            map[string]any{"type": "string"},
-				},
-			},
-			OutputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"job_id":             map[string]any{"type": "string"},
-					"status":             map[string]any{"type": "string"},
-					"model_id":           map[string]any{"type": "string"},
-					"requested_skill_id": map[string]any{"type": "string"},
-					"execution_mode":     map[string]any{"type": "string"},
-					"artifact_ids": map[string]any{
-						"type":  "array",
-						"items": map[string]any{"type": "string"},
-					},
-				},
-			},
-			EstimatedDurationS: 180,
-		},
+		Name:        "Basic Image2Video",
+		Description: "Built-in PopiArt image2video baseline. It accepts a source artifact or image URL and, when the remote catalog entry is still a placeholder, the CLI bridges execution to direct models infer with viduq3-turbo and falls back to viduq2-pro-fast.",
 		DirectInfer: &officialRuntimeDirectInfer{
 			ModelIDs: []string{
 				officialImage2VideoPrimaryModelID,
 				officialImage2VideoFallbackModelID,
 			},
 		},
+	},
+	officialAliceVideoShowcaseSkillID: {
+		Name: "Alice Video Showcase",
+	},
+	officialTTSMultimodelSkillID: {
+		Name: "TTS Multimodel",
+	},
+	officialSTTLocalSkillID: {
+		Name: "STT Local",
 	},
 }
 
@@ -98,7 +84,16 @@ func officialRuntimeSkillForID(skillID string) (types.Skill, bool) {
 	if !ok {
 		return types.Skill{}, false
 	}
-	return cloneOfficialRuntimeSkill(contract.Skill), true
+	skill, ok := seed.FindBundledSkill(skillID)
+	if !ok {
+		return types.Skill{}, false
+	}
+	skill.Name = contract.Name
+	skill.Source = "official-runtime"
+	if strings.TrimSpace(contract.Description) != "" {
+		skill.Description = contract.Description
+	}
+	return cloneOfficialRuntimeSkill(skill), true
 }
 
 func officialRuntimeSkillSummaryForID(skillID string) (types.SkillSummary, bool) {
@@ -114,23 +109,21 @@ func officialRuntimeSkillSummaryForID(skillID string) (types.SkillSummary, bool)
 		Version:            skill.Version,
 		ModelType:          skill.ModelType,
 		EstimatedDurationS: skill.EstimatedDurationS,
+		Source:             skill.Source,
 	}, true
 }
 
 func officialRuntimeSkillSchemaForID(skillID string) (types.SkillSchemaResponse, bool) {
-	skill, ok := officialRuntimeSkillForID(skillID)
+	schema, ok := seed.FindBundledSkillSchema(skillID)
 	if !ok {
 		return types.SkillSchemaResponse{}, false
 	}
-	return types.SkillSchemaResponse{
-		InputSchema:  cloneMapAny(skill.InputSchema),
-		OutputSchema: cloneMapAny(skill.OutputSchema),
-	}, true
+	return schema, true
 }
 
 func matchingOfficialRuntimeSkillSummaries(tag, search string) []types.SkillSummary {
-	items := make([]types.SkillSummary, 0, len(officialRuntimeContracts))
-	for skillID := range officialRuntimeContracts {
+	items := make([]types.SkillSummary, 0, len(officialRuntimeSkillIDs))
+	for _, skillID := range officialRuntimeSkillIDs {
 		summary, ok := officialRuntimeSkillSummaryForID(skillID)
 		if !ok {
 			continue
@@ -214,6 +207,15 @@ func isOfficialRuntimePlaceholderDescription(description string) bool {
 		return true
 	}
 	return strings.Contains(normalized, officialPlaceholderSnippet) || strings.Contains(normalized, officialNotConnectedText)
+}
+
+func officialRuntimePlaceholderHint(skillID string) string {
+	switch strings.TrimSpace(skillID) {
+	case officialImage2VideoSkillID:
+		return "当前 CLI 会对 image2video 自动桥接到 models infer，但服务端技能注册仍需补齐"
+	default:
+		return "当前 skill 需要由 popiartServer 完成正式注册与执行路由"
+	}
 }
 
 func officialRuntimeSchemaLooksUsable(schema types.SkillSchemaResponse) bool {

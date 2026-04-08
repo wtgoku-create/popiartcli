@@ -273,7 +273,7 @@ func writeRuntimeBaselineProfile() (string, error) {
 	path := filepath.Join(config.Dir(), "skillsets", "runtime-baseline.json")
 	profile := map[string]any{
 		"name":         "runtime-baseline",
-		"description":  "Official PopiArt runtime baseline for the first three multimodal runtime skills.",
+		"description":  "Official PopiArt runtime baseline for the current seven runtime skills across image, video, and audio.",
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 		"source":       "popiart bootstrap",
 		"mcp_server":   popiartMCPServerName,
@@ -421,7 +421,7 @@ func bootstrapNextSteps(result bootstrapResult) []string {
 		steps = append(steps, "运行 `popiart auth login` 保存 API key")
 	}
 	if result.DefaultSkillsProfile != "" {
-		steps = append(steps, "运行 `popiart skills list --search popiskill-creator` 或 `popiart skills list --tag image`")
+		steps = append(steps, "运行 `popiart skills list --search popiskill-image-text2image-basic-v1` 或 `popiart skills list --tag image`")
 	}
 	if result.RuntimeBaseline != "" {
 		steps = append(steps, "运行 `popiart mcp doctor` 检查官方 runtime baseline 与 discoverability 状态")

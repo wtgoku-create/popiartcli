@@ -139,7 +139,7 @@ func newMCPCmd() *cobra.Command {
 						return output.NewError("RUNTIME_SKILL_PLACEHOLDER", "官方 runtime skill 仍是占位符", map[string]any{
 							"skill_id":    skill.ID,
 							"description": resp.Description,
-							"hint":        "当前 CLI 会对 image2video 自动桥接到 models infer，但服务端技能注册仍需补齐",
+							"hint":        officialRuntimePlaceholderHint(skill.ID),
 						})
 					}
 					return nil
@@ -195,26 +195,20 @@ func newMCPCmd() *cobra.Command {
 }
 
 func officialRuntimeSkills() []officialRuntimeSkill {
-	return []officialRuntimeSkill{
-		{
-			ID:          "popiskill-image-text2image-basic-v1",
-			Name:        "Basic Text2Image",
-			Description: "Generate a single image from a text prompt through the PopiArt runtime baseline.",
-			ModelType:   "image",
-		},
-		{
-			ID:          "popiskill-image-img2img-basic-v1",
-			Name:        "Basic Img2Img",
-			Description: "Transform or refine an existing image artifact through the PopiArt runtime baseline.",
-			ModelType:   "image",
-		},
-		{
-			ID:          "popiskill-video-image2video-basic-v1",
-			Name:        "Basic Image2Video",
-			Description: "Generate a short video from a source image artifact through the PopiArt runtime baseline.",
-			ModelType:   "video",
-		},
+	items := make([]officialRuntimeSkill, 0, len(officialRuntimeSkillIDs))
+	for _, skillID := range officialRuntimeSkillIDs {
+		summary, ok := officialRuntimeSkillSummaryForID(skillID)
+		if !ok {
+			continue
+		}
+		items = append(items, officialRuntimeSkill{
+			ID:          summary.ID,
+			Name:        summary.Name,
+			Description: summary.Description,
+			ModelType:   summary.ModelType,
+		})
 	}
+	return items
 }
 
 func mcpTools() []mcpTool {

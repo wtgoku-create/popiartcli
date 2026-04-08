@@ -54,6 +54,7 @@ Runway 等。
 MCP discoverability 与 runtime baseline 设计见 [docs/mcp-discoverability-v1.md](./docs/mcp-discoverability-v1.md)。
 稳定媒体 URL 的 V1 架构与分阶段计划见 [docs/stable-media-url-v1.md](./docs/stable-media-url-v1.md)。
 当前仓库实际落地状态见 [docs/current-status.md](./docs/current-status.md)。
+`popiartServer /skills` 与 `wtgoku-create/Popiart_skillhub` 的对齐清单见 [docs/runtime-skill-sync-checklist.md](./docs/runtime-skill-sync-checklist.md)。
 
 ```sh
 # Homebrew (macOS / Linux)
@@ -177,11 +178,11 @@ go install ./cmd/popiart
 - 生成 shell completion
 - 可选生成 agent 引导文件，并同时写出适用于 shell 的 `env.sh` 与适用于 PowerShell 的 `env.ps1`
 - 可选生成默认的远程 skill discovery profile
-- 在默认 profile 中写入 CLI 自带的 seed skill 元数据，例如 `popiskill-creator`
+- 在默认 profile 中写入 CLI 自带的 7 个官方 runtime seed skill 元数据
 - `popiart skills list/get/schema` 会同时显示这些本地 bundled seed skills 和远程注册表技能
-- 这些 bundled seed skills 是本地 authoring/helper 入口，不是远端 runtime skill；`popiart run` 只能执行服务端已注册的 runtime skill
+- 这些 bundled seed skills 现在对应官方 runtime baseline；其中 `popiskill-video-image2video-basic-v1` 在远端占位时还支持 CLI 内置 direct fallback，其余 skill 仍依赖服务端注册和路由
 
-这里的 skill 发现仍以远程注册表为主；CLI 仓库同时维护一小组内置 seed skills，作为 bootstrap 和作者引导入口，并在本地查询时一并暴露。
+这里的 skill 发现仍以远程注册表为主；CLI 仓库同时维护官方 runtime baseline 的本地契约与 schema，并在本地查询时一并暴露。
 
 发布维护说明见 [docs/releasing.md](./docs/releasing.md)。
 
@@ -288,7 +289,15 @@ popiart skills schema skill_abc123
 
 - 远端 runtime skills
 - 本地 installed skills
+- CLI 内置 official runtime baseline
 - CLI 内置 bundled seed skills
+
+关系说明：
+
+- 真正可执行的 runtime skill 注册表来自 `popiartServer` 的 `/skills` 接口。
+- 当前公开 skill 定义参考仓库是 `wtgoku-create/Popiart_skillhub`。
+- `popiart bootstrap` 生成的 `default` skillset 只是一个发现入口：它包含远程查询模板和 CLI 自带 seed skill 元数据，不等于服务端已经注册完成的 skill 集合。
+- `skills get/schema` 返回里的 `source` 用来区分结果来自 `remote`、`installed`、`official-runtime` 还是 `bundled-seed`。
 
 本地 skill 安装链路：
 
@@ -451,7 +460,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
   \"source_artifact_id\":\"$ART\",
   \"prompt\":\"让人物衣摆和发丝在微风中轻轻摆动，镜头缓慢推进，整体保持真实电影感。\",
   \"aspect_ratio\":\"16:9\",
-  \"seconds\":4
+  \"seconds\":5
 }" --wait
 ```
 

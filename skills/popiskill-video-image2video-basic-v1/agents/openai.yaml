@@ -1,0 +1,4 @@
+interface:
+  display_name: "Image2Video Basic"
+  short_description: "Turn one image into one short clip"
+  default_prompt: "Use this skill when the user wants the simplest official PopiArt image-to-video runtime path."

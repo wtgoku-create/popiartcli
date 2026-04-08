@@ -71,15 +71,19 @@ The current server exposes these tools:
 
 ### Implemented Runtime-Baseline Definition
 
-The repository now treats these three skill ids as the official runtime baseline:
+The repository now treats these seven skill ids as the official runtime baseline:
 
 1. `popiskill-image-text2image-basic-v1`
 2. `popiskill-image-img2img-basic-v1`
-3. `popiskill-video-image2video-basic-v1`
+3. `popiskill-image-img2img-popistudio-alice-showcase-v1`
+4. `popiskill-video-image2video-basic-v1`
+5. `popiskill-video-image2video-popistudio-alice-showcase-v1`
+6. `popiskill-audio-tts-multimodel-v1`
+7. `popiskill-audio-stt-local-v1`
 
 The `img2img` and `image2video` execution contracts have been written in [docs/mcp-discoverability-v1.md](./mcp-discoverability-v1.md).
 
-As of `2026-04-08`, `popiskill-video-image2video-basic-v1` is also treated as a built-in official skill in `popiartcli`:
+As of `2026-04-08`, all seven runtime-baseline skills are also exposed as built-in official contracts in `popiartcli`, and `popiskill-video-image2video-basic-v1` additionally has direct runtime fallback:
 
 - `skills list/get/schema` exposes a local contract even when the remote catalog entry is missing or still a placeholder
 - `run popiskill-video-image2video-basic-v1` automatically bridges to direct `models infer`
@@ -148,16 +152,16 @@ The CLI does not guarantee those provider-specific adapters by itself; they were
 - MCP `sampling`
 - richer artifact-aware tool results such as `primary_artifact_id` or artifact-role metadata
 - direct local execution for arbitrary installed skills beyond `execution.mode=remote-runtime`
-- built-in compatibility execution for the other two official runtime-baseline skills, beyond the current `image2video` bridge
+- built-in compatibility execution for the other six official runtime-baseline skills beyond the current `image2video` bridge
 
 ### Not Done Outside This Repo
 
 These items still belong to `popiartServer` or `PopiNewAPI` and are not solved by this repo alone:
 
-- remote registration of the three official runtime-baseline skills
-- default route mapping for `text2image`, `img2img`, and `image2video`
-- provider-specific execution for masks, motion controls, duration limits, output fetching, and billing attribution
-- guaranteed end-to-end availability of the three baseline skills
+- remote registration of the seven official runtime-baseline skills
+- default route mapping for `text2image`, `img2img`, `image2video`, `audio.tts`, and `audio.stt`
+- provider-specific execution for masks, motion controls, duration limits, voice selection, transcript shaping, output fetching, and billing attribution
+- guaranteed end-to-end availability of the seven baseline skills
 
 The current test deployment still needs explicit project-level overrides for some routes when the request is going through the server-managed runtime path. For example, the older server-side `image2video` validation was done only after setting `video.image2video -> viduq2-pro-fast`.
 
@@ -167,11 +171,11 @@ Because of that, the current state is:
 - `popiartcli` can expose a usable MCP tool surface
 - `popiartcli` can diagnose whether remote runtime pieces are present
 - `popiartcli` can keep `popiskill-video-image2video-basic-v1` usable even when the remote catalog entry is missing or still a placeholder
-- `popiartcli` still cannot, by itself, guarantee that all three baseline runtime skills will execute successfully end to end
+- `popiartcli` still cannot, by itself, guarantee that all seven baseline runtime skills will execute successfully end to end
 
 ## Recommended Next Steps
 
 1. Validate the native MCP install path against real installed `Claude Code`, `OpenClaw`, and `OpenCode` binaries on each target OS.
 2. Publish the tested `popiartServer` route adapters and defaults as a real tracked server release, including `video.image2video -> viduq2-pro-fast`.
-3. Register the three baseline runtime skills by default in `popiartServer`.
+3. Register the seven baseline runtime skills by default in `popiartServer`.
 4. Validate that `popiart mcp doctor` passes against a real deployed environment with the intended default route table.

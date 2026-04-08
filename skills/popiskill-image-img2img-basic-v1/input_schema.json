@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "The transformation intent applied to the source image."
+    },
+    "source_artifact_id": {
+      "type": "string",
+      "description": "Preferred PopiArt artifact ID for the source image."
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Fallback stable image URL when no source_artifact_id exists."
+    },
+    "reference_image_url": {
+      "type": "string",
+      "description": "Compatibility alias for image_url."
+    },
+    "strength": {
+      "type": "number",
+      "description": "How strongly to transform the source image."
+    },
+    "style": {
+      "type": "string",
+      "description": "Optional style hint."
+    },
+    "size": {
+      "type": "string",
+      "description": "Optional exact runtime size when supported by the route."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "description": "Portable framing hint such as 1:1, 16:9, or 9:16."
+    },
+    "seed": {
+      "type": "number",
+      "description": "Optional reproducibility seed."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional extra constraints confirmed with the user."
+    }
+  },
+  "required": [
+    "prompt"
+  ]
+}

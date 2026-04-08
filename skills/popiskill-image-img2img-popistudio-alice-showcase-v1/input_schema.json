@@ -1,0 +1,56 @@
+{
+  "type": "object",
+  "properties": {
+    "scene_prompt": {
+      "type": "string",
+      "description": "The new Alice scene or action to render."
+    },
+    "source_artifact_id": {
+      "type": "string",
+      "description": "Preferred PopiArt artifact ID for the current Alice master reference."
+    },
+    "reference_image_url": {
+      "type": "string",
+      "description": "Stable Alice reference URL published by popiartServer for the current environment."
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Compatibility alias for reference_image_url."
+    },
+    "shot_type": {
+      "type": "string",
+      "description": "Optional shot framing such as close-up, medium shot, or wide shot."
+    },
+    "camera": {
+      "type": "string",
+      "description": "Optional camera language such as eye level or slight low angle."
+    },
+    "mood": {
+      "type": "string",
+      "description": "Optional emotional or lighting direction."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "description": "Portable framing hint such as 1:1, 16:9, or 9:16."
+    },
+    "size": {
+      "type": "string",
+      "description": "Optional exact runtime size when supported by the route."
+    },
+    "seed": {
+      "type": "number",
+      "description": "Optional reproducibility seed."
+    },
+    "retry_on_character_drift": {
+      "type": "boolean",
+      "description": "Whether one retry is allowed when Alice drifts too far from the reference."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional extra constraints confirmed with the user."
+    }
+  },
+  "required": [
+    "scene_prompt"
+  ]
+}

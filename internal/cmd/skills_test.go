@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -39,11 +40,11 @@ func TestRemotePageSize(t *testing.T) {
 func TestMergeSkillSummariesPrefersPrimaryItems(t *testing.T) {
 	merged := mergeSkillSummaries(
 		[]types.SkillSummary{
-			{ID: "popiskill-creator", Description: "remote"},
+			{ID: officialText2ImageSkillID, Description: "remote"},
 			{ID: "remote-2"},
 		},
 		[]types.SkillSummary{
-			{ID: "popiskill-creator", Description: "local"},
+			{ID: officialText2ImageSkillID, Description: "local"},
 			{Name: "local-only"},
 		},
 	)
@@ -62,10 +63,10 @@ func TestMergeSkillSummariesPrefersPrimaryItems(t *testing.T) {
 func TestBundledSkillSummariesMissingOnRemoteFiltersExistingSkills(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/skills/popiskill-creator":
+		case "/skills/" + officialText2ImageSkillID:
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"id":"popiskill-creator","name":"remote creator"}`)
-		case "/skills/popiskill-image-character-three-view-v1":
+			fmt.Fprintf(w, `{"id":"%s","name":"remote text2image"}`, officialText2ImageSkillID)
+		case "/skills/" + officialAliceImageShowcaseSkillID:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, `{"message":"not found"}`)
@@ -80,8 +81,8 @@ func TestBundledSkillSummariesMissingOnRemoteFiltersExistingSkills(t *testing.T)
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	items := []types.SkillSummary{
-		{ID: "popiskill-creator"},
-		{ID: "popiskill-image-character-three-view-v1"},
+		{ID: officialText2ImageSkillID},
+		{ID: officialAliceImageShowcaseSkillID},
 	}
 	filtered, err := bundledSkillSummariesMissingOnRemote(context.Background(), items)
 	if err != nil {
@@ -90,12 +91,12 @@ func TestBundledSkillSummariesMissingOnRemoteFiltersExistingSkills(t *testing.T)
 	if len(filtered) != 1 {
 		t.Fatalf("expected 1 filtered item, got %d", len(filtered))
 	}
-	if filtered[0].ID != "popiskill-image-character-three-view-v1" {
+	if filtered[0].ID != officialAliceImageShowcaseSkillID {
 		t.Fatalf("unexpected filtered item: %#v", filtered[0])
 	}
 }
 
-func TestValidateBundledSkillRunReturnsLocalOnlyErrorWhenRemoteMissing(t *testing.T) {
+func TestValidateBundledSkillRunAllowsOfficialRuntimeSkillWhenRemoteMissing(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
@@ -105,15 +106,29 @@ func TestValidateBundledSkillRunReturnsLocalOnlyErrorWhenRemoteMissing(t *testin
 
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
-	err := validateBundledSkillRun(context.Background(), "popiskill-creator")
+	if err := validateBundledSkillRun(context.Background(), officialImage2VideoSkillID); err != nil {
+		t.Fatalf("expected official runtime skill to bypass local-only validation, got %v", err)
+	}
+}
+
+func TestSkillsListRejectsInvalidPaginationFlag(t *testing.T) {
+	root := NewRootCmd("0.test")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"skills", "list", "--limit", "abc"})
+	root.SetContext(context.Background())
+
+	err := root.Execute()
 	if err == nil {
-		t.Fatal("expected local-only error, got nil")
+		t.Fatal("expected validation error for invalid limit flag")
 	}
 	cliErr, ok := err.(*output.CLIError)
 	if !ok {
 		t.Fatalf("expected CLIError, got %T", err)
 	}
-	if cliErr.Code != "LOCAL_ONLY_SKILL" {
-		t.Fatalf("expected LOCAL_ONLY_SKILL, got %q", cliErr.Code)
+	if cliErr.Code != "VALIDATION_ERROR" {
+		t.Fatalf("expected VALIDATION_ERROR, got %q", cliErr.Code)
 	}
 }

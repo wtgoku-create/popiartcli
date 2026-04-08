@@ -457,6 +457,13 @@ popiart skills get <skill-id>
 popiart skills schema <skill-id>
 ```
 
+关系说明：
+
+- `popiart skills list/get/schema` 先看 `popiartServer` 暴露的远程 runtime skill 注册表，再合并本地 installed skill、CLI 内置 official runtime baseline 和 bundled seed。
+- 当前公开定义参考仓库是 `wtgoku-create/Popiart_skillhub`，但真正可执行的 skill 集合仍以服务端 `/skills` 返回为准。
+- `popiart bootstrap` 写出的 `default` skillset 只是远程发现查询 + seed 元数据，不代表这些 skill 都已经在服务端注册完成。
+- 返回里的 `source` 字段会标明当前结果来自 `remote`、`installed`、`official-runtime` 或 `bundled-seed`。
+
 ### 6.4 运行技能
 
 内联 JSON：
@@ -529,7 +536,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
   \"source_artifact_id\":\"$ART\",
   \"prompt\":\"让人物衣摆和发丝在微风中轻轻摆动，镜头缓慢推进，整体保持真实电影感。\",
   \"aspect_ratio\":\"16:9\",
-  \"seconds\":4
+  \"seconds\":5
 }" --wait
 ```
 
@@ -541,7 +548,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 - agent 应该拿 PopiArt 产品层 key，而不是 provider key
 - agent 应该先 `skills get` / `skills schema`，再决定是否 `run`
 - agent 应优先使用 `@params.json` 或 stdin，而不是把大段 JSON 内联到命令里
-- bootstrap 生成的本地 bundled seed skills 只用于 authoring 和引导，不等于远端 runtime skill
+- bootstrap 生成的本地 bundled seed skills 现在对应官方 runtime baseline，本地 schema 可见性和远端可执行性仍然要分开判断
 
 最重要的一条：
 
@@ -549,7 +556,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 能在 `skills get/schema` 里看到，不代表一定能直接 `run`
 ```
 
-例如 `popiskill-creator` 是 CLI 内置 helper skill；如果服务端没有注册对应 runtime skill，`popiart run popiskill-creator` 会返回本地提示，而不是假装执行成功。
+例如 `popiskill-image-text2image-basic-v1` 能在本地 `skills get/schema` 里拿到官方契约，但如果服务端还没注册对应 runtime skill，真正的 `popiart run` 仍然会失败。当前只有 `popiskill-video-image2video-basic-v1` 在远端目录缺失或仍是占位符时，CLI 会自动桥接到底层 `models infer`。
 
 ### 7.2 聊天附件如何进入 img2img / image2video
 
@@ -578,7 +585,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
   \"source_artifact_id\":\"$ART\",
   \"prompt\":\"保持人物身份和构图，让头发和衣摆有自然风动，镜头轻微推进。\",
   \"aspect_ratio\":\"16:9\",
-  \"seconds\":4
+  \"seconds\":5
 }" --wait
 ```
 

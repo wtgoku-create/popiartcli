@@ -41,6 +41,9 @@ func TestSkillsListIncludesBuiltInOfficialImage2VideoSkill(t *testing.T) {
 			continue
 		}
 		if entry["id"] == officialImage2VideoSkillID {
+			if entry["source"] != "official-runtime" {
+				t.Fatalf("expected official-runtime source, got %#v", entry["source"])
+			}
 			found = true
 			break
 		}
@@ -71,8 +74,11 @@ func TestSkillsGetFallsBackToBuiltInOfficialImage2VideoSkill(t *testing.T) {
 	if data["id"] != officialImage2VideoSkillID {
 		t.Fatalf("unexpected skill id: %#v", data["id"])
 	}
+	if data["source"] != "official-runtime" {
+		t.Fatalf("expected official-runtime source, got %#v", data["source"])
+	}
 	description, _ := data["description"].(string)
-	if !strings.Contains(description, "Built-in PopiArt image2video skill") {
+	if !strings.Contains(description, "Built-in PopiArt image2video") {
 		t.Fatalf("expected built-in description, got %q", description)
 	}
 	inputSchema, ok := data["input_schema"].(map[string]any)
@@ -138,7 +144,7 @@ func TestRunOfficialImage2VideoUsesFallbackModelForUnsupportedPrimaryDuration(t 
 			if input["image_url"] != "https://example.com/source.png" {
 				t.Fatalf("expected image_url alias mapping, got %#v", input["image_url"])
 			}
-			if input["duration_s"] != float64(4) {
+			if input["duration_s"] != float64(6) {
 				t.Fatalf("expected duration_s to mirror seconds, got %#v", input["duration_s"])
 			}
 			_, _ = w.Write([]byte(`{"ok":true,"data":{"job_id":"job_image2video_fallback","status":"pending"}}`))
@@ -152,7 +158,7 @@ func TestRunOfficialImage2VideoUsesFallbackModelForUnsupportedPrimaryDuration(t 
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"run", officialImage2VideoSkillID,
-		"--input", `{"reference_image_url":"https://example.com/source.png","seconds":4,"prompt":"make it cinematic"}`,
+		"--input", `{"reference_image_url":"https://example.com/source.png","seconds":6,"prompt":"make it cinematic"}`,
 	})
 
 	data, ok := resp["data"].(map[string]any)

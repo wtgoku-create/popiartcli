@@ -147,6 +147,9 @@ func validateBundledSkillRun(ctx context.Context, skillID string) error {
 	if _, ok := seed.FindBundledSkill(skillID); !ok {
 		return nil
 	}
+	if _, ok := officialRuntimeSkillForID(skillID); ok {
+		return nil
+	}
 
 	exists, err := remoteSkillExists(ctx, skillID)
 	if err != nil {

@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "The content to synthesize into speech."
+    },
+    "voice": {
+      "type": "string",
+      "description": "Optional managed voice identifier or preset name."
+    },
+    "language": {
+      "type": "string",
+      "description": "Optional language tag such as zh-CN or en-US."
+    },
+    "provider": {
+      "type": "string",
+      "description": "Optional managed route hint. Leave empty or use auto unless pinning is required."
+    },
+    "voice_style": {
+      "type": "string",
+      "description": "Optional tone or delivery guidance."
+    },
+    "speed": {
+      "type": "number",
+      "description": "Optional speaking-speed multiplier."
+    },
+    "emotion": {
+      "type": "string",
+      "description": "Optional emotional direction."
+    },
+    "format": {
+      "type": "string",
+      "description": "Preferred output audio format such as mp3 or wav."
+    },
+    "sample_rate_hz": {
+      "type": "number",
+      "description": "Optional output sample rate hint."
+    },
+    "seed": {
+      "type": "number",
+      "description": "Optional reproducibility seed when supported by the route."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional extra constraints confirmed with the user."
+    }
+  },
+  "required": [
+    "text"
+  ]
+}

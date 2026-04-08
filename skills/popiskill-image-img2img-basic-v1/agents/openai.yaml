@@ -1,0 +1,4 @@
+interface:
+  display_name: "Img2Img Basic"
+  short_description: "Transform one image into another image"
+  default_prompt: "Use this skill when the user already has a source image and wants the simplest official PopiArt image-to-image runtime path."
