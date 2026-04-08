@@ -9,6 +9,7 @@ import (
 
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
 const (
@@ -130,8 +131,18 @@ func newMCPCmd() *cobra.Command {
 			for _, skill := range officialRuntimeSkills() {
 				skill := skill
 				checks = append(checks, runDoctorAPICheck(client, true, "runtime_skill:"+skill.ID, "检测官方 runtime skill "+skill.ID, func(ctx context.Context) error {
-					var resp any
-					return client.GetJSON(ctx, "/skills/"+skill.ID, nil, &resp)
+					var resp types.Skill
+					if err := client.GetJSON(ctx, "/skills/"+skill.ID, nil, &resp); err != nil {
+						return err
+					}
+					if isOfficialRuntimePlaceholderSkill(resp) {
+						return output.NewError("RUNTIME_SKILL_PLACEHOLDER", "官方 runtime skill 仍是占位符", map[string]any{
+							"skill_id":    skill.ID,
+							"description": resp.Description,
+							"hint":        "当前 CLI 会对 image2video 自动桥接到 models infer，但服务端技能注册仍需补齐",
+						})
+					}
+					return nil
 				}))
 			}
 			checks = append(checks, runDoctorAPICheck(client, true, "model_routes", "模型路由表 API 可访问", func(ctx context.Context) error {

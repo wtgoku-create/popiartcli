@@ -1,6 +1,17 @@
 ---
 name: popiskill-creator
-description: Create, adapt, bootstrap, and validate PopiArt skills through popiartcli and Popiart_skillhub. Use this whenever the user wants to install or configure popiartcli, authenticate with a PopiArt API key, understand the unified gateway or 统一网关 boundary, turn a creator workflow into a PopiArt skill, update a skill in Popiart_skillhub, or run a PopiArt skill end to end with jobs and artifacts.
+description: Create, adapt, bootstrap, and validate PopiArt skills through popiartcli and Popiart_skillhub. Use this whenever the user wants to install or configure popiartcli, authenticate with a PopiArt API key, understand the unified gateway or 统一网关 boundary, turn a creator workflow into a PopiArt skill, update a skill in Popiart_skillhub, or run a PopiArt skill end to end with jobs, artifacts, media, and stable media URLs.
+tags:
+  - seed
+  - local
+  - bootstrap
+  - meta
+  - authoring
+version: v1
+model_type: meta
+estimated_duration_s: 120
+default_profile: true
+profile_description: Bootstrap skill for installing popiartcli, authenticating with a PopiArt key, understanding the unified gateway boundary, and turning creator workflows into PopiArt skills.
 ---
 
 # PopiSkill Creator
@@ -28,7 +39,7 @@ Read [references/popiart-platform.md](references/popiart-platform.md) whenever y
 
 Figure out which of these jobs the user actually needs:
 
-- **Bootstrap and run**: install `popiart`, authenticate, discover an existing skill, run it, wait for the job, and pull artifacts.
+- **Bootstrap and run**: install `popiart`, authenticate, discover an existing skill, run it, wait for the job, and pull artifacts or stable media URLs.
 - **Create or update a skill**: inspect similar skills first, then draft or modify a `skills/<skill-name>/SKILL.md` entry for PopiArt.
 - **Explain architecture or debug ownership**: clarify whether the problem belongs to `popiartcli`, the skill catalog, `popiartServer`, or `PopiNewAPI`.
 
@@ -85,8 +96,8 @@ Use `popiart auth key set <key>` only as a fallback when the user explicitly wan
 
 Keep this mental model simple and repeatable:
 
-- `popiartcli`: local CLI entrypoint, config, auth UX, skill discovery, run commands, jobs, artifacts.
-- `popiartServer`: product backend for auth, project context, skill registration and execution, job lifecycle, artifact management, routing decisions, and billing attribution.
+- `popiartcli`: local CLI entrypoint, config, auth UX, skill discovery, run commands, jobs, artifacts, media upload/get, and stable-media-url discovery.
+- `popiartServer`: product backend for auth, project context, skill registration and execution, job lifecycle, artifact management, media binding, stable media URL serving, routing decisions, and billing attribution.
 - `PopiNewAPI`: model gateway for upstream providers, channel and provider key management, and raw model usage.
 
 State the core rule plainly:
@@ -106,7 +117,22 @@ CLI discovery flow:
 popiart skills list --search "image"
 popiart skills get <skill-id>
 popiart skills schema <skill-id>
+popiart media get <media-id>
 ```
+
+When the user needs a reusable source file or a model-consumable URL, also consider the media flow:
+
+```sh
+popiart media upload ./source.png
+popiart media get <media-id>
+popiart artifacts get <artifact-id>
+```
+
+Teach the distinction clearly:
+
+- `artifact_id` is the primary PopiArt skill-facing identifier.
+- `media_id` is the storage-layer object behind reusable media.
+- `url` from `media get` or `artifacts get` is the stable media URL when the server supports it.
 
 Repo discovery flow:
 
@@ -132,7 +158,7 @@ When you produce or edit a PopiArt runtime skill, keep it compact and operationa
 - a short workflow
 - one real `popiart run ...` command pattern
 - a payload template when JSON input matters
-- output handling with `jobs` and `artifacts`
+- output handling with `jobs`, `artifacts`, and `media` when stable URLs matter
 - operating guidance for when to switch to a different skill
 
 Write the skill around the current public CLI surface, not around an imagined future platform.
@@ -161,20 +187,21 @@ After completion:
 - inspect the returned `job_id`
 - read `artifact_ids`
 - pull outputs with `popiart artifacts pull` or `popiart artifacts pull-all`
+- if the workflow needs a reusable direct URL, inspect `popiart artifacts get <artifact-id>` or `popiart media get <media-id>` for the stable `url`
 
 If the user is iterating on a new skill spec, help them produce:
 
 - the exact sample payload
 - the exact CLI command to test it
-- the expected artifact shape or completion signal
+- the expected artifact or media shape, including whether the output should surface a stable `url`
 
 ## Route Issues To The Right Repo
 
 Use these ownership defaults:
 
-- `popiartcli` repo: installation, command UX, config behavior, auth flow, environment variables, output format, local run ergonomics.
+- `popiartcli` repo: installation, command UX, config behavior, auth flow, environment variables, output format, artifacts/media commands, and local run ergonomics.
 - `Popiart_skillhub` repo: public skill definitions, naming, descriptions, skill examples, catalog structure.
-- `popiartServer`: registration sync, execution orchestration, jobs, artifacts, routing policy, billing attribution.
+- `popiartServer`: registration sync, execution orchestration, jobs, artifacts, media binding, stable URL lifecycle, routing policy, billing attribution.
 - `PopiNewAPI`: upstream channel management, provider model access, provider keys, raw model metering.
 
 If a user says "the gateway is broken", pin down whether they mean CLI auth, server routing, or provider access before proposing a fix.

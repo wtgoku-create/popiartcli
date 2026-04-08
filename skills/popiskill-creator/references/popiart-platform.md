@@ -1,6 +1,6 @@
 # PopiArt Platform Reference
 
-Use this reference when you need current public facts about installation, authentication, environment variables, repo ownership, skillhub layout, or naming conventions.
+Use this reference when you need current public facts about installation, authentication, environment variables, repo ownership, skillhub layout, media/artifact behavior, stable media URLs, or naming conventions.
 
 ## Public Repositories
 
@@ -75,13 +75,32 @@ https://api.creatoragentos.io/v1
 Use this simplified model when explaining the platform:
 
 - `popiartcli`: unified CLI entrypoint for coding agents and creators
-- `popiartServer`: product backend for auth, project context, skill registration, execution, jobs, artifacts, routing, and billing attribution
+- `popiartServer`: product backend for auth, project context, skill registration, execution, jobs, artifacts, media binding, stable URL serving, routing, and billing attribution
 - `PopiNewAPI`: model gateway for upstream providers, provider channels, and provider key management
 
 Key rule:
 
 - the CLI stores a product-layer key
 - provider keys stay behind the server and gateway boundary
+
+## Media And Stable URL Surface
+
+Current public CLI/media flow includes:
+
+```sh
+popiart media upload ./source.png
+popiart media get <media-id>
+popiart artifacts upload ./source.png --role source
+popiart artifacts get <artifact-id>
+```
+
+Use this mental model:
+
+- `artifact_id` is the main PopiArt skill-facing identifier
+- `media_id` is the backing storage/media record when the server exposes one
+- `url` returned by `media get` or `artifacts get` is the stable media URL when storage is ready
+
+When teaching multimodal flows such as `img2img` or `image2video`, explain that PopiArt skills still prefer `source_artifact_id`, but the platform now also supports querying stable media URLs for reuse and inspection.
 
 ## Skillhub Layout
 
@@ -125,6 +144,8 @@ popiart skills list --search "image"
 popiart skills get <skill-id>
 popiart run <skill-id> --input @params.json --wait
 popiart artifacts pull <artifact-id> --out ./result.bin
+popiart artifacts get <artifact-id>
+popiart media get <media-id>
 ```
 
 If a job fails, inspect the job first before changing the skill:
@@ -142,6 +163,6 @@ When drafting or updating a runtime skill in the catalog:
 - use a trigger-friendly description
 - include one real command example
 - include the smallest useful payload template
-- explain how output artifacts are retrieved
+- explain how output artifacts are retrieved, and whether the workflow should also surface a stable media URL
 - keep the skill concise and operational
 - add `references/` only when the detail is too large for `SKILL.md`

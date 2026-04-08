@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "artifact_ids": {
+      "type": "array",
+      "description": "Generated sheet artifacts and any optional metadata artifacts.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "job_id": {
+      "type": "string"
+    }
+  }
+}

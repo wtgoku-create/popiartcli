@@ -35,6 +35,7 @@ func newSkillsCmd() *cobra.Command {
 				return err
 			}
 
+			officialItems := matchingOfficialRuntimeSkillSummaries(tag, search)
 			localItems := seed.MatchingBundledSkillSummaries(tag, search)
 			installedItems := installedSkillSummaries(localState, tag, search)
 
@@ -64,9 +65,9 @@ func newSkillsCmd() *cobra.Command {
 					return err
 				}
 			}
-			merged := mergeSkillSummaries(resp.Items, installedItems, localItems)
+			merged := mergeSkillSummaries(resp.Items, installedItems, officialItems, localItems)
 			resp.Items = paginateSkillSummaries(merged, limit, offset)
-			resp.Total += len(installedItems) + len(localItems)
+			resp.Total += len(installedItems) + len(localItems) + countMissingSkillSummaries(resp.Items, installedItems, localItems, officialItems)
 			resp.Limit = limit
 			resp.Offset = offset
 			return writeOutput(cmd, resp)
@@ -96,12 +97,16 @@ func newSkillsCmd() *cobra.Command {
 					if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(args[0]))]; ok {
 						return writeOutput(cmd, installed.Skill(localState.isActive(installed.Manifest.Slug)))
 					}
+					if skill, ok := officialRuntimeSkillForID(args[0]); ok {
+						return writeOutput(cmd, skill)
+					}
 					if skill, ok := seed.FindBundledSkill(args[0]); ok {
 						return writeOutput(cmd, skill)
 					}
 				}
 				return err
 			}
+			skill = applyOfficialRuntimeSkillOverlay(skill)
 			skill = annotateRemoteSkill(skill, localState)
 			return writeOutput(cmd, skill)
 		},
@@ -126,12 +131,16 @@ func newSkillsCmd() *cobra.Command {
 					if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(args[0]))]; ok {
 						return writeOutput(cmd, installed.Schema())
 					}
+					if schema, ok := officialRuntimeSkillSchemaForID(args[0]); ok {
+						return writeOutput(cmd, schema)
+					}
 					if schema, ok := seed.FindBundledSkillSchema(args[0]); ok {
 						return writeOutput(cmd, schema)
 					}
 				}
 				return err
 			}
+			schema = applyOfficialRuntimeSchemaOverlay(args[0], schema)
 			return writeOutput(cmd, schema)
 		},
 	}
@@ -199,6 +208,41 @@ func mergeSkillSummaries(groups ...[]types.SkillSummary) []types.SkillSummary {
 		appendUnique(group)
 	}
 	return merged
+}
+
+func countMissingSkillSummaries(existingGroups ...[]types.SkillSummary) int {
+	if len(existingGroups) == 0 {
+		return 0
+	}
+
+	seen := map[string]bool{}
+	for _, group := range existingGroups[:len(existingGroups)-1] {
+		for _, item := range group {
+			key := skillSummaryMergeKey(item)
+			if key != "" {
+				seen[key] = true
+			}
+		}
+	}
+
+	var count int
+	for _, item := range existingGroups[len(existingGroups)-1] {
+		key := skillSummaryMergeKey(item)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		count++
+	}
+	return count
+}
+
+func skillSummaryMergeKey(item types.SkillSummary) string {
+	key := strings.ToLower(strings.TrimSpace(item.ID))
+	if key == "" {
+		key = strings.ToLower(strings.TrimSpace(item.Name))
+	}
+	return key
 }
 
 func bundledSkillSummariesMissingOnRemote(ctx context.Context, items []types.SkillSummary) ([]types.SkillSummary, error) {
@@ -312,6 +356,7 @@ func annotateRemoteSkillSummaries(items []types.SkillSummary, state installedSki
 			item.RuntimeSkillID = localskillsEffectiveRuntimeSkillID(installed)
 			item.RequiresPopiartAuth = installed.Manifest.RequiresPopiartAuth
 		}
+		item = applyOfficialRuntimeSkillSummaryOverlay(item)
 		annotated = append(annotated, item)
 	}
 	return annotated

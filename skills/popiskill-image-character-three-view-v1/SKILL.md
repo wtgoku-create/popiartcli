@@ -1,6 +1,15 @@
 ---
 name: popiskill-image-character-three-view-v1
 description: Generate a consistent full-body character three-view sheet with front, side, and back views from a character brief, with optional reference image and optional extras such as items, palette, expressions, seasonal outfits, and action poses.
+tags:
+  - seed
+  - local
+  - image
+  - character
+  - three-view
+version: v1
+model_type: image
+estimated_duration_s: 180
 ---
 
 # Character Three View

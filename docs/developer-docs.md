@@ -245,11 +245,11 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 
 其中 `seedream-4-5-251128` 不是走旧的 `/v1/images/edits multipart` 语义，而是走 `/v1/images/generations` + 参考图输入；最小尺寸约束也由服务端路由适配负责处理。
 
+`popiskill-video-image2video-basic-v1` 是安装后自带的官方 skill。CLI 会把它暴露在 `skills list/get/schema` 里；如果远端目录里的同名 skill 仍是占位符或尚未注册，`run` 会自动桥接到底层 `models infer`，优先使用 `viduq3-turbo`，失败再回落到 `viduq2-pro-fast`。
+
 如果要把本地图片继续交给 `image2video`，推荐同样先上传成 artifact，再走 `source_artifact_id`：
 
 ```sh
-popiart models route-override set --project proj_local_dev --route video.image2video --model viduq2-pro-fast
-
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
 
 popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
@@ -260,7 +260,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 }" --wait
 ```
 
-截至 `2026-03-28`，测试环境里验证通过的 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`。如果默认视频路由仍指向旧的 `viduq2`，就需要先做一次项目级 route override。
+截至 `2026-04-08`，CLI 内置 `image2video` fallback 的模型顺序是 `viduq3-turbo -> viduq2-pro-fast`。截至 `2026-03-28`，测试环境里验证通过的服务端 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`。如果服务端将来补齐真正 runtime skill，CLI 会优先走服务端 skill；否则继续走内置 fallback。
 
 稳定媒体 URL 的完整跨仓架构与分阶段执行计划见 [docs/stable-media-url-v1.md](./stable-media-url-v1.md)。
 
@@ -367,6 +367,8 @@ popiskill-image-text2image-basic-v1
 popiskill-image-img2img-basic-v1
 popiskill-video-image2video-basic-v1
 ```
+
+其中 `popiskill-video-image2video-basic-v1` 同时是安装后自带的内置官方 skill：即使远端目录缺失或仍返回占位符，CLI 也会返回本地契约，并在运行时自动桥接到底层 image2video 模型。
 
 你可以这样做一次最小验证：
 

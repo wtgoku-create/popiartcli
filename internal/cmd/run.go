@@ -29,6 +29,12 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if job, handled, err := maybeRunOfficialRuntimeDirectFallbackJob(context.Background(), resolvedSkillID, payload, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key")); handled {
+				if err != nil {
+					return err
+				}
+				return writeJobResultOrWait(cmd, job)
+			}
 
 			cfg := config.Load()
 			body := map[string]any{

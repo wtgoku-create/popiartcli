@@ -91,17 +91,17 @@ curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/insta
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | \
-  env VERSION=v0.3.2 sh
+  env VERSION=v0.3.4 sh
 
 # 或者在已安装后更新到指定版本
-popiart update --version v0.3.2
+popiart update --version v0.3.4
 ```
 
 如果你希望显式指定 Gitee 仓库主页或 tag 页，也可以：
 
 ```sh
 popiart update --repo https://gitee.com/wattx/popiartcli
-popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.2
+popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.4
 ```
 
 脚本会优先尝试：
@@ -274,7 +274,7 @@ irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 
 ### 4.2 GitHub Releases 手动安装
 
 ```powershell
-$version = "0.3.2"
+$version = "0.3.4"
 $zip = "popiart_${version}_windows_amd64.zip"
 Invoke-WebRequest "https://github.com/wtgoku-create/popiartcli/releases/download/v$version/$zip" -OutFile $zip
 Expand-Archive $zip -DestinationPath .
@@ -285,7 +285,7 @@ Copy-Item .\popiart.exe "$env:LOCALAPPDATA\Programs\popiart\bin\popiart.exe" -Fo
 国内镜像：
 
 ```powershell
-$version = "0.3.2"
+$version = "0.3.4"
 $zip = "popiart_${version}_windows_amd64.zip"
 Invoke-WebRequest "https://gitee.com/wattx/popiartcli/releases/download/v$version/$zip" -OutFile $zip
 Expand-Archive $zip -DestinationPath .
@@ -518,11 +518,11 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 }" --wait
 ```
 
+`popiskill-video-image2video-basic-v1` 现在按安装后自带的官方 skill 处理。它应该能直接出现在 `skills list/get/schema` 里；如果远端目录里的同名条目仍是占位符或尚未注册，CLI 会自动桥接到底层 `models infer`，先试 `viduq3-turbo`，失败再回落到 `viduq2-pro-fast`。
+
 本地图片要进入 `image2video` 时，也建议走同一条 artifact 链路：
 
 ```sh
-popiart models route-override set --project proj_local_dev --route video.image2video --model viduq2-pro-fast
-
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
 
 popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
@@ -582,7 +582,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 }" --wait
 ```
 
-如果聊天附件本身已经有可访问 URL，也可以直接走 `reference_image_url` / `image_url`，不一定要先上传。
+如果聊天附件本身已经有可访问 URL，也可以直接走 `reference_image_url` / `image_url`，不一定要先上传。对于 `popiskill-video-image2video-basic-v1`，CLI 会把 `reference_image_url` 自动归一化到 `image_url`，并把 `seconds` 归一化到 `duration_s` 后再提交。
 
 ### 7.4 当前已验证的服务端 `img2img` / `image2video` 路由
 
@@ -597,8 +597,9 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 
 - 这两条能力属于 `popiartServer` / `PopiNewAPI` 的服务端路由适配，不是 CLI 本身直接决定的
 - `seedream-4-5-251128` 对输出尺寸有最小像素限制。CLI 可以继续传递像 `1024x1536` 这样的安全预设，但服务端可能会把它抬升到满足模型要求的尺寸后再提交
-- 当前测试环境里已验证通过的 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`
-- 如果部署环境默认视频路由仍然是旧的 `viduq2`，需要先做项目级 route override
+- 截至 `2026-04-08`，CLI 内置 `image2video` fallback 的模型顺序是 `viduq3-turbo -> viduq2-pro-fast`
+- 截至 `2026-03-28`，当前测试环境里已验证通过的服务端 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`
+- 如果服务端将来补齐真正 runtime skill，CLI 会优先走服务端 skill；否则继续走内置 fallback
 
 ### 7.3 让 agent 获得稳定环境
 

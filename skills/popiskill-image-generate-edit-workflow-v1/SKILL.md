@@ -1,6 +1,18 @@
 ---
 name: popiskill-image-generate-edit-workflow-v1
 description: 统一处理 PopiArt 中的图片生成与图片编辑工作流。当用户要生成图片、海报、视觉草图、信息图、封面图，或要修改、重绘、替换现有图片时使用此技能。默认将需求映射到 PopiArt 的 text2image 与 img2img runtime skills，保留用户原始提示词，并优先使用 artifact-based 编辑链路。
+tags:
+  - seed
+  - local
+  - image
+  - text2image
+  - img2img
+  - workflow
+version: v1
+model_type: image
+estimated_duration_s: 180
+default_profile: true
+profile_description: Default PopiArt image workflow skill for mapping user requests to text2image or artifact-based img2img runs.
 ---
 
 # 图片生成与编辑工作流

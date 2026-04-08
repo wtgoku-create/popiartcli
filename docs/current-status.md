@@ -79,6 +79,12 @@ The repository now treats these three skill ids as the official runtime baseline
 
 The `img2img` and `image2video` execution contracts have been written in [docs/mcp-discoverability-v1.md](./mcp-discoverability-v1.md).
 
+As of `2026-04-08`, `popiskill-video-image2video-basic-v1` is also treated as a built-in official skill in `popiartcli`:
+
+- `skills list/get/schema` exposes a local contract even when the remote catalog entry is missing or still a placeholder
+- `run popiskill-video-image2video-basic-v1` automatically bridges to direct `models infer`
+- the built-in fallback tries `viduq3-turbo` first and falls back to `viduq2-pro-fast`
+
 ## Verified
 
 The current repo-local implementation has been verified with:
@@ -142,6 +148,7 @@ The CLI does not guarantee those provider-specific adapters by itself; they were
 - MCP `sampling`
 - richer artifact-aware tool results such as `primary_artifact_id` or artifact-role metadata
 - direct local execution for arbitrary installed skills beyond `execution.mode=remote-runtime`
+- built-in compatibility execution for the other two official runtime-baseline skills, beyond the current `image2video` bridge
 
 ### Not Done Outside This Repo
 
@@ -152,14 +159,15 @@ These items still belong to `popiartServer` or `PopiNewAPI` and are not solved b
 - provider-specific execution for masks, motion controls, duration limits, output fetching, and billing attribution
 - guaranteed end-to-end availability of the three baseline skills
 
-The current test deployment still needs explicit project-level overrides for some routes. For example, `image2video` was validated only after setting `video.image2video -> viduq2-pro-fast`.
+The current test deployment still needs explicit project-level overrides for some routes when the request is going through the server-managed runtime path. For example, the older server-side `image2video` validation was done only after setting `video.image2video -> viduq2-pro-fast`.
 
 Because of that, the current state is:
 
 - `popiartcli` can make `PopiArt` discoverable
 - `popiartcli` can expose a usable MCP tool surface
 - `popiartcli` can diagnose whether remote runtime pieces are present
-- `popiartcli` cannot, by itself, guarantee that all three baseline runtime skills will execute successfully end to end
+- `popiartcli` can keep `popiskill-video-image2video-basic-v1` usable even when the remote catalog entry is missing or still a placeholder
+- `popiartcli` still cannot, by itself, guarantee that all three baseline runtime skills will execute successfully end to end
 
 ## Recommended Next Steps
 

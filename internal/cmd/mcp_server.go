@@ -486,6 +486,7 @@ func listSkillsTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 
+	officialItems := matchingOfficialRuntimeSkillSummaries(tag, search)
 	localItems := seed.MatchingBundledSkillSummaries(tag, search)
 	installedItems := installedSkillSummaries(localState, tag, search)
 	var resp types.SkillListResponse
@@ -513,9 +514,9 @@ func listSkillsTool(ctx context.Context, args map[string]any) (any, error) {
 			return nil, err
 		}
 	}
-	merged := mergeSkillSummaries(resp.Items, installedItems, localItems)
+	merged := mergeSkillSummaries(resp.Items, installedItems, officialItems, localItems)
 	resp.Items = paginateSkillSummaries(merged, limit, offset)
-	resp.Total += len(installedItems) + len(localItems)
+	resp.Total += len(installedItems) + len(localItems) + countMissingSkillSummaries(resp.Items, installedItems, localItems, officialItems)
 	resp.Limit = limit
 	resp.Offset = offset
 	return resp, nil
@@ -539,12 +540,16 @@ func getSkillTool(ctx context.Context, args map[string]any) (any, error) {
 			if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
 				return installed.Skill(localState.isActive(installed.Manifest.Slug)), nil
 			}
+			if skill, ok := officialRuntimeSkillForID(skillID); ok {
+				return skill, nil
+			}
 			if skill, ok := seed.FindBundledSkill(skillID); ok {
 				return skill, nil
 			}
 		}
 		return nil, err
 	}
+	skill = applyOfficialRuntimeSkillOverlay(skill)
 	return annotateRemoteSkill(skill, localState), nil
 }
 
@@ -566,12 +571,16 @@ func getSkillSchemaTool(ctx context.Context, args map[string]any) (any, error) {
 			if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
 				return installed.Schema(), nil
 			}
+			if schema, ok := officialRuntimeSkillSchemaForID(skillID); ok {
+				return schema, nil
+			}
 			if schema, ok := seed.FindBundledSkillSchema(skillID); ok {
 				return schema, nil
 			}
 		}
 		return nil, err
 	}
+	schema = applyOfficialRuntimeSchemaOverlay(skillID, schema)
 	return schema, nil
 }
 
@@ -587,6 +596,9 @@ func runSkillTool(ctx context.Context, args map[string]any) (any, error) {
 	resolvedSkillID, err := resolveRunnableSkillID(ctx, skillID)
 	if err != nil {
 		return nil, err
+	}
+	if job, handled, err := maybeRunOfficialRuntimeDirectFallbackJob(ctx, resolvedSkillID, payload, defaultString(optionalStringArg(args, "priority"), "normal"), optionalStringArg(args, "project_id"), optionalStringArg(args, "idempotency_key")); handled {
+		return job, err
 	}
 
 	cfg := config.Load()

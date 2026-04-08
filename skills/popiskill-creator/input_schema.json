@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "goal": {
+      "type": "string",
+      "description": "What the user wants to achieve with PopiArt, such as install, auth, architecture clarification, or skill authoring."
+    },
+    "context": {
+      "type": "string",
+      "description": "Optional repo, workflow, or product context needed to ground the answer."
+    }
+  },
+  "required": [
+    "goal"
+  ]
+}

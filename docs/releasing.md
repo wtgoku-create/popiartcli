@@ -23,7 +23,7 @@ popiart_<version>_windows_<arch>.zip
 例如：
 
 ```text
-popiart_0.3.2_darwin_arm64.tar.gz
+popiart_0.3.4_darwin_arm64.tar.gz
 ```
 
 ## GitHub Actions Secret
@@ -61,7 +61,7 @@ brew install wtgoku-create/popi/popiart
 ## 发布流程
 
 1. 确保主分支代码已经可构建，并且 `go test ./...` 通过
-2. 创建并推送语义化版本 tag，例如 `v0.3.2`
+2. 创建并推送语义化版本 tag，例如 `v0.3.4`
 3. GitHub Actions 触发 `.github/workflows/release.yml`
 4. GoReleaser 生成 GitHub release、checksums 和 Homebrew formula 更新
 5. 把同一个 tag、release 附件和 `checksums.txt` 同步到 Gitee `wattx/popiartcli`
@@ -70,8 +70,8 @@ brew install wtgoku-create/popi/popiart
 命令示例：
 
 ```sh
-git tag v0.3.2
-git push origin v0.3.2
+git tag v0.3.4
+git push origin v0.3.4
 ```
 
 ## 国内镜像同步

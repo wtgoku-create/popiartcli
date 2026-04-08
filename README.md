@@ -104,14 +104,14 @@ popiart update
 popiart update --source gitee
 
 # 更新到指定版本
-popiart update --version v0.3.2
+popiart update --version v0.3.4
 
 # 或直接给 Gitee 仓库主页 / tag 页
 popiart update --repo https://gitee.com/wattx/popiartcli
-popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.2
+popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.4
 
 # 安装指定版本
-curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.3.2 sh
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | env VERSION=v0.3.4 sh
 
 # 国内镜像安装指定版本
 curl -fsSL https://gitee.com/wattx/popiartcli/raw/main/install.sh | \
@@ -440,11 +440,11 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 
 补充一点：`seedream-4-5-251128` 对输出尺寸有最小像素要求。CLI 仍然可以提交类似 `1024x1536` 这样的安全预设，但最终是否需要上调尺寸由服务端路由适配决定。
 
-如果要做 `image2video`，也建议先把本地图片上传成 artifact，再把返回的 `artifact_id` 填进 `source_artifact_id`：
+`popiskill-video-image2video-basic-v1` 现在按安装后自带的官方 skill 处理。它应该能在 `skills list/get/schema` 里直接看到；当远端目录里的同名条目仍是占位符或尚未注册时，CLI 会自动把这条 skill 桥接到底层 `models infer`，先试 `viduq3-turbo`，失败再回落到 `viduq2-pro-fast`。
+
+如果要做 `image2video`，推荐仍然先把本地图片上传成 artifact，再把返回的 `artifact_id` 填进 `source_artifact_id`：
 
 ```sh
-popiart models route-override set --project proj_local_dev --route video.image2video --model viduq2-pro-fast
-
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
 
 popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
@@ -455,11 +455,16 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 }" --wait
 ```
 
-截至 `2026-03-28`，测试环境里已验证通过的 `image2video` 路由是：
+截至 `2026-04-08`，CLI 内置 `image2video` fallback 的模型顺序是：
+
+- `viduq3-turbo`
+- `viduq2-pro-fast`
+
+截至 `2026-03-28`，测试环境里已验证通过的服务端 `image2video` 路由是：
 
 - `video.image2video -> viduq2-pro-fast`
 
-如果部署环境的默认视频路由仍然指向旧的 `viduq2`，就需要先做一次项目级 route override。
+如果服务端将来补齐真正的 runtime skill 注册和路由表，`popiart run popiskill-video-image2video-basic-v1` 会优先走服务端 skill；只有在服务端条目缺失或仍是占位符时，CLI 才会自动改走底层 `models infer`。
 
 ---
 

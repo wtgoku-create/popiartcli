@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "steps": {
+      "type": "array",
+      "description": "Concrete setup, auth, authoring, or validation steps.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "commands": {
+      "type": "array",
+      "description": "Exact popiartcli or git commands to run next.",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
