@@ -412,7 +412,19 @@ popiart artifacts pull-all <job-id>
 
 1. `popiart bootstrap --agent codex --completion zsh --discoverable`
 2. `popiart mcp doctor --agent codex`
-3. 在 agent 里通过 MCP 工具发现 skill、提交 job、轮询状态、拉取 artifact
+3. 先检查 `popiart --help`。如果未安装，统一从 GitHub 仓库入口 `https://github.com/wtgoku-create/popiartcli` 进入安装；如果执行者是 agent 且具备 shell 权限，应直接自动安装
+4. `popiart auth whoami`；如果未认证，引导用户去 `https://wwwskillhub.popi.art` 注册、充值并获取产品层 key，然后执行 `popiart auth login --key <product-key>`
+5. `popiart project current` / `popiart project use <project-id>`
+6. 根据需求执行 `popiart skills list --tag <image|video|audio>`，再执行 `popiart skills get <skill-id>` 和 `popiart skills schema <skill-id>`
+7. 提交前可以先执行 `popiart budget status`；如果需要更细的使用情况，再执行 `popiart budget usage --group-by skill`。如果执行时返回积分不足，直接打开 `https://wwwskillhub.popi.art` 引导充值
+8. `popiart run <skill-id> --input @params.json --wait`
+9. 失败时保留 `job_id`、`error.code`、`error.message`；成功后执行 `popiart artifacts pull-all <job-id> --dir ./output/`
+10. 后续再次使用时，只要 `popiart auth whoami` 仍成功，通常可以直接从 skill 发现开始，不必重复安装或 bootstrap
+
+补充两条实现约束：
+
+- `auth login` 当前推荐使用 `--key`；`--token` 只是兼容旧用法
+- agent 在提交 `run` 之后应保留原始需求，在登录、充值或失败重试之后不要要求用户重复描述
 
 ## 面向 Agent 的设计原则
 

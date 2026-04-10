@@ -46,6 +46,7 @@ func WriteError(w io.Writer, err error) {
 	if !ok {
 		cliErr = NewError("FATAL", err.Error(), nil)
 	}
+	maybeHandleRecharge(cliErr)
 
 	payload := map[string]any{
 		"ok": false,

@@ -706,37 +706,137 @@ $completion = Join-Path $HOME ".popiart\completions\popiart.ps1"
 
 ### 7.6 agent 的推荐调用模式
 
-发现：
+当 agent 接到生图 / 生视频 / 生音频需求时，推荐按下面顺序执行。关键要求是：一旦已经拿到用户原始创作需求，后续即使经历登录、充值、失败重试，也不要要求用户重复描述需求。
+
+1. 先检测 CLI 是否可用：
 
 ```sh
-popiart skills list --search "image"
+popiart --help
+```
+
+如果不可用，可并行告知安装和账号准备：
+
+- 统一从 GitHub 仓库入口开始：`https://github.com/wtgoku-create/popiartcli`
+- 如果执行者是人类用户，按该仓库当前公开文档选择安装方式
+- 如果执行者是 agent，且当前环境允许执行 shell 安装，就直接自动安装，不要只停在“提示用户去装”
+- 当前仓库公开的安装方式包括：
+
+```sh
+git clone https://github.com/wtgoku-create/popiartcli.git
+cd popiartcli
+go install ./cmd/popiart
+popiart --help
+```
+
+- 或按仓库 README 使用 Homebrew:
+
+```sh
+brew tap wtgoku-create/popi
+brew install wtgoku-create/popi/popiart
+```
+
+- 或按仓库 README 使用安装脚本:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+```
+
+2. 检测登录态：
+
+```sh
+popiart auth whoami
+```
+
+如果返回未认证，再引导用户去已确认的 skillhub 站点 `https://wwwskillhub.popi.art` 注册、充值并获取产品层 key，然后执行：
+
+```sh
+popiart auth login --key <product-key>
+popiart auth whoami
+popiart auth key show
+```
+
+说明：
+
+- `--key` 是当前主入口
+- `--token` 仅作为兼容旧用法的别名保留
+- `~/.popiart/config.json` 里保存的通常是服务端签发后的会话 key，不要求和用户输入的原始 key 字面量完全一致
+
+3. 如果账号下有多个项目，先确认当前项目：
+
+```sh
+popiart project current
+popiart project list
+popiart project use <project-id>
+```
+
+4. 发现和确认 skill。先按媒介类型过滤，再看 schema，不要跳过这一步：
+
+```sh
+popiart skills list --tag image
+popiart skills list --tag video
+popiart skills list --tag audio
 popiart skills get <skill-id>
 popiart skills schema <skill-id>
 ```
 
-提交任务：
+5. 余额预检要按“有站点、无 CLI 命令”的现实能力处理：
+
+- 当前 `popiartcli` 没有名为 `balance` / `credits` / `quota` 的独立命令，但已经提供：
 
 ```sh
-popiart run <skill-id> --input @params.json
+popiart budget status
+popiart budget usage --group-by skill
+popiart budget limits
 ```
 
-等待结果：
+- 如果要在提交前确认余额，或服务端已经返回积分不足，直接打开 `https://wwwskillhub.popi.art` 引导用户充值
+- 如果当前 agent 具备浏览器能力，应直接打开该站点；否则至少明确给出该链接
+- 充值完成后继续使用已保留的原始需求直接重试，不要让用户重写需求
+
+6. 根据 `skills schema` 构造 `params.json`，优先使用文件输入：
+
+```sh
+popiart run <skill-id> --input @params.json --wait
+```
+
+如果需要安全重试，追加幂等键，避免 agent 重放导致重复扣费：
+
+```sh
+popiart run <skill-id> --input @params.json --idempotency-key req-001 --wait
+```
+
+7. 如果不使用 `--wait`，就显式等待：
 
 ```sh
 popiart jobs wait <job-id>
 ```
 
-下载结果：
+8. 如果任务失败，至少回传这些信息给用户：
+
+- `job_id`
+- `status`
+- `error.code`
+- `error.message`
+
+必要时继续查看日志：
 
 ```sh
-popiart artifacts pull-all <job-id>
+popiart jobs logs <job-id>
 ```
 
-如果 agent 只想拿结构化结果，不想轮询多次，可以直接：
+9. 如果任务完成，拉取全部产物：
 
 ```sh
-popiart run <skill-id> --input @params.json --wait
+popiart artifacts pull-all <job-id> --dir ./output/
 ```
+
+10. 展示产物时补充当前已知限制：
+
+- 当前 CLI 的 `job` / `artifact` 结构没有专门的“本次消耗金额”和“剩余余额”字段
+- 如果服务端未来在 job 响应里补充计费信息，agent 可以直接展示
+- 在此之前，在线查看积分与充值应回到 `https://wwwskillhub.popi.art`
+
+只要 `popiart auth whoami` 仍然成功，后续再次使用通常可以直接从 skill 发现步骤开始，而不需要重新安装 CLI。
 
 ### 7.7 agent 使用中的几个约束
 
