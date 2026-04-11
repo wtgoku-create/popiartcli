@@ -117,6 +117,56 @@ popiart bootstrap ...
 - 新用户和 agent 先用意图命令面
 - 平台集成、排障和精细控制再下沉到平台命令面
 
+## 平台命令面
+
+如果你需要更底层、更可组合的控制，下面这些命令面仍然是 `popiart` 的核心平台接口：
+
+- `popiart skills ...`
+  用来发现、查看和理解 skill 契约。常用的是 `skills list`、`skills get`、`skills schema`。
+- `popiart run ...`
+  直接按 `skill_id` 提交 runtime job，适合 agent 先拿 schema 再自行构造 `--input` 的场景。
+- `popiart jobs ...`
+  查询、等待、取消和跟踪 job。常用的是 `jobs get`、`jobs wait`、`jobs logs`。
+- `popiart artifacts ...`
+  上传本地文件成为可复用 artifact，或者把 job 产物拉回本地。常用的是 `artifacts upload`、`artifacts pull`、`artifacts pull-all`。
+- `popiart media ...`
+  把本地文件变成稳定媒体 URL，适合后续 `img2img` / `img2video` 直接消费稳定地址。
+- `popiart mcp ...`
+  暴露 MCP server、打印 MCP config、做 discoverability / runtime doctor 诊断。
+- `popiart bootstrap ...`
+  细粒度生成 bootstrap 资产，适合维护者或需要精确控制 agent 引导文件时使用。
+
+一条常见的“平台命令面”链路是：
+
+```sh
+popiart skills schema popiskill-image-img2img-basic-v1 \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart artifacts upload ./source.png \
+  --role source \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart run popiskill-image-img2img-basic-v1 \
+  --input @params.json \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart jobs wait <job-id> \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart artifacts pull-all <job-id> \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
 ## 可组合 Recipes
 
 标准 recipes 在 [docs/recipes.md](./docs/recipes.md)，其中包括：
@@ -128,33 +178,69 @@ popiart bootstrap ...
 - stdout / stderr 约定
 - 配置优先级
 
-## 安装
+## 按平台安装
 
-完整安装与平台说明见 [docs/install-and-usage.md](./docs/install-and-usage.md)。
+完整安装与平台说明见 [docs/install-and-usage.md](./docs/install-and-usage.md)。如果你只想快速开始，可以直接按下面的平台片段执行。
 
-最常见的两条路径：
+### macOS
+
+推荐 Homebrew：
 
 ```sh
-# 终端用户
 brew tap wtgoku-create/popi
 brew install wtgoku-create/popi/popiart
 
-# 安装后给 agent 一键初始化
+# 给 Codex 做默认初始化
 popiart setup --agent codex --completion zsh
 ```
 
+如果你更喜欢脚本安装：
+
 ```sh
-# 脚本安装
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
 popiart setup --agent codex --completion zsh
 ```
 
-Windows PowerShell：
+### Linux
+
+推荐脚本安装：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+
+# 例如给 Claude Code 做默认初始化
+popiart setup --agent claude-code --completion bash
+```
+
+如果你的 Linux 环境已经装了 Homebrew，也可以：
+
+```sh
+brew tap wtgoku-create/popi
+brew install wtgoku-create/popi/popiart
+```
+
+### Windows
+
+推荐 PowerShell 安装脚本：
 
 ```powershell
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
+
+# 给 Codex 做默认初始化
 popiart setup --agent codex --completion powershell
 ```
+
+### 安装后建议做什么
+
+无论在哪个平台，安装完成后建议按这个顺序做：
+
+```sh
+popiart setup --agent codex
+popiart auth login --key <product-key>
+popiart image generate --prompt "hello" --output json --quiet --non-interactive
+```
+
+如果你需要更细的安装方式，比如 release 压缩包、国内镜像、源码安装、Windows 参数化安装，直接看 [docs/install-and-usage.md](./docs/install-and-usage.md)。
 
 ## 错误与退出码
 
