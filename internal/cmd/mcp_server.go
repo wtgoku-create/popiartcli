@@ -409,7 +409,7 @@ func mcpToolDefinitions() []mcpToolDefinition {
 		{
 			Name:        "upload_artifact",
 			Title:       "Upload Artifact",
-			Description: "Upload a local file and create a reusable PopiArt artifact.",
+			Description: "Upload a local file and create a reusable PopiArt artifact with a stable media URL when the server supports it.",
 			InputSchema: objectSchemaWithRequired(map[string]any{
 				"path":          map[string]any{"type": "string"},
 				"filename":      map[string]any{"type": "string"},
@@ -417,9 +417,36 @@ func mcpToolDefinitions() []mcpToolDefinition {
 				"role":          map[string]any{"type": "string"},
 				"metadata_json": map[string]any{"type": "string"},
 				"project_id":    map[string]any{"type": "string"},
+				"visibility":    map[string]any{"type": "string"},
 			}, "path"),
 			OutputSchema: map[string]any{"type": "object"},
 			Handler:      uploadArtifactTool,
+		},
+		{
+			Name:        "get_media",
+			Title:       "Get Media",
+			Description: "Read PopiArt media metadata, including the stable media URL when present.",
+			InputSchema: objectSchemaWithRequired(map[string]any{
+				"media_id": map[string]any{"type": "string"},
+			}, "media_id"),
+			OutputSchema: map[string]any{"type": "object"},
+			Annotations:  readOnlyToolAnnotations(),
+			Handler:      getMediaTool,
+		},
+		{
+			Name:        "upload_media",
+			Title:       "Upload Media",
+			Description: "Upload a local file and receive a stable PopiArt media URL.",
+			InputSchema: objectSchemaWithRequired(map[string]any{
+				"path":          map[string]any{"type": "string"},
+				"filename":      map[string]any{"type": "string"},
+				"content_type":  map[string]any{"type": "string"},
+				"metadata_json": map[string]any{"type": "string"},
+				"project_id":    map[string]any{"type": "string"},
+				"visibility":    map[string]any{"type": "string"},
+			}, "path"),
+			OutputSchema: map[string]any{"type": "object"},
+			Handler:      uploadMediaTool,
 		},
 		{
 			Name:         "whoami",
@@ -459,6 +486,7 @@ func listSkillsTool(ctx context.Context, args map[string]any) (any, error) {
 		return nil, err
 	}
 
+	officialItems := matchingOfficialRuntimeSkillSummaries(tag, search)
 	localItems := seed.MatchingBundledSkillSummaries(tag, search)
 	installedItems := installedSkillSummaries(localState, tag, search)
 	var resp types.SkillListResponse
@@ -486,9 +514,9 @@ func listSkillsTool(ctx context.Context, args map[string]any) (any, error) {
 			return nil, err
 		}
 	}
-	merged := mergeSkillSummaries(resp.Items, installedItems, localItems)
+	merged := mergeSkillSummaries(resp.Items, installedItems, officialItems, localItems)
 	resp.Items = paginateSkillSummaries(merged, limit, offset)
-	resp.Total += len(installedItems) + len(localItems)
+	resp.Total += len(installedItems) + len(localItems) + countMissingSkillSummaries(resp.Items, installedItems, localItems, officialItems)
 	resp.Limit = limit
 	resp.Offset = offset
 	return resp, nil
@@ -512,12 +540,16 @@ func getSkillTool(ctx context.Context, args map[string]any) (any, error) {
 			if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
 				return installed.Skill(localState.isActive(installed.Manifest.Slug)), nil
 			}
+			if skill, ok := officialRuntimeSkillForID(skillID); ok {
+				return skill, nil
+			}
 			if skill, ok := seed.FindBundledSkill(skillID); ok {
 				return skill, nil
 			}
 		}
 		return nil, err
 	}
+	skill = applyOfficialRuntimeSkillOverlay(skill)
 	return annotateRemoteSkill(skill, localState), nil
 }
 
@@ -539,12 +571,16 @@ func getSkillSchemaTool(ctx context.Context, args map[string]any) (any, error) {
 			if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
 				return installed.Schema(), nil
 			}
+			if schema, ok := officialRuntimeSkillSchemaForID(skillID); ok {
+				return schema, nil
+			}
 			if schema, ok := seed.FindBundledSkillSchema(skillID); ok {
 				return schema, nil
 			}
 		}
 		return nil, err
 	}
+	schema = applyOfficialRuntimeSchemaOverlay(skillID, schema)
 	return schema, nil
 }
 
@@ -560,6 +596,9 @@ func runSkillTool(ctx context.Context, args map[string]any) (any, error) {
 	resolvedSkillID, err := resolveRunnableSkillID(ctx, skillID)
 	if err != nil {
 		return nil, err
+	}
+	if job, handled, err := maybeRunOfficialRuntimeDirectFallbackJob(ctx, resolvedSkillID, payload, defaultString(optionalStringArg(args, "priority"), "normal"), optionalStringArg(args, "project_id"), optionalStringArg(args, "idempotency_key")); handled {
+		return job, err
 	}
 
 	cfg := config.Load()
@@ -706,6 +745,33 @@ func uploadArtifactTool(ctx context.Context, args map[string]any) (any, error) {
 		Role:         optionalStringArg(args, "role"),
 		MetadataJSON: optionalStringArg(args, "metadata_json"),
 		ProjectID:    optionalStringArg(args, "project_id"),
+		Visibility:   optionalStringArg(args, "visibility"),
+	})
+}
+
+func getMediaTool(ctx context.Context, args map[string]any) (any, error) {
+	mediaID, err := requiredStringArg(args, "media_id")
+	if err != nil {
+		return nil, err
+	}
+	var media types.Media
+	if err := currentClient().GetJSON(ctx, "/media/"+mediaID, nil, &media); err != nil {
+		return nil, err
+	}
+	return media, nil
+}
+
+func uploadMediaTool(ctx context.Context, args map[string]any) (any, error) {
+	path, err := requiredStringArg(args, "path")
+	if err != nil {
+		return nil, err
+	}
+	return uploadMedia(ctx, path, mediaUploadOptions{
+		Filename:     optionalStringArg(args, "filename"),
+		ContentType:  optionalStringArg(args, "content_type"),
+		MetadataJSON: optionalStringArg(args, "metadata_json"),
+		ProjectID:    optionalStringArg(args, "project_id"),
+		Visibility:   optionalStringArg(args, "visibility"),
 	})
 }
 

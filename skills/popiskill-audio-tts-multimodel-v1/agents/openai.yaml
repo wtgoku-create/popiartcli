@@ -1,0 +1,4 @@
+interface:
+  display_name: "TTS Multimodel"
+  short_description: "Convert text into managed PopiArt speech output"
+  default_prompt: "Use this skill when the user wants one managed PopiArt text-to-speech path without handling upstream provider credentials directly."

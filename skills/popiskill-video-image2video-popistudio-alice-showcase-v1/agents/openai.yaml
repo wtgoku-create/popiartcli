@@ -1,0 +1,4 @@
+interface:
+  display_name: "Alice Video Showcase"
+  short_description: "Generate one PopiStudio Alice teaser clip"
+  default_prompt: "Use this skill when the user needs one short PopiStudio Alice showcase clip from the current Alice master reference or a prior Alice keyframe."

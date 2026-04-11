@@ -2,3 +2,5 @@
 node_modules/
 dist/
 .skill-staging/
+.omx/
+.work/

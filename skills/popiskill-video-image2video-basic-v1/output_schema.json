@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "model_id": {
+      "type": "string"
+    },
+    "requested_skill_id": {
+      "type": "string"
+    },
+    "execution_mode": {
+      "type": "string"
+    },
+    "artifact_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "primary_artifact_id": {
+      "type": "string"
+    },
+    "media_id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  }
+}

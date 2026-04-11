@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -20,12 +21,14 @@ func currentClient() *api.Client {
 	return api.NewClient(cfg.Endpoint, cfg.Token)
 }
 
-func plainOutput(cmd *cobra.Command) bool {
-	value, _ := cmd.Flags().GetBool("plain")
-	return value
-}
-
 func writeOutput(cmd *cobra.Command, data any) error {
+	if err := validateAgentProtocolFlags(cmd); err != nil {
+		return output.NewError("VALIDATION_ERROR", "无效的 agent 协议参数", map[string]any{
+			"details": err.Error(),
+			"flag":    "output",
+			"hint":    "请使用 --output json 或 --output plain",
+		})
+	}
 	return output.WriteData(cmd.OutOrStdout(), data, plainOutput(cmd))
 }
 
@@ -43,8 +46,7 @@ func stringValue(value any) string {
 }
 
 func prompt(label string) (string, error) {
-	fmt.Fprint(os.Stderr, label)
-	return readPromptLine()
+	return promptTo(os.Stderr, label)
 }
 
 func readPromptLine() (string, error) {
@@ -57,10 +59,19 @@ func readPromptLine() (string, error) {
 }
 
 func promptPassword(label string) (string, error) {
-	fmt.Fprint(os.Stderr, label)
+	return promptPasswordTo(os.Stderr, label)
+}
+
+func promptTo(w io.Writer, label string) (string, error) {
+	fmt.Fprint(w, label)
+	return readPromptLine()
+}
+
+func promptPasswordTo(w io.Writer, label string) (string, error) {
+	fmt.Fprint(w, label)
 	if termutil.IsTerminal(int(os.Stdin.Fd())) {
 		value, err := termutil.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(w)
 		if err == nil {
 			return strings.TrimSpace(string(value)), nil
 		}

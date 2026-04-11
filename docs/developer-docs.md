@@ -66,7 +66,14 @@ popiart skills list
 popiart skills list
 ```
 
-列出当前可用的远程 runtime skills，并合并 CLI 内置的 bundled seed skills。
+列出当前可发现的技能集合。合并顺序是：远程 runtime skills、已安装本地 skills、CLI 内置 official runtime baseline、CLI bundled seed skills。
+
+关系说明：
+
+- 当前真正可执行的 runtime skill 注册表来自 `popiartServer /skills`。
+- 当前公开 skill 定义参考仓库是 `wtgoku-create/Popiart_skillhub`。
+- `popiart bootstrap` 生成的 `default` skillset 只是默认发现配置，包含远程查询模板和 seed 元数据，不等于服务端已经注册完成的 skill 清单。
+- 返回里的 `source` 字段会区分 `remote`、`installed`、`official-runtime`、`bundled-seed`。
 
 ```sh
 popiart skills list --tag image
@@ -214,6 +221,19 @@ popiart artifacts pull-all <job-id>
 
 将一个 job 的全部 artifacts 一次性下载到目录中。
 
+### 稳定媒体 URL
+
+```sh
+popiart media upload ./source.png
+```
+
+上传一个本地文件并获取稳定媒体 URL。这个命令适合下面两类场景：
+
+- 你只想把本地文件变成一个可被模型直接 fetch 的 URL
+- 你在 job 外部先做素材准备，再把 URL 传给后续 skill
+
+当服务端支持稳定媒体 URL 时，`popiart artifacts upload` 也会在响应里返回 `url`，因此 artifact 既保留 PopiArt 的工件语义，也具备直接给模型消费的 URL 语义。
+
 如果要把本地图片交给 `img2img`，建议走这条链路：
 
 ```sh
@@ -232,22 +252,24 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 
 其中 `seedream-4-5-251128` 不是走旧的 `/v1/images/edits multipart` 语义，而是走 `/v1/images/generations` + 参考图输入；最小尺寸约束也由服务端路由适配负责处理。
 
+`popiskill-video-image2video-basic-v1` 是安装后自带的官方 skill。CLI 会把它暴露在 `skills list/get/schema` 里；如果远端目录里的同名 skill 仍是占位符或尚未注册，`run` 会自动桥接到底层 `models infer`，优先使用 `viduq3-turbo`，失败再回落到 `viduq2-pro-fast`。
+
 如果要把本地图片继续交给 `image2video`，推荐同样先上传成 artifact，再走 `source_artifact_id`：
 
 ```sh
-popiart models route-override set --project proj_local_dev --skill-type video.image2video --model viduq2-pro-fast
-
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
 
 popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
   \"source_artifact_id\":\"$ART\",
   \"prompt\":\"让人物衣摆和发丝在微风中轻轻摆动，镜头缓慢推进，整体保持真实电影感。\",
   \"aspect_ratio\":\"16:9\",
-  \"seconds\":4
+  \"seconds\":5
 }" --wait
 ```
 
-截至 `2026-03-28`，测试环境里验证通过的 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`。如果默认视频路由仍指向旧的 `viduq2`，就需要先做一次项目级 route override。
+截至 `2026-04-08`，CLI 内置 `image2video` fallback 的模型顺序是 `viduq3-turbo -> viduq2-pro-fast`。截至 `2026-03-28`，测试环境里验证通过的服务端 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`。如果服务端将来补齐真正 runtime skill，CLI 会优先走服务端 skill；否则继续走内置 fallback。
+
+稳定媒体 URL 的完整跨仓架构与分阶段执行计划见 [docs/stable-media-url-v1.md](./stable-media-url-v1.md)。
 
 ### 项目上下文
 
@@ -273,15 +295,18 @@ popiart project use <project-id>
 
 ```sh
 popiart models list --type image
+popiart models list --capability text2image
 ```
 
-列出当前可用模型。
+列出当前已注册的可用模型库存。
 
 ```sh
 popiart models routes
+popiart models routes --route image.text2image
 ```
 
-查看当前项目生效的模型路由表。
+查看当前项目真正生效的 `route_key -> model_id` 路由表。
+这个结果和 `models list` 的模型库存不是一回事。
 
 ```sh
 popiart models infer <model-id> --input @input.json --wait
@@ -342,13 +367,21 @@ popiart budget limits
 
 ## 官方 Runtime Baseline
 
-当前仓库将以下三个 skill id 视为首批官方 runtime baseline：
+当前仓库将以下七个 skill id 视为当前官方 runtime baseline：
 
 ```text
 popiskill-image-text2image-basic-v1
 popiskill-image-img2img-basic-v1
+popiskill-image-img2img-popistudio-alice-showcase-v1
 popiskill-video-image2video-basic-v1
+popiskill-video-image2video-popistudio-alice-showcase-v1
+popiskill-audio-tts-multimodel-v1
+popiskill-audio-stt-local-v1
 ```
+
+这七个 skill 都会作为本地官方契约暴露在 `skills list/get/schema` 中；其中 `popiskill-video-image2video-basic-v1` 还是当前唯一带 CLI 内置 direct fallback 的 skill：即使远端目录缺失或仍返回占位符，CLI 也会在运行时自动桥接到底层 image2video 模型。
+
+如果要把 `popiartServer /skills` 和 `wtgoku-create/Popiart_skillhub` 完整同步到同一套七技能公开定义，直接看 [docs/runtime-skill-sync-checklist.md](./runtime-skill-sync-checklist.md)。
 
 你可以这样做一次最小验证：
 
@@ -379,7 +412,19 @@ popiart artifacts pull-all <job-id>
 
 1. `popiart bootstrap --agent codex --completion zsh --discoverable`
 2. `popiart mcp doctor --agent codex`
-3. 在 agent 里通过 MCP 工具发现 skill、提交 job、轮询状态、拉取 artifact
+3. 先检查 `popiart --help`。如果未安装，统一从 GitHub 仓库入口 `https://github.com/wtgoku-create/popiartcli` 进入安装；如果执行者是 agent 且具备 shell 权限，应直接自动安装
+4. `popiart auth whoami`；如果未认证，引导用户去 `https://wwwskillhub.popi.art` 注册、充值并获取产品层 key，然后执行 `popiart auth login --key <product-key>`
+5. `popiart project current` / `popiart project use <project-id>`
+6. 根据需求执行 `popiart skills list --tag <image|video|audio>`，再执行 `popiart skills get <skill-id>` 和 `popiart skills schema <skill-id>`
+7. 提交前可以先执行 `popiart budget status`；如果需要更细的使用情况，再执行 `popiart budget usage --group-by skill`。如果执行时返回积分不足，直接打开 `https://wwwskillhub.popi.art` 引导充值
+8. `popiart run <skill-id> --input @params.json --wait`
+9. 失败时保留 `job_id`、`error.code`、`error.message`；成功后执行 `popiart artifacts pull-all <job-id> --dir ./output/`
+10. 后续再次使用时，只要 `popiart auth whoami` 仍成功，通常可以直接从 skill 发现开始，不必重复安装或 bootstrap
+
+补充两条实现约束：
+
+- `auth login` 当前推荐使用 `--key`；`--token` 只是兼容旧用法
+- agent 在提交 `run` 之后应保留原始需求，在登录、充值或失败重试之后不要要求用户重复描述
 
 ## 面向 Agent 的设计原则
 

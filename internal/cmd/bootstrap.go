@@ -52,6 +52,18 @@ type bootstrapResult struct {
 	NextSteps            []string                 `json:"next_steps,omitempty"`
 }
 
+type bootstrapOptions struct {
+	Key                 string
+	Agents              []string
+	Completions         []string
+	WithDefaultSkills   bool
+	WithRuntimeBaseline bool
+	InstallMCP          bool
+	InstallSkill        bool
+	Discoverable        bool
+	NoAgentConfig       bool
+}
+
 func newBootstrapCmd() *cobra.Command {
 	var agents []string
 	var completions []string
@@ -67,146 +79,19 @@ func newBootstrapCmd() *cobra.Command {
 		Use:   "bootstrap",
 		Short: "初始化本地 PopiArt 环境与 agent 引导文件",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if discoverable {
-				withDefaultSkills = true
-				withRuntimeBaseline = true
-				installMCP = true
-				installSkill = true
-			}
-
-			normalizedAgents, err := normalizeChoices(agents, supportedBootstrapAgents, "agent")
+			result, err := executeBootstrap(cmd, bootstrapOptions{
+				Key:                 key,
+				Agents:              agents,
+				Completions:         completions,
+				WithDefaultSkills:   withDefaultSkills,
+				WithRuntimeBaseline: withRuntimeBaseline,
+				InstallMCP:          installMCP,
+				InstallSkill:        installSkill,
+				Discoverable:        discoverable,
+				NoAgentConfig:       noAgentConfig,
+			})
 			if err != nil {
 				return err
-			}
-
-			normalizedCompletions, err := normalizeChoices(completions, supportedCompletionShells, "completion shell")
-			if err != nil {
-				return err
-			}
-
-			if key != "" {
-				if _, err := config.SavePatch(config.Patch{Token: &key}); err != nil {
-					return output.NewError("CLI_ERROR", "保存 key 失败", map[string]any{"details": err.Error()})
-				}
-			}
-			if (installMCP || installSkill) && len(normalizedAgents) == 0 {
-				return output.NewError("VALIDATION_ERROR", "discoverability 产物需要显式指定至少一个 agent", map[string]any{
-					"hint": "传入 `--agent codex`、`--agent claude-code`、`--agent openclaw` 或 `--agent opencode`",
-				})
-			}
-
-			cfg := config.Load()
-			result := bootstrapResult{
-				CLIVersion:       cmd.Root().Version,
-				ConfigPath:       config.Path(),
-				Endpoint:         cfg.Endpoint,
-				Project:          cfg.Project,
-				KeySaved:         key != "",
-				Agents:           normalizedAgents,
-				CompletionShells: normalizedCompletions,
-			}
-
-			if withDefaultSkills {
-				path, err := writeDefaultSkillset()
-				if err != nil {
-					return output.NewError("CLI_ERROR", "写入默认 skill profile 失败", map[string]any{"details": err.Error()})
-				}
-				result.DefaultSkillsProfile = "default"
-				result.GeneratedFiles = append(result.GeneratedFiles, bootstrapGeneratedFile{
-					Kind: "skillset",
-					Name: "default",
-					Path: path,
-				})
-			}
-			if withRuntimeBaseline {
-				path, err := writeRuntimeBaselineProfile()
-				if err != nil {
-					return output.NewError("CLI_ERROR", "写入 runtime baseline 失败", map[string]any{"details": err.Error()})
-				}
-				result.RuntimeBaseline = "runtime-baseline"
-				result.GeneratedFiles = append(result.GeneratedFiles, bootstrapGeneratedFile{
-					Kind: "runtime-baseline",
-					Name: "runtime-baseline",
-					Path: path,
-				})
-			}
-
-			if !noAgentConfig {
-				for _, agent := range normalizedAgents {
-					files, err := writeAgentEnvFiles(agent, cfg)
-					if err != nil {
-						return output.NewError("CLI_ERROR", "写入 agent 引导文件失败", map[string]any{
-							"details": err.Error(),
-							"agent":   agent,
-						})
-					}
-					result.GeneratedFiles = append(result.GeneratedFiles, files...)
-				}
-			}
-			if installMCP {
-				for _, agent := range normalizedAgents {
-					file, err := writeAgentMCPConfigFile(agent, cfg)
-					if err != nil {
-						return output.NewError("CLI_ERROR", "写入 agent MCP 配置片段失败", map[string]any{
-							"details": err.Error(),
-							"agent":   agent,
-						})
-					}
-					result.GeneratedFiles = append(result.GeneratedFiles, file)
-
-					nativeFile, err := writeNativeAgentMCPConfigFile(agent, cfg)
-					if err != nil {
-						return output.NewError("CLI_ERROR", "写入 agent 原生 MCP 配置失败", map[string]any{
-							"details": err.Error(),
-							"agent":   agent,
-						})
-					}
-					result.GeneratedFiles = append(result.GeneratedFiles, nativeFile)
-				}
-			}
-			if installSkill {
-				for _, agent := range normalizedAgents {
-					file, err := writeAgentSkillWrapper(agent)
-					if err != nil {
-						return output.NewError("CLI_ERROR", "写入 agent skill wrapper 失败", map[string]any{
-							"details": err.Error(),
-							"agent":   agent,
-						})
-					}
-					result.GeneratedFiles = append(result.GeneratedFiles, file)
-
-					nativeFile, err := writeNativeAgentSkillWrapper(agent)
-					if err != nil {
-						return output.NewError("CLI_ERROR", "写入 agent 原生 skill wrapper 失败", map[string]any{
-							"details": err.Error(),
-							"agent":   agent,
-						})
-					}
-					result.GeneratedFiles = append(result.GeneratedFiles, nativeFile)
-				}
-			}
-
-			for _, shell := range normalizedCompletions {
-				path, err := writeCompletionFile(cmd.Root(), shell)
-				if err != nil {
-					return output.NewError("CLI_ERROR", "写入 shell completion 失败", map[string]any{
-						"details": err.Error(),
-						"shell":   shell,
-					})
-				}
-				result.GeneratedFiles = append(result.GeneratedFiles, bootstrapGeneratedFile{
-					Kind: "completion",
-					Name: shell,
-					Path: path,
-				})
-			}
-
-			result.NextSteps = bootstrapNextSteps(result)
-
-			manifestPath := filepath.Join(config.Dir(), "bootstrap.json")
-			result.ManifestPath = manifestPath
-			if err := writeJSONFile(manifestPath, result); err != nil {
-				return output.NewError("CLI_ERROR", "写入 bootstrap manifest 失败", map[string]any{"details": err.Error()})
 			}
 			if plainOutput(cmd) {
 				writeBootstrapPlain(cmd.OutOrStdout(), result)
@@ -227,6 +112,192 @@ func newBootstrapCmd() *cobra.Command {
 	bootstrapCmd.Flags().BoolVar(&noAgentConfig, "no-agent-config", false, "跳过 agent 引导文件生成")
 
 	return bootstrapCmd
+}
+
+func newSetupCmd() *cobra.Command {
+	var agents []string
+	var completions []string
+	var key string
+	var noAgentConfig bool
+
+	setupCmd := &cobra.Command{
+		Use:   "setup",
+		Short: "面向新用户和 agent 的一键初始化入口",
+		Long: "面向首次接入的默认入口。\n\n" +
+			"`popiart setup --agent codex` 会在不改变底层架构的前提下，直接完成默认 skill profile、runtime baseline、agent env、原生 MCP 配置、原生 skill wrapper 等 discoverability 资产。\n\n" +
+			"如果你只想做细粒度引导，仍然可以继续使用 `popiart bootstrap`。",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := executeBootstrap(cmd, bootstrapOptions{
+				Key:                 key,
+				Agents:              agents,
+				Completions:         completions,
+				WithDefaultSkills:   true,
+				WithRuntimeBaseline: true,
+				InstallMCP:          true,
+				InstallSkill:        true,
+				Discoverable:        true,
+				NoAgentConfig:       noAgentConfig,
+			})
+			if err != nil {
+				return err
+			}
+			if plainOutput(cmd) {
+				writeBootstrapPlain(cmd.OutOrStdout(), result)
+				return nil
+			}
+			return writeOutput(cmd, result)
+		},
+	}
+
+	setupCmd.Flags().StringVarP(&key, "key", "k", "", "直接保存 API key 到本地配置")
+	setupCmd.Flags().StringArrayVar(&agents, "agent", nil, "目标 agent，例如 codex、claude-code、openclaw、opencode")
+	setupCmd.Flags().StringArrayVar(&completions, "completion", nil, "可选生成 shell completion，可重复传递")
+	setupCmd.Flags().BoolVar(&noAgentConfig, "no-agent-config", false, "跳过 ~/.popiart/agents/<agent>/ 下的 env 引导文件生成")
+	return setupCmd
+}
+
+func executeBootstrap(cmd *cobra.Command, opts bootstrapOptions) (bootstrapResult, error) {
+	if opts.Discoverable {
+		opts.WithDefaultSkills = true
+		opts.WithRuntimeBaseline = true
+		opts.InstallMCP = true
+		opts.InstallSkill = true
+	}
+
+	normalizedAgents, err := normalizeChoices(opts.Agents, supportedBootstrapAgents, "agent")
+	if err != nil {
+		return bootstrapResult{}, err
+	}
+
+	normalizedCompletions, err := normalizeChoices(opts.Completions, supportedCompletionShells, "completion shell")
+	if err != nil {
+		return bootstrapResult{}, err
+	}
+
+	if opts.Key != "" {
+		if _, err := config.SavePatch(config.Patch{Token: &opts.Key}); err != nil {
+			return bootstrapResult{}, output.NewError("CLI_ERROR", "保存 key 失败", map[string]any{"details": err.Error()})
+		}
+	}
+	if (opts.InstallMCP || opts.InstallSkill) && len(normalizedAgents) == 0 {
+		return bootstrapResult{}, output.NewError("VALIDATION_ERROR", "discoverability 产物需要显式指定至少一个 agent", map[string]any{
+			"hint": "传入 `--agent codex`、`--agent claude-code`、`--agent openclaw` 或 `--agent opencode`",
+		})
+	}
+
+	cfg := config.Load()
+	result := bootstrapResult{
+		CLIVersion:       cmd.Root().Version,
+		ConfigPath:       config.Path(),
+		Endpoint:         cfg.Endpoint,
+		Project:          cfg.Project,
+		KeySaved:         opts.Key != "",
+		Agents:           normalizedAgents,
+		CompletionShells: normalizedCompletions,
+	}
+
+	if opts.WithDefaultSkills {
+		path, err := writeDefaultSkillset()
+		if err != nil {
+			return bootstrapResult{}, output.NewError("CLI_ERROR", "写入默认 skill profile 失败", map[string]any{"details": err.Error()})
+		}
+		result.DefaultSkillsProfile = "default"
+		result.GeneratedFiles = append(result.GeneratedFiles, bootstrapGeneratedFile{
+			Kind: "skillset",
+			Name: "default",
+			Path: path,
+		})
+	}
+	if opts.WithRuntimeBaseline {
+		path, err := writeRuntimeBaselineProfile()
+		if err != nil {
+			return bootstrapResult{}, output.NewError("CLI_ERROR", "写入 runtime baseline 失败", map[string]any{"details": err.Error()})
+		}
+		result.RuntimeBaseline = "runtime-baseline"
+		result.GeneratedFiles = append(result.GeneratedFiles, bootstrapGeneratedFile{
+			Kind: "runtime-baseline",
+			Name: "runtime-baseline",
+			Path: path,
+		})
+	}
+
+	if !opts.NoAgentConfig {
+		for _, agent := range normalizedAgents {
+			files, err := writeAgentEnvFiles(agent, cfg)
+			if err != nil {
+				return bootstrapResult{}, output.NewError("CLI_ERROR", "写入 agent 引导文件失败", map[string]any{
+					"details": err.Error(),
+					"agent":   agent,
+				})
+			}
+			result.GeneratedFiles = append(result.GeneratedFiles, files...)
+		}
+	}
+	if opts.InstallMCP {
+		for _, agent := range normalizedAgents {
+			file, err := writeAgentMCPConfigFile(agent, cfg)
+			if err != nil {
+				return bootstrapResult{}, output.NewError("CLI_ERROR", "写入 agent MCP 配置片段失败", map[string]any{
+					"details": err.Error(),
+					"agent":   agent,
+				})
+			}
+			result.GeneratedFiles = append(result.GeneratedFiles, file)
+
+			nativeFile, err := writeNativeAgentMCPConfigFile(agent, cfg)
+			if err != nil {
+				return bootstrapResult{}, output.NewError("CLI_ERROR", "写入 agent 原生 MCP 配置失败", map[string]any{
+					"details": err.Error(),
+					"agent":   agent,
+				})
+			}
+			result.GeneratedFiles = append(result.GeneratedFiles, nativeFile)
+		}
+	}
+	if opts.InstallSkill {
+		for _, agent := range normalizedAgents {
+			file, err := writeAgentSkillWrapper(agent)
+			if err != nil {
+				return bootstrapResult{}, output.NewError("CLI_ERROR", "写入 agent skill wrapper 失败", map[string]any{
+					"details": err.Error(),
+					"agent":   agent,
+				})
+			}
+			result.GeneratedFiles = append(result.GeneratedFiles, file)
+
+			nativeFile, err := writeNativeAgentSkillWrapper(agent)
+			if err != nil {
+				return bootstrapResult{}, output.NewError("CLI_ERROR", "写入 agent 原生 skill wrapper 失败", map[string]any{
+					"details": err.Error(),
+					"agent":   agent,
+				})
+			}
+			result.GeneratedFiles = append(result.GeneratedFiles, nativeFile)
+		}
+	}
+
+	for _, shell := range normalizedCompletions {
+		path, err := writeCompletionFile(cmd.Root(), shell)
+		if err != nil {
+			return bootstrapResult{}, output.NewError("CLI_ERROR", "写入 shell completion 失败", map[string]any{
+				"details": err.Error(),
+				"shell":   shell,
+			})
+		}
+		result.GeneratedFiles = append(result.GeneratedFiles, bootstrapGeneratedFile{
+			Kind: "completion",
+			Name: shell,
+			Path: path,
+		})
+	}
+
+	result.NextSteps = bootstrapNextSteps(result)
+	manifestPath := filepath.Join(config.Dir(), "bootstrap.json")
+	result.ManifestPath = manifestPath
+	if err := writeJSONFile(manifestPath, result); err != nil {
+		return bootstrapResult{}, output.NewError("CLI_ERROR", "写入 bootstrap manifest 失败", map[string]any{"details": err.Error()})
+	}
+	return result, nil
 }
 
 func normalizeChoices(values []string, allowed map[string]string, label string) ([]string, error) {
@@ -273,7 +344,7 @@ func writeRuntimeBaselineProfile() (string, error) {
 	path := filepath.Join(config.Dir(), "skillsets", "runtime-baseline.json")
 	profile := map[string]any{
 		"name":         "runtime-baseline",
-		"description":  "Official PopiArt runtime baseline for the first three multimodal runtime skills.",
+		"description":  "Official PopiArt runtime baseline for the current seven runtime skills across image, video, and audio.",
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 		"source":       "popiart bootstrap",
 		"mcp_server":   popiartMCPServerName,
@@ -421,7 +492,7 @@ func bootstrapNextSteps(result bootstrapResult) []string {
 		steps = append(steps, "运行 `popiart auth login` 保存 API key")
 	}
 	if result.DefaultSkillsProfile != "" {
-		steps = append(steps, "运行 `popiart skills list --search popiskill-creator` 或 `popiart skills list --tag image`")
+		steps = append(steps, "运行 `popiart skills list --search popiskill-image-text2image-basic-v1` 或 `popiart skills list --tag image`")
 	}
 	if result.RuntimeBaseline != "" {
 		steps = append(steps, "运行 `popiart mcp doctor` 检查官方 runtime baseline 与 discoverability 状态")

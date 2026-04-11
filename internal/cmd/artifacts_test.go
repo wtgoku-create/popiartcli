@@ -50,6 +50,9 @@ func TestArtifactsUploadCommand(t *testing.T) {
 		if r.FormValue("content_type") != "image/png" {
 			t.Fatalf("unexpected content_type field: %q", r.FormValue("content_type"))
 		}
+		if r.FormValue("visibility") != "unlisted" {
+			t.Fatalf("unexpected visibility field: %q", r.FormValue("visibility"))
+		}
 
 		file, header, err := r.FormFile("file")
 		if err != nil {
@@ -72,7 +75,7 @@ func TestArtifactsUploadCommand(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"ok":true,"data":{"id":"art_agent_upload_1","filename":"chat-source.png","content_type":"image/png","size_bytes":8,"created_at":"2026-03-28T04:00:00Z","expires_at":"2026-04-27T04:00:00Z"}}`)
+		fmt.Fprint(w, `{"ok":true,"data":{"id":"art_agent_upload_1","filename":"chat-source.png","content_type":"image/png","size_bytes":8,"created_at":"2026-03-28T04:00:00Z","expires_at":"2026-04-27T04:00:00Z","media_id":"med_agent_upload_1","url":"https://media.popi.test/a/art_agent_upload_1/chat-source.png","visibility":"unlisted","sha256":"demo-sha256","storage_status":"ready"}}`)
 	}))
 	defer server.Close()
 	t.Setenv("POPIART_ENDPOINT", server.URL)
@@ -82,6 +85,7 @@ func TestArtifactsUploadCommand(t *testing.T) {
 		"--filename", "chat-source.png",
 		"--role", "source",
 		"--metadata-json", `{"origin":"agent-chat"}`,
+		"--visibility", "unlisted",
 	})
 
 	data, ok := resp["data"].(map[string]any)
@@ -99,5 +103,17 @@ func TestArtifactsUploadCommand(t *testing.T) {
 	}
 	if data["content_type"] != "image/png" {
 		t.Fatalf("unexpected content_type: %#v", data["content_type"])
+	}
+	if data["media_id"] != "med_agent_upload_1" {
+		t.Fatalf("unexpected media_id: %#v", data["media_id"])
+	}
+	if data["url"] != "https://media.popi.test/a/art_agent_upload_1/chat-source.png" {
+		t.Fatalf("unexpected url: %#v", data["url"])
+	}
+	if data["visibility"] != "unlisted" {
+		t.Fatalf("unexpected visibility: %#v", data["visibility"])
+	}
+	if data["storage_status"] != "ready" {
+		t.Fatalf("unexpected storage_status: %#v", data["storage_status"])
 	}
 }

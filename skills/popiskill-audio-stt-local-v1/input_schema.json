@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "properties": {
+    "source_artifact_id": {
+      "type": "string",
+      "description": "Preferred PopiArt artifact ID for the source audio or video file."
+    },
+    "audio_url": {
+      "type": "string",
+      "description": "Fallback stable audio URL when no source_artifact_id exists."
+    },
+    "video_url": {
+      "type": "string",
+      "description": "Fallback stable video URL when server-side audio extraction is needed."
+    },
+    "language": {
+      "type": "string",
+      "description": "Optional language hint."
+    },
+    "backend": {
+      "type": "string",
+      "description": "Optional managed route hint such as auto, whisper, or parakeet when supported."
+    },
+    "model": {
+      "type": "string",
+      "description": "Optional backend model variant."
+    },
+    "diarization": {
+      "type": "boolean",
+      "description": "Whether speaker diarization is requested."
+    },
+    "timestamps": {
+      "type": "boolean",
+      "description": "Whether timestamped transcript output is requested."
+    },
+    "format": {
+      "type": "string",
+      "description": "Preferred transcript output format such as text, json, srt, or vtt."
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Optional recognition hint or vocabulary guidance."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional extra constraints confirmed with the user."
+    }
+  }
+}

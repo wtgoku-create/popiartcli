@@ -28,7 +28,7 @@ type SeedSkill struct {
 func NewDefaultSkillset(generatedAt time.Time) DefaultSkillset {
 	return DefaultSkillset{
 		Name:        "default",
-		Description: "Starter discovery profile for PopiArt's remote skill registry, plus bundled seed skills shipped with popiartcli.",
+		Description: "Starter discovery profile for PopiArt's remote runtime registry, plus bundled seed skills shipped with popiartcli as local default-profile metadata.",
 		GeneratedAt: generatedAt.UTC().Format(time.RFC3339),
 		Source:      "popiart bootstrap",
 		Queries: []DefaultSkillQuery{

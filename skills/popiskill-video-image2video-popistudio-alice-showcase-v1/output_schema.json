@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "artifact_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "primary_artifact_id": {
+      "type": "string"
+    },
+    "media_id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  }
+}

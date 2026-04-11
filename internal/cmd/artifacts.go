@@ -23,6 +23,7 @@ type artifactUploadOptions struct {
 	Role         string
 	MetadataJSON string
 	ProjectID    string
+	Visibility   string
 }
 
 func newArtifactsCmd() *cobra.Command {
@@ -183,14 +184,32 @@ func newArtifactsCmd() *cobra.Command {
 
 	uploadCmd := &cobra.Command{
 		Use:   "upload <path>",
-		Short: "上传本地文件并创建一个可复用的工件",
+		Short: "上传本地文件并创建一个带稳定 URL 的可复用工件",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRunMode(cmd) {
+				return writeDryRunPreview(cmd, "artifacts.upload", map[string]any{
+					"path": args[0],
+					"request": map[string]any{
+						"method": "POST",
+						"path":   "/artifacts/upload",
+						"body": map[string]any{
+							"path":          args[0],
+							"filename":      flagString(cmd, "filename"),
+							"content_type":  flagString(cmd, "content-type"),
+							"role":          flagString(cmd, "role"),
+							"metadata_json": flagString(cmd, "metadata-json"),
+							"visibility":    flagString(cmd, "visibility"),
+						},
+					},
+				})
+			}
 			result, err := uploadArtifact(context.Background(), args[0], artifactUploadOptions{
 				Filename:     flagString(cmd, "filename"),
 				ContentType:  flagString(cmd, "content-type"),
 				Role:         flagString(cmd, "role"),
 				MetadataJSON: flagString(cmd, "metadata-json"),
+				Visibility:   flagString(cmd, "visibility"),
 			})
 			if err != nil {
 				return err
@@ -202,42 +221,20 @@ func newArtifactsCmd() *cobra.Command {
 	uploadCmd.Flags().String("content-type", "", "上传内容类型（默认：按扩展名或文件头推断）")
 	uploadCmd.Flags().String("role", "", "上传工件角色，例如 source | mask | reference")
 	uploadCmd.Flags().String("metadata-json", "", "附带的 JSON 元数据字符串")
+	uploadCmd.Flags().String("visibility", "", "工件稳定 URL 的可见性，例如 private | unlisted | public")
 
 	artifactsCmd.AddCommand(listCmd, getCmd, pullCmd, pullAllCmd, uploadCmd)
 	return artifactsCmd
 }
 
 func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions) (map[string]any, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, output.NewError("CLI_ERROR", "读取上传文件失败", map[string]any{
-			"path":    path,
-			"details": err.Error(),
-		})
-	}
-	if info.IsDir() {
-		return nil, output.NewError("VALIDATION_ERROR", "上传路径必须是文件，不能是目录", map[string]any{
-			"path": path,
-		})
-	}
-	if opts.MetadataJSON != "" && !json.Valid([]byte(opts.MetadataJSON)) {
-		return nil, output.NewError("INPUT_PARSE_ERROR", "metadata-json 不是合法 JSON", map[string]any{
-			"metadata_json": opts.MetadataJSON,
-		})
+	if err := validateUploadInput(path, opts.MetadataJSON); err != nil {
+		return nil, err
 	}
 
-	filename := opts.Filename
-	if filename == "" {
-		filename = filepath.Base(path)
-	}
-	contentType := opts.ContentType
-	if contentType == "" {
-		contentType = detectUploadContentType(path)
-	}
-	projectID := opts.ProjectID
-	if projectID == "" {
-		projectID = config.Load().Project
-	}
+	filename := resolveUploadFilename(path, opts.Filename)
+	contentType := resolveUploadContentType(path, opts.ContentType)
+	projectID := resolveUploadProjectID(opts.ProjectID)
 
 	fields := map[string]string{
 		"filename":      filename,
@@ -245,6 +242,7 @@ func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions
 		"role":          opts.Role,
 		"metadata_json": opts.MetadataJSON,
 		"project_id":    projectID,
+		"visibility":    opts.Visibility,
 	}
 
 	var artifact types.Artifact
@@ -268,6 +266,21 @@ func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions
 	if artifact.JobID != "" {
 		result["job_id"] = artifact.JobID
 	}
+	if artifact.MediaID != "" {
+		result["media_id"] = artifact.MediaID
+	}
+	if artifact.URL != "" {
+		result["url"] = artifact.URL
+	}
+	if artifact.Visibility != "" {
+		result["visibility"] = artifact.Visibility
+	}
+	if artifact.SHA256 != "" {
+		result["sha256"] = artifact.SHA256
+	}
+	if artifact.StorageStatus != "" {
+		result["storage_status"] = artifact.StorageStatus
+	}
 	if opts.Role != "" {
 		result["role"] = opts.Role
 	}
@@ -275,6 +288,48 @@ func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions
 		result["project_id"] = projectID
 	}
 	return result, nil
+}
+
+func validateUploadInput(path, metadataJSON string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return output.NewError("CLI_ERROR", "读取上传文件失败", map[string]any{
+			"path":    path,
+			"details": err.Error(),
+		})
+	}
+	if info.IsDir() {
+		return output.NewError("VALIDATION_ERROR", "上传路径必须是文件，不能是目录", map[string]any{
+			"path": path,
+		})
+	}
+	if metadataJSON != "" && !json.Valid([]byte(metadataJSON)) {
+		return output.NewError("INPUT_PARSE_ERROR", "metadata-json 不是合法 JSON", map[string]any{
+			"metadata_json": metadataJSON,
+		})
+	}
+	return nil
+}
+
+func resolveUploadFilename(path, filename string) string {
+	if filename != "" {
+		return filename
+	}
+	return filepath.Base(path)
+}
+
+func resolveUploadContentType(path, contentType string) string {
+	if contentType != "" {
+		return contentType
+	}
+	return detectUploadContentType(path)
+}
+
+func resolveUploadProjectID(projectID string) string {
+	if projectID != "" {
+		return projectID
+	}
+	return config.Load().Project
 }
 
 func detectUploadContentType(path string) string {

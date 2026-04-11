@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -18,14 +20,27 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/output"
 )
 
-const defaultUpdateRepo = "wtgoku-create/popiartcli"
+type updateSource string
+
+const (
+	updateSourceGitHub updateSource = "github"
+	updateSourceGitee  updateSource = "gitee"
+
+	defaultUpdateRepoGitHub = "wtgoku-create/popiartcli"
+	defaultUpdateRepoGitee  = "wattx/popiartcli"
+)
 
 var updateHTTPClient = &http.Client{
 	Timeout: 30 * time.Second,
 }
 
-var updateLatestReleaseURL = func(repo string) string {
-	return fmt.Sprintf("https://github.com/%s/releases/latest", repo)
+var updateLatestReleaseURL = func(source updateSource, repo string) string {
+	switch source {
+	case updateSourceGitee:
+		return fmt.Sprintf("https://gitee.com/api/v5/repos/%s/releases/latest", repo)
+	default:
+		return fmt.Sprintf("https://github.com/%s/releases/latest", repo)
+	}
 }
 
 var resolveUpdateTagFunc = resolveTargetReleaseTag
@@ -35,22 +50,29 @@ var selfUpdateRunner = runSelfUpdate
 func newUpdateCmd() *cobra.Command {
 	updateCmd := &cobra.Command{
 		Use:   "update",
-		Short: "从 GitHub Releases 下载并安装最新版本",
+		Short: "从 GitHub 或 Gitee Releases 下载并安装最新版本",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if ctx == nil {
 				ctx = context.Background()
 			}
 
-			repo := strings.TrimSpace(flagString(cmd, "repo"))
-			if repo == "" {
-				repo = strings.TrimSpace(os.Getenv("POPIART_REPO"))
-			}
-			if repo == "" {
-				repo = defaultUpdateRepo
+			repoInput := strings.TrimSpace(flagString(cmd, "repo"))
+			if repoInput == "" {
+				repoInput = strings.TrimSpace(os.Getenv("POPIART_REPO"))
 			}
 
-			targetTag, err := resolveUpdateTagFunc(ctx, repo, flagString(cmd, "version"))
+			sourceInput := strings.TrimSpace(flagString(cmd, "source"))
+			if sourceInput == "" {
+				sourceInput = strings.TrimSpace(os.Getenv("POPIART_SOURCE"))
+			}
+
+			source, repo, requestedVersion, err := normalizeUpdateTargetInput(repoInput, sourceInput, flagString(cmd, "version"))
+			if err != nil {
+				return err
+			}
+
+			targetTag, err := resolveUpdateTagFunc(ctx, source, repo, requestedVersion)
 			if err != nil {
 				return err
 			}
@@ -82,12 +104,15 @@ func newUpdateCmd() *cobra.Command {
 					"updated":          false,
 					"current_version":  currentVersion,
 					"target_version":   targetTag,
+					"source":           string(source),
+					"repo":             repo,
 					"path":             executablePath,
 					"config_unchanged": true,
 				})
 			}
 
 			updateResult, err := selfUpdateRunner(ctx, updateRunOptions{
+				Source:         source,
 				Repo:           repo,
 				Tag:            targetTag,
 				ExecutablePath: executablePath,
@@ -102,6 +127,8 @@ func newUpdateCmd() *cobra.Command {
 				"updated":              true,
 				"current_version":      currentVersion,
 				"target_version":       updateResult.Tag,
+				"source":               string(source),
+				"repo":                 repo,
 				"path":                 updateResult.ExecutablePath,
 				"restart_required":     updateResult.RestartRequired,
 				"config_unchanged":     true,
@@ -111,13 +138,14 @@ func newUpdateCmd() *cobra.Command {
 	}
 
 	updateCmd.Flags().String("version", "", "更新到指定版本，例如 v0.1.0；默认使用最新 release")
-	updateCmd.Flags().String("repo", "", "覆盖 GitHub 仓库，格式 owner/name")
-	_ = updateCmd.Flags().MarkHidden("repo")
+	updateCmd.Flags().String("repo", "", "覆盖仓库，支持 owner/name、GitHub/Gitee 仓库主页或 tag URL")
+	updateCmd.Flags().String("source", "", "覆盖下载源：github 或 gitee")
 
 	return updateCmd
 }
 
 type updateRunOptions struct {
+	Source         updateSource
 	Repo           string
 	Tag            string
 	ExecutablePath string
@@ -140,7 +168,7 @@ func runSelfUpdate(ctx context.Context, opts updateRunOptions) (updateRunResult,
 }
 
 func runUnixSelfUpdate(ctx context.Context, opts updateRunOptions) (updateRunResult, error) {
-	scriptURL := rawGitHubContentURL(opts.Repo, opts.Tag, "install.sh")
+	scriptURL := rawContentURL(opts.Source, opts.Repo, opts.Tag, "install.sh")
 	scriptPath, cleanup, err := downloadTemporaryScript(ctx, scriptURL, "", "popiart-install-*.sh", 0o700)
 	if err != nil {
 		return updateRunResult{}, err
@@ -150,6 +178,7 @@ func runUnixSelfUpdate(ctx context.Context, opts updateRunOptions) (updateRunRes
 	command := exec.CommandContext(ctx, "sh", scriptPath, "--cli-only", "--version", opts.Tag)
 	command.Env = append(os.Environ(),
 		"BINDIR="+filepath.Dir(opts.ExecutablePath),
+		"POPIART_SOURCE="+string(opts.Source),
 		"POPIART_REPO="+opts.Repo,
 	)
 	command.Stdout = opts.Stdout
@@ -183,7 +212,7 @@ func runWindowsSelfUpdate(ctx context.Context, opts updateRunOptions) (updateRun
 		_ = os.RemoveAll(tempDir)
 	}
 
-	scriptURL := rawGitHubContentURL(opts.Repo, opts.Tag, "install.ps1")
+	scriptURL := rawContentURL(opts.Source, opts.Repo, opts.Tag, "install.ps1")
 	installerPath, _, err := downloadTemporaryScript(context.Background(), scriptURL, tempDir, "install-*.ps1", 0o600)
 	if err != nil {
 		cleanupTempDir()
@@ -195,6 +224,7 @@ func runWindowsSelfUpdate(ctx context.Context, opts updateRunOptions) (updateRun
   [int]$CurrentPid,
   [string]$InstallerPath,
   [string]$InstallDir,
+  [string]$Source,
   [string]$Repo,
   [string]$Version
 )
@@ -206,6 +236,7 @@ while (Get-Process -Id $CurrentPid -ErrorAction SilentlyContinue) {
 }
 
 $env:POPIART_REPO = $Repo
+$env:POPIART_SOURCE = $Source
 
 $installerArgs = @(
   "-NoProfile",
@@ -239,6 +270,7 @@ Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
 		"-CurrentPid", fmt.Sprintf("%d", os.Getpid()),
 		"-InstallerPath", installerPath,
 		"-InstallDir", filepath.Dir(opts.ExecutablePath),
+		"-Source", string(opts.Source),
 		"-Repo", opts.Repo,
 		"-Version", opts.Tag,
 	)
@@ -263,13 +295,13 @@ Remove-Item -Path $PSCommandPath -Force -ErrorAction SilentlyContinue
 	}, nil
 }
 
-func resolveTargetReleaseTag(ctx context.Context, repo, requested string) (string, error) {
+func resolveTargetReleaseTag(ctx context.Context, source updateSource, repo, requested string) (string, error) {
 	requested = strings.TrimSpace(requested)
 	if requested != "" {
 		return normalizeReleaseTag(requested), nil
 	}
 
-	url := updateLatestReleaseURL(repo)
+	url := updateLatestReleaseURL(source, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", output.NewError("CLI_ERROR", "创建更新请求失败", map[string]any{
@@ -286,20 +318,44 @@ func resolveTargetReleaseTag(ctx context.Context, repo, requested string) (strin
 		})
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", output.NewError("NETWORK_ERROR", "获取最新 release 失败", map[string]any{
+			"source": string(source),
 			"repo":   repo,
 			"status": resp.Status,
 		})
 	}
 
+	if source == updateSourceGitee {
+		var payload struct {
+			TagName string `json:"tag_name"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+			return "", output.NewError("NETWORK_ERROR", "解析最新 release 版本失败", map[string]any{
+				"source":  string(source),
+				"repo":    repo,
+				"url":     url,
+				"details": err.Error(),
+			})
+		}
+		tag := normalizeReleaseTag(payload.TagName)
+		if tag == "" {
+			return "", output.NewError("NETWORK_ERROR", "解析最新 release 版本失败", map[string]any{
+				"source": string(source),
+				"repo":   repo,
+				"url":    url,
+			})
+		}
+		return tag, nil
+	}
+
 	tag := path.Base(resp.Request.URL.Path)
 	if tag == "" || tag == "latest" || tag == "." || tag == "/" {
 		return "", output.NewError("NETWORK_ERROR", "解析最新 release 版本失败", map[string]any{
-			"repo": repo,
-			"url":  resp.Request.URL.String(),
+			"source": string(source),
+			"repo":   repo,
+			"url":    resp.Request.URL.String(),
 		})
 	}
 
@@ -315,6 +371,137 @@ func normalizeReleaseTag(version string) string {
 		return version
 	}
 	return "v" + version
+}
+
+func normalizeUpdateTargetInput(repoInput, sourceInput, requestedVersion string) (updateSource, string, string, error) {
+	requestedVersion = strings.TrimSpace(requestedVersion)
+	source, err := normalizeUpdateSource(sourceInput)
+	if err != nil {
+		return "", "", "", output.NewError("VALIDATION_ERROR", "无效的下载源", map[string]any{
+			"source":  sourceInput,
+			"details": err.Error(),
+		})
+	}
+
+	if strings.TrimSpace(repoInput) == "" {
+		return source, defaultUpdateRepoForSource(source), requestedVersion, nil
+	}
+
+	resolvedSource, repo, inferredTag, err := parseRepoReference(repoInput, source)
+	if err != nil {
+		return "", "", "", output.NewError("VALIDATION_ERROR", "无效的 GitHub 或 Gitee 仓库 / tag URL", map[string]any{
+			"repo":    repoInput,
+			"details": err.Error(),
+		})
+	}
+	if requestedVersion == "" && inferredTag != "" {
+		requestedVersion = inferredTag
+	}
+	return resolvedSource, repo, requestedVersion, nil
+}
+
+func parseRepoReference(value string, defaultSource updateSource) (updateSource, string, string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", "", "", fmt.Errorf("empty repository reference")
+	}
+
+	lowerValue := strings.ToLower(value)
+	if !strings.Contains(value, "://") &&
+		!strings.HasPrefix(lowerValue, "github.com/") &&
+		!strings.HasPrefix(lowerValue, "gitee.com/") {
+		repo := strings.Trim(strings.TrimSuffix(value, ".git"), "/")
+		parts := strings.Split(repo, "/")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return "", "", "", fmt.Errorf("expected owner/name")
+		}
+		return defaultSource, parts[0] + "/" + parts[1], "", nil
+	}
+
+	if strings.HasPrefix(lowerValue, "github.com/") || strings.HasPrefix(lowerValue, "gitee.com/") {
+		value = "https://" + value
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return "", "", "", err
+	}
+	host := strings.ToLower(parsed.Hostname())
+	source, err := sourceFromHostname(host)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	pathParts := splitNonEmpty(strings.Trim(parsed.Path, "/"), "/")
+	if len(pathParts) < 2 {
+		return "", "", "", fmt.Errorf("expected owner/repo path")
+	}
+
+	repo := pathParts[0] + "/" + strings.TrimSuffix(pathParts[1], ".git")
+	inferredTag := ""
+
+	switch {
+	case len(pathParts) >= 5 && pathParts[2] == "releases" && pathParts[3] == "tag":
+		inferredTag = pathParts[4]
+	case len(pathParts) >= 6 && pathParts[2] == "archive" && pathParts[3] == "refs" && pathParts[4] == "tags":
+		inferredTag = trimArchiveTag(pathParts[5])
+	case len(pathParts) >= 4 && pathParts[2] == "archive":
+		inferredTag = trimArchiveTag(pathParts[3])
+	}
+
+	return source, repo, normalizeReleaseTag(inferredTag), nil
+}
+
+func trimArchiveTag(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.TrimSuffix(name, ".tar.gz")
+	name = strings.TrimSuffix(name, ".tgz")
+	name = strings.TrimSuffix(name, ".zip")
+	return name
+}
+
+func normalizeUpdateSource(value string) (updateSource, error) {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "", string(updateSourceGitHub):
+		return updateSourceGitHub, nil
+	case string(updateSourceGitee):
+		return updateSourceGitee, nil
+	default:
+		return "", fmt.Errorf("expected github or gitee")
+	}
+}
+
+func defaultUpdateRepoForSource(source updateSource) string {
+	if source == updateSourceGitee {
+		return defaultUpdateRepoGitee
+	}
+	return defaultUpdateRepoGitHub
+}
+
+func sourceFromHostname(host string) (updateSource, error) {
+	switch host {
+	case "github.com", "www.github.com":
+		return updateSourceGitHub, nil
+	case "gitee.com", "www.gitee.com":
+		return updateSourceGitee, nil
+	default:
+		return "", fmt.Errorf("unsupported host %q", host)
+	}
+}
+
+func splitNonEmpty(value, sep string) []string {
+	if value == "" {
+		return nil
+	}
+	raw := strings.Split(value, sep)
+	parts := make([]string, 0, len(raw))
+	for _, item := range raw {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			parts = append(parts, item)
+		}
+	}
+	return parts
 }
 
 func normalizeInstalledVersion(version string) string {
@@ -376,8 +563,13 @@ func isHomebrewManagedExecutable(executablePath string) bool {
 	return strings.Contains(normalized, "/Cellar/") || strings.Contains(normalized, "/Homebrew/Cellar/")
 }
 
-func rawGitHubContentURL(repo, tag, name string) string {
-	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repo, tag, name)
+func rawContentURL(source updateSource, repo, tag, name string) string {
+	switch source {
+	case updateSourceGitee:
+		return fmt.Sprintf("https://gitee.com/%s/raw/%s/%s", repo, tag, name)
+	default:
+		return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", repo, tag, name)
+	}
 }
 
 func downloadTemporaryScript(ctx context.Context, url, dir, pattern string, mode os.FileMode) (string, func(), error) {

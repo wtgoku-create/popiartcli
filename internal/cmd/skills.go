@@ -13,28 +13,50 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
+const (
+	popiartSkillhubRepoName = "wtgoku-create/Popiart_skillhub"
+	popiartSkillhubRepoURL  = "https://github.com/wtgoku-create/Popiart_skillhub"
+)
+
 func newSkillsCmd() *cobra.Command {
 	skillsCmd := &cobra.Command{
 		Use:   "skills",
 		Short: "在注册表中发现可用技能",
+		Long: "查询 PopiArt 的技能发现链路。\n\n" +
+			"当前真正可执行的 runtime skill 注册表来自 popiartServer 的 /skills 接口；" +
+			"公开定义参考仓库当前是 " + popiartSkillhubRepoName + " (" + popiartSkillhubRepoURL + ")。\n\n" +
+			"`popiart bootstrap` 生成的 default profile 会同时写入远程发现查询和 CLI 内置 bundled seed skills。" +
+			"`skills list/get/schema` 会按优先级合并远程 runtime、已安装本地 skill、CLI 内置 official runtime baseline，以及剩余 bundled seed 元数据。",
 	}
 
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "列出所有可用技能",
+		Long: "列出当前可发现的技能，并按以下优先级合并显示：远程 runtime skills、已安装本地 skills、CLI 内置 official runtime baseline、CLI bundled seed skills。\n\n" +
+			"远程技能注册表由 popiartServer 提供；" +
+			"公开 skill 定义当前以 " + popiartSkillhubRepoName + " 为参考；" +
+			"default skillset 只是 bootstrap 生成的发现入口，不等于服务端已注册的可执行集合。",
+		Example: "  popiart skills list\n" +
+			"  popiart skills list --tag image\n" +
+			"  popiart skills list --search alice --limit 20 --offset 0",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tag, _ := cmd.Flags().GetString("tag")
 			search, _ := cmd.Flags().GetString("search")
-			limitRaw, _ := cmd.Flags().GetString("limit")
-			offsetRaw, _ := cmd.Flags().GetString("offset")
-			limit := parseNonNegativeInt(limitRaw, 50)
-			offset := parseNonNegativeInt(offsetRaw, 0)
+			limit, err := parseSkillsPaginationFlag(cmd, "limit", 50)
+			if err != nil {
+				return err
+			}
+			offset, err := parseSkillsPaginationFlag(cmd, "offset", 0)
+			if err != nil {
+				return err
+			}
 
 			localState, err := loadInstalledSkillState()
 			if err != nil {
 				return err
 			}
 
+			officialItems := matchingOfficialRuntimeSkillSummaries(tag, search)
 			localItems := seed.MatchingBundledSkillSummaries(tag, search)
 			installedItems := installedSkillSummaries(localState, tag, search)
 
@@ -64,9 +86,9 @@ func newSkillsCmd() *cobra.Command {
 					return err
 				}
 			}
-			merged := mergeSkillSummaries(resp.Items, installedItems, localItems)
+			merged := mergeSkillSummaries(resp.Items, installedItems, officialItems, localItems)
 			resp.Items = paginateSkillSummaries(merged, limit, offset)
-			resp.Total += len(installedItems) + len(localItems)
+			resp.Total += len(installedItems) + len(localItems) + countMissingSkillSummaries(resp.Items, installedItems, localItems, officialItems)
 			resp.Limit = limit
 			resp.Offset = offset
 			return writeOutput(cmd, resp)
@@ -80,28 +102,41 @@ func newSkillsCmd() *cobra.Command {
 	getCmd := &cobra.Command{
 		Use:   "get <skill-id>",
 		Short: "获取技能的完整模式和描述",
-		Args:  cobra.ExactArgs(1),
+		Long: "读取某个 skill 的完整描述、输入输出约束和来源信息。\n\n" +
+			"查找顺序是：active installed skill -> 远程 runtime skill -> CLI 内置 official runtime fallback -> bundled seed skill。\n" +
+			"source 字段会标明结果来自 remote、installed、official-runtime 或 bundled-seed。",
+		Example: "  popiart skills get popiskill-image-text2image-basic-v1\n" +
+			"  popiart skills get <skill-id> --plain",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			skillID, err := normalizeSkillLookupID(args[0])
+			if err != nil {
+				return err
+			}
 			localState, err := loadInstalledSkillState()
 			if err != nil {
 				return err
 			}
-			if skill, ok := activeInstalledSkill(localState, args[0]); ok {
+			if skill, ok := activeInstalledSkill(localState, skillID); ok {
 				return writeOutput(cmd, skill.Skill(true))
 			}
 
 			var skill types.Skill
-			if err := currentClient().GetJSON(context.Background(), "/skills/"+args[0], nil, &skill); err != nil {
+			if err := currentClient().GetJSON(context.Background(), "/skills/"+skillID, nil, &skill); err != nil {
 				if cliErr, ok := err.(*output.CLIError); ok && (cliErr.Code == "NOT_FOUND" || cliErr.Code == "NETWORK_ERROR") {
-					if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(args[0]))]; ok {
+					if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
 						return writeOutput(cmd, installed.Skill(localState.isActive(installed.Manifest.Slug)))
 					}
-					if skill, ok := seed.FindBundledSkill(args[0]); ok {
+					if skill, ok := officialRuntimeSkillForID(skillID); ok {
+						return writeOutput(cmd, skill)
+					}
+					if skill, ok := seed.FindBundledSkill(skillID); ok {
 						return writeOutput(cmd, skill)
 					}
 				}
 				return err
 			}
+			skill = applyOfficialRuntimeSkillOverlay(skill)
 			skill = annotateRemoteSkill(skill, localState)
 			return writeOutput(cmd, skill)
 		},
@@ -110,28 +145,40 @@ func newSkillsCmd() *cobra.Command {
 	schemaCmd := &cobra.Command{
 		Use:   "schema <skill-id>",
 		Short: "打印某个技能的输入/输出 JSON 模式",
-		Args:  cobra.ExactArgs(1),
+		Long: "读取某个 skill 的输入输出 JSON schema。\n\n" +
+			"schema 查找顺序和 `skills get` 相同：active installed skill -> 远程 runtime skill -> CLI 内置 official runtime fallback -> bundled seed skill。",
+		Example: "  popiart skills schema popiskill-image-text2image-basic-v1\n" +
+			"  popiart skills schema <skill-id> --plain",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			skillID, err := normalizeSkillLookupID(args[0])
+			if err != nil {
+				return err
+			}
 			localState, err := loadInstalledSkillState()
 			if err != nil {
 				return err
 			}
-			if skill, ok := activeInstalledSkill(localState, args[0]); ok {
+			if skill, ok := activeInstalledSkill(localState, skillID); ok {
 				return writeOutput(cmd, skill.Schema())
 			}
 
 			var schema types.SkillSchemaResponse
-			if err := currentClient().GetJSON(context.Background(), "/skills/"+args[0]+"/schema", nil, &schema); err != nil {
+			if err := currentClient().GetJSON(context.Background(), "/skills/"+skillID+"/schema", nil, &schema); err != nil {
 				if cliErr, ok := err.(*output.CLIError); ok && (cliErr.Code == "NOT_FOUND" || cliErr.Code == "NETWORK_ERROR") {
-					if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(args[0]))]; ok {
+					if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
 						return writeOutput(cmd, installed.Schema())
 					}
-					if schema, ok := seed.FindBundledSkillSchema(args[0]); ok {
+					if schema, ok := officialRuntimeSkillSchemaForID(skillID); ok {
+						return writeOutput(cmd, schema)
+					}
+					if schema, ok := seed.FindBundledSkillSchema(skillID); ok {
 						return writeOutput(cmd, schema)
 					}
 				}
 				return err
 			}
+			schema = applyOfficialRuntimeSchemaOverlay(skillID, schema)
 			return writeOutput(cmd, schema)
 		},
 	}
@@ -140,12 +187,30 @@ func newSkillsCmd() *cobra.Command {
 	return skillsCmd
 }
 
-func parseNonNegativeInt(raw string, fallback int) int {
+func parseSkillsPaginationFlag(cmd *cobra.Command, name string, fallback int) (int, error) {
+	raw := strings.TrimSpace(flagString(cmd, name))
+	if raw == "" {
+		return fallback, nil
+	}
 	value, err := strconv.Atoi(raw)
 	if err != nil || value < 0 {
-		return fallback
+		return 0, output.NewError("VALIDATION_ERROR", "无效的分页参数", map[string]any{
+			"flag":  name,
+			"value": raw,
+			"hint":  "请传入大于等于 0 的整数",
+		})
 	}
-	return value
+	return value, nil
+}
+
+func normalizeSkillLookupID(raw string) (string, error) {
+	skillID := strings.TrimSpace(raw)
+	if skillID == "" {
+		return "", output.NewError("VALIDATION_ERROR", "skill_id 不能为空", map[string]any{
+			"hint": "请传入类似 popiskill-image-text2image-basic-v1 的 skill id",
+		})
+	}
+	return skillID, nil
 }
 
 func remotePageSize(limit, offset int) int {
@@ -199,6 +264,41 @@ func mergeSkillSummaries(groups ...[]types.SkillSummary) []types.SkillSummary {
 		appendUnique(group)
 	}
 	return merged
+}
+
+func countMissingSkillSummaries(existingGroups ...[]types.SkillSummary) int {
+	if len(existingGroups) == 0 {
+		return 0
+	}
+
+	seen := map[string]bool{}
+	for _, group := range existingGroups[:len(existingGroups)-1] {
+		for _, item := range group {
+			key := skillSummaryMergeKey(item)
+			if key != "" {
+				seen[key] = true
+			}
+		}
+	}
+
+	var count int
+	for _, item := range existingGroups[len(existingGroups)-1] {
+		key := skillSummaryMergeKey(item)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		count++
+	}
+	return count
+}
+
+func skillSummaryMergeKey(item types.SkillSummary) string {
+	key := strings.ToLower(strings.TrimSpace(item.ID))
+	if key == "" {
+		key = strings.ToLower(strings.TrimSpace(item.Name))
+	}
+	return key
 }
 
 func bundledSkillSummariesMissingOnRemote(ctx context.Context, items []types.SkillSummary) ([]types.SkillSummary, error) {
@@ -300,6 +400,9 @@ func installedSkillSummaries(state installedSkillState, tag, search string) []ty
 func annotateRemoteSkillSummaries(items []types.SkillSummary, state installedSkillState) []types.SkillSummary {
 	annotated := make([]types.SkillSummary, 0, len(items))
 	for _, item := range items {
+		if strings.TrimSpace(item.Source) == "" {
+			item.Source = "remote"
+		}
 		key := strings.ToLower(strings.TrimSpace(item.ID))
 		if installed, ok := state.byID[key]; ok {
 			if state.isActive(installed.Manifest.Slug) {
@@ -312,12 +415,16 @@ func annotateRemoteSkillSummaries(items []types.SkillSummary, state installedSki
 			item.RuntimeSkillID = localskillsEffectiveRuntimeSkillID(installed)
 			item.RequiresPopiartAuth = installed.Manifest.RequiresPopiartAuth
 		}
+		item = applyOfficialRuntimeSkillSummaryOverlay(item)
 		annotated = append(annotated, item)
 	}
 	return annotated
 }
 
 func annotateRemoteSkill(skill types.Skill, state installedSkillState) types.Skill {
+	if strings.TrimSpace(skill.Source) == "" {
+		skill.Source = "remote"
+	}
 	key := strings.ToLower(strings.TrimSpace(skill.ID))
 	installed, ok := state.byID[key]
 	if !ok || state.isActive(installed.Manifest.Slug) {

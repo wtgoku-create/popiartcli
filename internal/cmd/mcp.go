@@ -9,6 +9,7 @@ import (
 
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
 const (
@@ -130,8 +131,18 @@ func newMCPCmd() *cobra.Command {
 			for _, skill := range officialRuntimeSkills() {
 				skill := skill
 				checks = append(checks, runDoctorAPICheck(client, true, "runtime_skill:"+skill.ID, "检测官方 runtime skill "+skill.ID, func(ctx context.Context) error {
-					var resp any
-					return client.GetJSON(ctx, "/skills/"+skill.ID, nil, &resp)
+					var resp types.Skill
+					if err := client.GetJSON(ctx, "/skills/"+skill.ID, nil, &resp); err != nil {
+						return err
+					}
+					if isOfficialRuntimePlaceholderSkill(resp) {
+						return output.NewError("RUNTIME_SKILL_PLACEHOLDER", "官方 runtime skill 仍是占位符", map[string]any{
+							"skill_id":    skill.ID,
+							"description": resp.Description,
+							"hint":        officialRuntimePlaceholderHint(skill.ID),
+						})
+					}
+					return nil
 				}))
 			}
 			checks = append(checks, runDoctorAPICheck(client, true, "model_routes", "模型路由表 API 可访问", func(ctx context.Context) error {
@@ -184,26 +195,20 @@ func newMCPCmd() *cobra.Command {
 }
 
 func officialRuntimeSkills() []officialRuntimeSkill {
-	return []officialRuntimeSkill{
-		{
-			ID:          "popiskill-image-text2image-basic-v1",
-			Name:        "Basic Text2Image",
-			Description: "Generate a single image from a text prompt through the PopiArt runtime baseline.",
-			ModelType:   "image",
-		},
-		{
-			ID:          "popiskill-image-img2img-basic-v1",
-			Name:        "Basic Img2Img",
-			Description: "Transform or refine an existing image artifact through the PopiArt runtime baseline.",
-			ModelType:   "image",
-		},
-		{
-			ID:          "popiskill-video-image2video-basic-v1",
-			Name:        "Basic Image2Video",
-			Description: "Generate a short video from a source image artifact through the PopiArt runtime baseline.",
-			ModelType:   "video",
-		},
+	items := make([]officialRuntimeSkill, 0, len(officialRuntimeSkillIDs))
+	for _, skillID := range officialRuntimeSkillIDs {
+		summary, ok := officialRuntimeSkillSummaryForID(skillID)
+		if !ok {
+			continue
+		}
+		items = append(items, officialRuntimeSkill{
+			ID:          summary.ID,
+			Name:        summary.Name,
+			Description: summary.Description,
+			ModelType:   summary.ModelType,
+		})
 	}
+	return items
 }
 
 func mcpTools() []mcpTool {

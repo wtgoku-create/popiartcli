@@ -1,0 +1,4 @@
+interface:
+  display_name: "Text2Image Basic"
+  short_description: "Generate one image from one prompt"
+  default_prompt: "Use this skill when the user wants the simplest official PopiArt text-to-image runtime path."

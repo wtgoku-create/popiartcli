@@ -1,0 +1,4 @@
+interface:
+  display_name: "STT Local"
+  short_description: "Transcribe audio or video into text"
+  default_prompt: "Use this skill when the user wants one PopiArt-managed speech-to-text path for transcripts or captions."
