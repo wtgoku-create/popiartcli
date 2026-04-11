@@ -218,7 +218,7 @@ bin/                      旧的 Node.js 启动入口（仅迁移参考，不对
 popiart auth login
 
 # 直接传入 API key
-popiart auth login --key pk-...
+popiart auth login --key <product-key>
 
 # 查看当前登录用户
 popiart auth whoami
@@ -235,6 +235,7 @@ popiart auth key rotate
 
 已保存的 key 存储在 `~/.popiart/config.json` 中 (权限 0600)。
 可以使用 `POPIART_KEY` 或 `POPIART_TOKEN` 环境变量进行覆盖。
+如果服务端在登录后下发的是 `sess_...` 这类会话 key，本地配置里看到它是正常的；CLI 不要求用户输入的原始 key 和本地持久化值完全一致。
 
 ---
 
@@ -396,6 +397,20 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 - `seedream-4-5-251128`：通过 `/v1/images/generations` + 参考图执行
 
 补充一点：`seedream-4-5-251128` 对输出尺寸有最小像素要求。CLI 仍然可以提交类似 `1024x1536` 这样的安全预设，但最终是否需要上调尺寸由服务端路由适配决定。
+
+截至 `2026-04-11`，测试环境里额外验证通过的图片路由是：
+
+- `image.text2image -> seedream-4-5-251128`
+- `image.img2img -> seedream-4-5-251128`
+
+这条 `Seedream 4.5` 路径当前已经能稳定覆盖文生图和图生图；如果图片类 smoke 需要优先追求稳定性，建议直接对项目设置：
+
+```sh
+popiart models route-override set --project proj_local_dev --skill-type image.text2image --model seedream-4-5-251128
+popiart models route-override set --project proj_local_dev --skill-type image.img2img --model seedream-4-5-251128
+```
+
+相对地，`gemini-3.1-flash-image-preview` 在测试环境里仍然是明显依赖上游渠道状态的路由：当上游负载饱和或通道不可用时，同一组 CLI / skill 命令也可能失败。这类失败通常应优先排查服务端路由和渠道健康，而不是 CLI 参数本身。
 
 如果要做 `image2video`，也建议先把本地图片上传成 artifact，再把返回的 `artifact_id` 填进 `source_artifact_id`：
 
