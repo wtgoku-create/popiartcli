@@ -41,6 +41,23 @@ func newMediaCmd() *cobra.Command {
 		Short: "上传本地文件并生成稳定媒体 URL",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRunMode(cmd) {
+				return writeDryRunPreview(cmd, "media.upload", map[string]any{
+					"path": args[0],
+					"request": map[string]any{
+						"method": "POST",
+						"path":   "/media/upload",
+						"body": map[string]any{
+							"path":          args[0],
+							"filename":      flagString(cmd, "filename"),
+							"content_type":  flagString(cmd, "content-type"),
+							"metadata_json": flagString(cmd, "metadata-json"),
+							"project_id":    flagString(cmd, "project-id"),
+							"visibility":    flagString(cmd, "visibility"),
+						},
+					},
+				})
+			}
 			result, err := uploadMedia(context.Background(), args[0], mediaUploadOptions{
 				Filename:     flagString(cmd, "filename"),
 				ContentType:  flagString(cmd, "content-type"),

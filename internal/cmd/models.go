@@ -9,7 +9,6 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/input"
 	"github.com/wtgoku-create/popiartcli/internal/output"
-	"github.com/wtgoku-create/popiartcli/internal/poll"
 )
 
 func newModelsCmd() *cobra.Command {
@@ -62,6 +61,10 @@ func newModelsCmd() *cobra.Command {
 		Short: "直接提交模型推理任务",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateJobExecutionFlags(cmd); err != nil {
+				return err
+			}
+
 			payload, err := input.Resolve(flagString(cmd, "input"))
 			if err != nil {
 				return err
@@ -79,30 +82,22 @@ func newModelsCmd() *cobra.Command {
 			if value := flagString(cmd, "idempotency-key"); value != "" {
 				body["idempotency_key"] = value
 			}
+			if dryRunMode(cmd) {
+				return writeDryRunPreview(cmd, "models.infer", map[string]any{
+					"model_id": args[0],
+					"request": map[string]any{
+						"method": "POST",
+						"path":   "/models/infer",
+						"body":   body,
+					},
+				})
+			}
 
 			var job map[string]any
 			if err := currentClient().PostJSON(context.Background(), "/models/infer", body, &job); err != nil {
 				return err
 			}
-
-			if !flagBool(cmd, "wait") {
-				return writeOutput(cmd, job)
-			}
-
-			jobID := stringValue(job["job_id"])
-			if jobID == "" {
-				return output.NewError("CLI_ERROR", "推理响应中缺少 job_id", nil)
-			}
-
-			interval, err := intervalDuration(cmd, "interval")
-			if err != nil {
-				return err
-			}
-			done, err := poll.WaitForJob(context.Background(), currentClient(), jobID, interval, 300)
-			if err != nil {
-				return err
-			}
-			return writeOutput(cmd, done)
+			return writeJobResultOrWait(cmd, job)
 		},
 	}
 	inferCmd.Flags().StringP("input", "i", "", "输入 JSON 字符串、@file.json，或用 - 表示标准输入")

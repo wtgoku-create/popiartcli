@@ -421,7 +421,11 @@ func shouldRetryModelInfer(err error) bool {
 }
 
 func writeJobResultOrWait(cmd *cobra.Command, job map[string]any) error {
-	if !flagBool(cmd, "wait") {
+	wait, err := shouldWaitForJob(cmd)
+	if err != nil {
+		return err
+	}
+	if !wait {
 		return writeOutput(cmd, job)
 	}
 
@@ -435,6 +439,29 @@ func writeJobResultOrWait(cmd *cobra.Command, job map[string]any) error {
 		return err
 	}
 	done, err := poll.WaitForJob(context.Background(), currentClient(), jobID, interval, 300)
+	if err != nil {
+		return err
+	}
+	return writeOutput(cmd, done)
+}
+
+func writeTypedJobResultOrWait(cmd *cobra.Command, job types.Job) error {
+	wait, err := shouldWaitForJob(cmd)
+	if err != nil {
+		return err
+	}
+	if !wait {
+		return writeOutput(cmd, job)
+	}
+	if job.JobID == "" {
+		return output.NewError("CLI_ERROR", "作业响应中缺少 job_id", nil)
+	}
+
+	interval, err := intervalDuration(cmd, "interval")
+	if err != nil {
+		return err
+	}
+	done, err := poll.WaitForJob(context.Background(), currentClient(), job.JobID, interval, 300)
 	if err != nil {
 		return err
 	}

@@ -187,6 +187,23 @@ func newArtifactsCmd() *cobra.Command {
 		Short: "上传本地文件并创建一个带稳定 URL 的可复用工件",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRunMode(cmd) {
+				return writeDryRunPreview(cmd, "artifacts.upload", map[string]any{
+					"path": args[0],
+					"request": map[string]any{
+						"method": "POST",
+						"path":   "/artifacts/upload",
+						"body": map[string]any{
+							"path":          args[0],
+							"filename":      flagString(cmd, "filename"),
+							"content_type":  flagString(cmd, "content-type"),
+							"role":          flagString(cmd, "role"),
+							"metadata_json": flagString(cmd, "metadata-json"),
+							"visibility":    flagString(cmd, "visibility"),
+						},
+					},
+				})
+			}
 			result, err := uploadArtifact(context.Background(), args[0], artifactUploadOptions{
 				Filename:     flagString(cmd, "filename"),
 				ContentType:  flagString(cmd, "content-type"),

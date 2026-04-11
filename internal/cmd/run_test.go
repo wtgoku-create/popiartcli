@@ -34,6 +34,12 @@ func TestRunPassesImageParametersThroughUnchanged(t *testing.T) {
 		if input["resolution"] != "1024x1820" {
 			t.Fatalf("expected resolution to pass through, got %#v", input["resolution"])
 		}
+		if input["image_url"] != "https://example.com/reference.png" {
+			t.Fatalf("expected image_url to pass through, got %#v", input["image_url"])
+		}
+		if input["reference_image_url"] != "https://example.com/reference-alias.png" {
+			t.Fatalf("expected reference_image_url to pass through, got %#v", input["reference_image_url"])
+		}
 		if _, exists := input["size"]; exists {
 			t.Fatalf("expected no injected size, got %#v", input["size"])
 		}
@@ -46,7 +52,7 @@ func TestRunPassesImageParametersThroughUnchanged(t *testing.T) {
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"run", "popiskill-image-img2img-basic-v1",
-		"--input", `{"prompt":"keep subject","aspect_ratio":"9:16","resolution":"1024x1820"}`,
+		"--input", `{"prompt":"keep subject","aspect_ratio":"9:16","resolution":"1024x1820","image_url":"https://example.com/reference.png","reference_image_url":"https://example.com/reference-alias.png"}`,
 	})
 
 	data, ok := resp["data"].(map[string]any)

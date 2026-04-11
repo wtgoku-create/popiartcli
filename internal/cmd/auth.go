@@ -31,7 +31,10 @@ func newAuthCmd() *cobra.Command {
 			}
 
 			if key == "" {
-				value, err := promptPassword("Key: ")
+				if nonInteractiveMode(cmd) {
+					return invalidFlagValueError("--key", "", "当前处于 --non-interactive 模式，请显式传入 --key")
+				}
+				value, err := promptPasswordTo(cmd.ErrOrStderr(), "Key: ")
 				if err != nil {
 					return output.NewError("CLI_ERROR", "读取 key 失败", map[string]any{"details": err.Error()})
 				}

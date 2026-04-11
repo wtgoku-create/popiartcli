@@ -9,19 +9,23 @@ import (
 
 func TestTopLevelCommandHelpSmoke(t *testing.T) {
 	commands := []string{
+		"audio",
 		"artifacts",
 		"auth",
 		"bootstrap",
 		"budget",
 		"completion",
+		"image",
 		"jobs",
 		"mcp",
 		"media",
 		"models",
 		"project",
 		"run",
+		"setup",
 		"skills",
 		"update",
+		"video",
 	}
 
 	for _, name := range commands {

@@ -27,7 +27,7 @@ func buildVersion() string {
 func main() {
 	root := cmd.NewRootCmd(buildVersion())
 	if err := root.Execute(); err != nil {
-		output.WriteError(os.Stderr, err)
-		os.Exit(1)
+		output.WriteErrorWithMode(os.Stderr, err, output.WantsPlainOutput(os.Args[1:]))
+		os.Exit(output.ExitCode(err))
 	}
 }

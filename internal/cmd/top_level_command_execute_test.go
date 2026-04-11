@@ -119,6 +119,39 @@ func TestBootstrapCommandDiscoverableFlow(t *testing.T) {
 	}
 }
 
+func TestSetupCommandFlow(t *testing.T) {
+	configDir := t.TempDir()
+	codexHome := filepath.Join(t.TempDir(), "codex-home")
+
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("CODEX_HOME", codexHome)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"setup",
+		"--agent", "codex",
+		"--completion", "zsh",
+		"--key", "pk-setup",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["default_skills_profile"] != "default" {
+		t.Fatalf("unexpected default_skills_profile: %#v", data["default_skills_profile"])
+	}
+	if data["runtime_baseline"] != "runtime-baseline" {
+		t.Fatalf("unexpected runtime_baseline: %#v", data["runtime_baseline"])
+	}
+	for _, path := range []string{
+		filepath.Join(configDir, "bootstrap.json"),
+		filepath.Join(configDir, "agents", "codex", "env.sh"),
+		filepath.Join(codexHome, "config.toml"),
+		filepath.Join(codexHome, "skills", "popiart", "SKILL.md"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected setup asset %s to exist: %v", path, err)
+		}
+	}
+}
+
 func TestBudgetCommands(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-budget")

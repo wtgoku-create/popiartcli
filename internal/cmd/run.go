@@ -10,7 +10,6 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/input"
 	"github.com/wtgoku-create/popiartcli/internal/localskills"
 	"github.com/wtgoku-create/popiartcli/internal/output"
-	"github.com/wtgoku-create/popiartcli/internal/poll"
 	"github.com/wtgoku-create/popiartcli/internal/seed"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
@@ -21,6 +20,10 @@ func newRunCmd() *cobra.Command {
 		Short: "调用一个技能并返回一个 job_id",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateJobExecutionFlags(cmd); err != nil {
+				return err
+			}
+
 			payload, err := input.Resolve(flagString(cmd, "input"))
 			if err != nil {
 				return err
@@ -29,6 +32,18 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			body := buildSkillJobBodyAny(resolvedSkillID, payload, flagString(cmd, "priority"), flagString(cmd, "idempotency-key"))
+			if dryRunMode(cmd) {
+				return writeDryRunPreview(cmd, "jobs.create", map[string]any{
+					"skill_id": resolvedSkillID,
+					"request": map[string]any{
+						"method": "POST",
+						"path":   "/jobs",
+						"body":   body,
+					},
+				})
+			}
+
 			if job, handled, err := maybeRunOfficialRuntimeDirectFallbackJob(context.Background(), resolvedSkillID, payload, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key")); handled {
 				if err != nil {
 					return err
@@ -36,42 +51,11 @@ func newRunCmd() *cobra.Command {
 				return writeJobResultOrWait(cmd, job)
 			}
 
-			cfg := config.Load()
-			body := map[string]any{
-				"skill_id": resolvedSkillID,
-				"input":    payload,
-				"priority": flagString(cmd, "priority"),
-			}
-			if cfg.Project != "" {
-				body["project_id"] = cfg.Project
-			}
-			if value := flagString(cmd, "idempotency-key"); value != "" {
-				body["idempotency_key"] = value
-			}
-
 			var job types.Job
 			if err := currentClient().PostJSON(context.Background(), "/jobs", body, &job); err != nil {
 				return err
 			}
-
-			if !flagBool(cmd, "wait") {
-				return writeOutput(cmd, job)
-			}
-
-			jobID := job.JobID
-			if jobID == "" {
-				return output.NewError("CLI_ERROR", "作业响应中缺少 job_id", nil)
-			}
-
-			interval, err := intervalDuration(cmd, "interval")
-			if err != nil {
-				return err
-			}
-			done, err := poll.WaitForJob(context.Background(), currentClient(), jobID, interval, 300)
-			if err != nil {
-				return err
-			}
-			return writeOutput(cmd, done)
+			return writeTypedJobResultOrWait(cmd, job)
 		},
 	}
 

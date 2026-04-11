@@ -48,19 +48,21 @@ brew upgrade wtgoku-create/popi/popiart
 如果你想马上生成 agent 引导文件和 shell completion：
 
 ```sh
-popiart bootstrap --agent codex --completion zsh --with-default-skills
+popiart setup --agent codex --completion zsh
 ```
 
 如果你希望安装完成后，对应 agent 立刻能在原生 MCP / skill 目录中发现 `PopiArt`：
 
 ```sh
-popiart bootstrap --agent codex --discoverable
+popiart setup --agent codex
 ```
 
-`--discoverable` 现在会同时写两类产物：
+`popiart setup --agent codex` 默认会同时写两类产物：
 
 - `~/.popiart/agents/<agent>/` 下的 bootstrap 资产
 - agent 原生配置和原生 skill 目录
+
+如果你需要细粒度控制，仍然可以继续使用 `popiart bootstrap --discoverable`。
 
 ### 2.2 官方安装脚本
 
@@ -80,11 +82,11 @@ curl -fsSL https://gitee.com/wattx/popiartcli/raw/main/install.sh | sh -s -- --s
 popiart update --source gitee
 ```
 
-安装 CLI，并继续做 bootstrap：
+安装 CLI，并继续做默认初始化：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | \
-  sh -s -- --bootstrap --agent codex --completion zsh --with-default-skills
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+popiart setup --agent codex --completion zsh
 ```
 
 安装指定版本：
@@ -167,11 +169,11 @@ curl -fsSL https://gitee.com/wattx/popiartcli/raw/main/install.sh | sh -s -- --s
 popiart update --source gitee
 ```
 
-安装 CLI 并 bootstrap：
+安装 CLI 并做默认初始化：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | \
-  sh -s -- --bootstrap --agent claude-code --completion bash --with-default-skills
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+popiart setup --agent claude-code --completion bash
 ```
 
 你也可以显式指定安装目录：

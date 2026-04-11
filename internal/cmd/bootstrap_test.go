@@ -104,6 +104,9 @@ func TestWriteAgentSkillWrapperCreatesWrapper(t *testing.T) {
 	if !strings.Contains(text, "popiskill-image-img2img-basic-v1") {
 		t.Fatalf("expected runtime baseline skill in wrapper, got %q", text)
 	}
+	if !strings.Contains(text, "--output json --quiet --non-interactive") {
+		t.Fatalf("expected agent protocol flags in wrapper, got %q", text)
+	}
 }
 
 func TestWriteNativeAgentMCPConfigFileCreatesCodexConfig(t *testing.T) {

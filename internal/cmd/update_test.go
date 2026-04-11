@@ -22,6 +22,18 @@ func TestNewRootCmdIncludesUpdate(t *testing.T) {
 	}
 }
 
+func TestNewRootCmdIncludesSetup(t *testing.T) {
+	root := NewRootCmd("0.1.0")
+
+	found, _, err := root.Find([]string{"setup"})
+	if err != nil {
+		t.Fatalf("Find(setup) returned error: %v", err)
+	}
+	if found == nil || found.Name() != "setup" {
+		t.Fatalf("expected setup command, got %#v", found)
+	}
+}
+
 func TestShouldPersistGlobalOverridesSkipsUpdate(t *testing.T) {
 	if shouldPersistGlobalOverrides(newUpdateCmd()) {
 		t.Fatal("expected update command to skip config persistence")

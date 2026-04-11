@@ -11,11 +11,17 @@ import (
 )
 
 func flagString(cmd *cobra.Command, name string) string {
+	if cmd == nil {
+		return ""
+	}
 	value, _ := cmd.Flags().GetString(name)
 	return value
 }
 
 func flagBool(cmd *cobra.Command, name string) bool {
+	if cmd == nil {
+		return false
+	}
 	value, _ := cmd.Flags().GetBool(name)
 	return value
 }
