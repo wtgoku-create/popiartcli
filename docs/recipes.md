@@ -165,7 +165,7 @@ popiart video generate \
 ## Recipe: text-to-speech
 
 ```sh
-popiart audio tts \
+popiart speech synthesize \
   --text "今天我们来做一个更适合 agent 调用的 CLI。" \
   --voice narrator_female \
   --format mp3 \
@@ -177,9 +177,41 @@ popiart audio tts \
 也可以从文件读取：
 
 ```sh
-popiart audio tts \
+popiart speech synthesize \
   --text-file ./speech.txt \
   --format mp3 \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+## Recipe: MiniMax music generate
+
+```sh
+popiart music generate \
+  --prompt "Upbeat pop" \
+  --lyrics "La la la" \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+纯音乐：
+
+```sh
+popiart music "Warm morning folk" \
+  --instrumental \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+从歌词文件读取：
+
+```sh
+popiart music generate \
+  --prompt "Upbeat summer pop" \
+  --lyrics-file ./lyrics.txt \
   --output json \
   --quiet \
   --non-interactive

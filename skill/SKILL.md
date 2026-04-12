@@ -83,7 +83,7 @@ For an explicit command name, `popiart video img2video ...` is equivalent to `po
 ### Text-to-speech
 
 ```bash
-popiart audio tts \
+popiart speech synthesize \
   --text "今天我们来做一个更适合 agent 调用的 CLI。" \
   --voice narrator_female \
   --format mp3 \
@@ -92,7 +92,30 @@ popiart audio tts \
   --non-interactive
 ```
 
-Maps to: `popiskill-audio-tts-multimodel-v1`
+Default model: `speech-2.8-hd` via direct model infer
+
+### Music generation
+
+```bash
+popiart music generate \
+  --prompt "Upbeat pop" \
+  --lyrics "La la la" \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Or instrumental:
+
+```bash
+popiart music "Warm morning folk" \
+  --instrumental \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Default model: `music-2.6-free` via direct model infer
 
 ## Platform Commands
 

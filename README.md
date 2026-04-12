@@ -59,7 +59,8 @@ popiart video generate \
 - `popiart image img2img`
 - `popiart video generate`
 - `popiart video img2video`
-- `popiart audio tts`
+- `popiart speech synthesize`
+- `popiart music generate`
 
 它们是面向新用户和 agent 的 opinionated façade，内部仍然映射到官方 runtime skill，不改变底层架构。
 
@@ -89,7 +90,8 @@ popiart image generate --prompt "..."
 popiart image img2img --image ./source.png --prompt "..."
 popiart video generate --image ./source.png --prompt "..."
 popiart video img2video --image ./source.png --prompt "..."
-popiart audio tts --text "..."
+popiart speech synthesize --text "..."
+popiart music generate --prompt "..." --lyrics "..."
 ```
 
 它们当前分别映射到：
@@ -98,7 +100,8 @@ popiart audio tts --text "..."
 - `popiskill-image-img2img-basic-v1`
 - `popiskill-video-image2video-basic-v1`
 - `popiskill-video-image2video-basic-v1`
-- `popiskill-audio-tts-multimodel-v1`
+- `speech-2.8-hd` (MiniMax direct infer by default)
+- `music-2.6-free` (MiniMax direct infer by default)
 
 底层平台面仍然保留：
 
@@ -131,6 +134,8 @@ popiart bootstrap ...
   上传本地文件成为可复用 artifact，或者把 job 产物拉回本地。常用的是 `artifacts upload`、`artifacts pull`、`artifacts pull-all`。
 - `popiart media ...`
   把本地文件变成稳定媒体 URL，适合后续 `img2img` / `img2video` 直接消费稳定地址。
+- `popiart export-schema ...`
+  导出 CLI 自身命令的 tool JSON schema，适合动态注册到 Anthropic / OpenAI 等 agent 框架。
 - `popiart mcp ...`
   暴露 MCP server、打印 MCP config、做 discoverability / runtime doctor 诊断。
 - `popiart bootstrap ...`
@@ -166,6 +171,58 @@ popiart artifacts pull-all <job-id> \
   --quiet \
   --non-interactive
 ```
+
+## CLI Tool Schema 导出
+
+如果你要把 `popiart` 的 CLI 命令动态注册为 agent tools，而不是手写 schema，可以直接导出 CLI 自身的命令结构：
+
+```sh
+# 导出所有可执行 leaf 命令的 Anthropic-compatible tool schema
+popiart export-schema --format anthropic
+
+# 导出所有命令的 OpenAI-compatible function tool schema
+popiart export-schema --format openai
+
+# 只导出一个命令
+popiart export-schema --command "video generate" --format openai
+popiart export-schema --command "models route-override set" --format generic
+```
+
+这里导出的不是远程 `skills schema`，而是 **CLI 自身命令** 的结构。
+
+当前支持：
+
+- `anthropic`
+- `openai`
+- `generic`
+
+这个命令会直接输出原始 JSON schema，不包在 `{ ok, data }` envelope 里，方便直接喂给工具注册逻辑。
+
+## MiniMax Music / Speech
+
+当前能力面里，`music` 和 `speech` 暂时按 MiniMax 风格直接实现：
+
+```sh
+popiart music generate \
+  --prompt "Upbeat pop" \
+  --lyrics "La la la" \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart speech synthesize \
+  --text "Hello world" \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+约定：
+
+- `music` 默认模型：`music-2.6-free`
+- `speech` / `audio tts` 默认模型：`speech-2.8-hd`
+- 显式传 `--model` 时，会改为本次请求 direct model override
+- 这两条命令当前走 `models infer`，不是远程 `skills schema`
 
 ## 可组合 Recipes
 
