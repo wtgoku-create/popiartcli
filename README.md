@@ -59,7 +59,8 @@ popiart video generate \
 - `popiart image img2img`
 - `popiart video generate`
 - `popiart video img2video`
-- `popiart audio tts`
+- `popiart speech synthesize`
+- `popiart music generate`
 
 它们是面向新用户和 agent 的 opinionated façade，内部仍然映射到官方 runtime skill，不改变底层架构。
 
@@ -89,7 +90,8 @@ popiart image generate --prompt "..."
 popiart image img2img --image ./source.png --prompt "..."
 popiart video generate --image ./source.png --prompt "..."
 popiart video img2video --image ./source.png --prompt "..."
-popiart audio tts --text "..."
+popiart speech synthesize --text "..."
+popiart music generate --prompt "..." --lyrics "..."
 ```
 
 它们当前分别映射到：
@@ -98,7 +100,8 @@ popiart audio tts --text "..."
 - `popiskill-image-img2img-basic-v1`
 - `popiskill-video-image2video-basic-v1`
 - `popiskill-video-image2video-basic-v1`
-- `popiskill-audio-tts-multimodel-v1`
+- `speech-2.8-hd` (MiniMax direct infer by default)
+- `music-2.6-free` (MiniMax direct infer by default)
 
 底层平台面仍然保留：
 
@@ -117,6 +120,110 @@ popiart bootstrap ...
 - 新用户和 agent 先用意图命令面
 - 平台集成、排障和精细控制再下沉到平台命令面
 
+## 平台命令面
+
+如果你需要更底层、更可组合的控制，下面这些命令面仍然是 `popiart` 的核心平台接口：
+
+- `popiart skills ...`
+  用来发现、查看和理解 skill 契约。常用的是 `skills list`、`skills get`、`skills schema`。
+- `popiart run ...`
+  直接按 `skill_id` 提交 runtime job，适合 agent 先拿 schema 再自行构造 `--input` 的场景。
+- `popiart jobs ...`
+  查询、等待、取消和跟踪 job。常用的是 `jobs get`、`jobs wait`、`jobs logs`。
+- `popiart artifacts ...`
+  上传本地文件成为可复用 artifact，或者把 job 产物拉回本地。常用的是 `artifacts upload`、`artifacts pull`、`artifacts pull-all`。
+- `popiart media ...`
+  把本地文件变成稳定媒体 URL，适合后续 `img2img` / `img2video` 直接消费稳定地址。
+- `popiart export-schema ...`
+  导出 CLI 自身命令的 tool JSON schema，适合动态注册到 Anthropic / OpenAI 等 agent 框架。
+- `popiart mcp ...`
+  暴露 MCP server、打印 MCP config、做 discoverability / runtime doctor 诊断。
+- `popiart bootstrap ...`
+  细粒度生成 bootstrap 资产，适合维护者或需要精确控制 agent 引导文件时使用。
+
+一条常见的“平台命令面”链路是：
+
+```sh
+popiart skills schema popiskill-image-img2img-basic-v1 \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart artifacts upload ./source.png \
+  --role source \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart run popiskill-image-img2img-basic-v1 \
+  --input @params.json \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart jobs wait <job-id> \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart artifacts pull-all <job-id> \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+## CLI Tool Schema 导出
+
+如果你要把 `popiart` 的 CLI 命令动态注册为 agent tools，而不是手写 schema，可以直接导出 CLI 自身的命令结构：
+
+```sh
+# 导出所有可执行 leaf 命令的 Anthropic-compatible tool schema
+popiart export-schema --format anthropic
+
+# 导出所有命令的 OpenAI-compatible function tool schema
+popiart export-schema --format openai
+
+# 只导出一个命令
+popiart export-schema --command "video generate" --format openai
+popiart export-schema --command "models route-override set" --format generic
+```
+
+这里导出的不是远程 `skills schema`，而是 **CLI 自身命令** 的结构。
+
+当前支持：
+
+- `anthropic`
+- `openai`
+- `generic`
+
+这个命令会直接输出原始 JSON schema，不包在 `{ ok, data }` envelope 里，方便直接喂给工具注册逻辑。
+
+## MiniMax Music / Speech
+
+当前能力面里，`music` 和 `speech` 暂时按 MiniMax 风格直接实现：
+
+```sh
+popiart music generate \
+  --prompt "Upbeat pop" \
+  --lyrics "La la la" \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart speech synthesize \
+  --text "Hello world" \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+约定：
+
+- `music` 默认模型：`music-2.6-free`
+- `speech` / `audio tts` 默认模型：`speech-2.8-hd`
+- 显式传 `--model` 时，会改为本次请求 direct model override
+- 这两条命令当前走 `models infer`，不是远程 `skills schema`
+
 ## 可组合 Recipes
 
 标准 recipes 在 [docs/recipes.md](./docs/recipes.md)，其中包括：
@@ -128,33 +235,69 @@ popiart bootstrap ...
 - stdout / stderr 约定
 - 配置优先级
 
-## 安装
+## 按平台安装
 
-完整安装与平台说明见 [docs/install-and-usage.md](./docs/install-and-usage.md)。
+完整安装与平台说明见 [docs/install-and-usage.md](./docs/install-and-usage.md)。如果你只想快速开始，可以直接按下面的平台片段执行。
 
-最常见的两条路径：
+### macOS
+
+推荐 Homebrew：
 
 ```sh
-# 终端用户
 brew tap wtgoku-create/popi
 brew install wtgoku-create/popi/popiart
 
-# 安装后给 agent 一键初始化
+# 给 Codex 做默认初始化
 popiart setup --agent codex --completion zsh
 ```
 
+如果你更喜欢脚本安装：
+
 ```sh
-# 脚本安装
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
 popiart setup --agent codex --completion zsh
 ```
 
-Windows PowerShell：
+### Linux
+
+推荐脚本安装：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+
+# 例如给 Claude Code 做默认初始化
+popiart setup --agent claude-code --completion bash
+```
+
+如果你的 Linux 环境已经装了 Homebrew，也可以：
+
+```sh
+brew tap wtgoku-create/popi
+brew install wtgoku-create/popi/popiart
+```
+
+### Windows
+
+推荐 PowerShell 安装脚本：
 
 ```powershell
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
+
+# 给 Codex 做默认初始化
 popiart setup --agent codex --completion powershell
 ```
+
+### 安装后建议做什么
+
+无论在哪个平台，安装完成后建议按这个顺序做：
+
+```sh
+popiart setup --agent codex
+popiart auth login --key <product-key>
+popiart image generate --prompt "hello" --output json --quiet --non-interactive
+```
+
+如果你需要更细的安装方式，比如 release 压缩包、国内镜像、源码安装、Windows 参数化安装，直接看 [docs/install-and-usage.md](./docs/install-and-usage.md)。
 
 ## 错误与退出码
 

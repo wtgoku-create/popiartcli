@@ -9,6 +9,7 @@ func TestExitCodeMapping(t *testing.T) {
 	}{
 		{code: "VALIDATION_ERROR", want: 2},
 		{code: "NOT_FOUND", want: 2},
+		{code: "CAPABILITY_UNAVAILABLE", want: 2},
 		{code: "UNAUTHENTICATED", want: 3},
 		{code: "RATE_LIMITED", want: 4},
 		{code: "POLL_TIMEOUT", want: 5},
