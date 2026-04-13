@@ -670,7 +670,7 @@ func hasImageSourceInput(cmd *cobra.Command) bool {
 }
 
 func resolveImageTransformInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
-	payload, preview, err := resolveImageSourceInput(cmd)
+	payload, preview, err := resolveImageTransformSourceInput(cmd)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -686,6 +686,75 @@ func resolveImageTransformInput(cmd *cobra.Command) (map[string]any, map[string]
 	putString(payload, "notes", flagString(cmd, "notes"))
 	putFloat(payload, "strength", flagFloat64(cmd, "strength"))
 	putFloat(payload, "seed", flagFloat64(cmd, "seed"))
+	return payload, preview, nil
+}
+
+func resolveImageTransformSourceInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
+	sourceArtifactID := strings.TrimSpace(flagString(cmd, "source-artifact-id"))
+	image := strings.TrimSpace(flagString(cmd, "image"))
+
+	switch {
+	case sourceArtifactID == "" && image == "":
+		return nil, nil, invalidFlagValueError("--image", "", "请传入 --image 或 --source-artifact-id")
+	case sourceArtifactID != "" && image != "":
+		return nil, nil, conflictingAgentFlagsError("image", "source-artifact-id")
+	}
+
+	payload := map[string]any{}
+	preview := map[string]any{}
+	if sourceArtifactID != "" {
+		payload["source_artifact_id"] = sourceArtifactID
+		preview["source"] = map[string]any{
+			"kind":  "artifact",
+			"value": sourceArtifactID,
+		}
+		return payload, preview, nil
+	}
+
+	if looksLikeURL(image) || looksLikeDataURL(image) {
+		payload["image"] = image
+		preview["source"] = map[string]any{
+			"kind":  "image",
+			"value": image,
+		}
+		return payload, preview, nil
+	}
+
+	if _, err := os.Stat(image); err != nil {
+		return nil, nil, output.NewError("CLI_ERROR", "读取源图失败", map[string]any{
+			"path":    image,
+			"details": err.Error(),
+		})
+	}
+	if dryRunMode(cmd) {
+		payload["source_artifact_id"] = "(from artifacts.upload)"
+		preview["preflight"] = map[string]any{
+			"method": "POST",
+			"path":   "/artifacts/upload",
+			"body": map[string]any{
+				"path":       image,
+				"role":       "source",
+				"visibility": "unlisted",
+			},
+		}
+		return payload, preview, nil
+	}
+
+	uploaded, err := uploadArtifact(context.Background(), image, artifactUploadOptions{
+		Role:       "source",
+		Visibility: "unlisted",
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	artifactID := stringValue(uploaded["artifact_id"])
+	if artifactID == "" {
+		return nil, nil, output.NewError("CLI_ERROR", "上传源图后缺少 artifact_id", map[string]any{
+			"path": image,
+		})
+	}
+	payload["source_artifact_id"] = artifactID
+	preview["uploaded_source_artifact"] = uploaded
 	return payload, preview, nil
 }
 
@@ -810,6 +879,11 @@ func resolveOptionalTextInput(cmd *cobra.Command, valueFlag, fileFlag string) (s
 func looksLikeURL(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	return strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://")
+}
+
+func looksLikeDataURL(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(value, "data:image/")
 }
 
 func putString(payload map[string]any, key, value string) {

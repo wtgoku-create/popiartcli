@@ -93,7 +93,7 @@ MEDIA_JSON=$(popiart media upload ./poster.png \
 MEDIA_URL=$(printf '%s' "$MEDIA_JSON" | jq -r '.data.url')
 
 popiart run popiskill-image-img2img-basic-v1 \
-  --input "{\"image_url\":\"$MEDIA_URL\",\"prompt\":\"turn this into a glossy product poster\"}" \
+  --input "{\"image\":\"$MEDIA_URL\",\"prompt\":\"turn this into a glossy product poster\"}" \
   --output json \
   --quiet \
   --non-interactive
