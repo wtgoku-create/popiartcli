@@ -214,6 +214,12 @@ func TestImageTransformAliasUsesOfficialRuntimeJob(t *testing.T) {
 		if input["image"] != "https://example.com/source.png" {
 			t.Fatalf("unexpected image: %#v", input["image"])
 		}
+		if input["image_url"] != "https://example.com/source.png" {
+			t.Fatalf("unexpected image_url: %#v", input["image_url"])
+		}
+		if input["reference_image_url"] != "https://example.com/source.png" {
+			t.Fatalf("unexpected reference_image_url: %#v", input["reference_image_url"])
+		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_transform_1","status":"pending"}}`)
 	}))
@@ -229,6 +235,53 @@ func TestImageTransformAliasUsesOfficialRuntimeJob(t *testing.T) {
 	data := resp["data"].(map[string]any)
 	if data["job_id"] != "job_transform_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestImageTransformModelOverrideCanonicalizesImageForModelsInfer(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/models/infer" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["model_id"] != "seedream-4-5-251128" {
+			t.Fatalf("unexpected model_id: %#v", body["model_id"])
+		}
+		input := body["input"].(map[string]any)
+		if input["image"] != "https://example.com/source.png" {
+			t.Fatalf("unexpected image: %#v", input["image"])
+		}
+		if _, exists := input["image_url"]; exists {
+			t.Fatalf("did not expect image_url alias in direct infer payload: %#v", input["image_url"])
+		}
+		if _, exists := input["reference_image_url"]; exists {
+			t.Fatalf("did not expect reference_image_url alias in direct infer payload: %#v", input["reference_image_url"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_transform_override_1","status":"pending"}}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "transform",
+		"--image", "https://example.com/source.png",
+		"--prompt", "restyle it",
+		"--model", "seedream-4-5-251128",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_transform_override_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+	if data["execution_mode"] != "direct-model-override" {
+		t.Fatalf("unexpected execution_mode: %#v", data["execution_mode"])
 	}
 }
 

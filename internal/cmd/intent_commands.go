@@ -390,6 +390,10 @@ func executeSkillRun(cmd *cobra.Command, skillID string, payload map[string]any,
 	body := buildSkillJobBody(resolvedSkillID, payload, flagString(cmd, "priority"), flagString(cmd, "idempotency-key"))
 	if dryRunMode(cmd) {
 		if modelOverride != "" {
+			directInput, err := normalizeOfficialRuntimeDirectInput(resolvedSkillID, payload)
+			if err != nil {
+				return err
+			}
 			preview := map[string]any{
 				"skill_id":       resolvedSkillID,
 				"model_id":       modelOverride,
@@ -397,7 +401,7 @@ func executeSkillRun(cmd *cobra.Command, skillID string, payload map[string]any,
 				"request": map[string]any{
 					"method": "POST",
 					"path":   "/models/infer",
-					"body":   buildModelInferBody(modelOverride, payload, flagString(cmd, "priority"), flagString(cmd, "idempotency-key")),
+					"body":   buildModelInferBody(modelOverride, directInput, flagString(cmd, "priority"), flagString(cmd, "idempotency-key")),
 				},
 			}
 			for key, value := range extras {
@@ -420,7 +424,11 @@ func executeSkillRun(cmd *cobra.Command, skillID string, payload map[string]any,
 	}
 
 	if modelOverride != "" {
-		job, err := submitModelInferJob(context.Background(), modelOverride, payload, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key"))
+		directInput, err := normalizeOfficialRuntimeDirectInput(resolvedSkillID, payload)
+		if err != nil {
+			return err
+		}
+		job, err := submitModelInferJob(context.Background(), modelOverride, directInput, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key"))
 		if err != nil {
 			return err
 		}
@@ -713,6 +721,10 @@ func resolveImageTransformSourceInput(cmd *cobra.Command) (map[string]any, map[s
 
 	if looksLikeURL(image) || looksLikeDataURL(image) {
 		payload["image"] = image
+		// Keep the portable `image` field while also sending compatibility
+		// aliases so older server-side adapters can still resolve the source.
+		payload["image_url"] = image
+		payload["reference_image_url"] = image
 		preview["source"] = map[string]any{
 			"kind":  "image",
 			"value": image,

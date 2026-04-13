@@ -310,11 +310,31 @@ func officialRuntimeSkillNeedsDirectInferFallback(ctx context.Context, skillID s
 
 func normalizeOfficialRuntimeDirectInput(skillID string, payload map[string]any) (map[string]any, error) {
 	switch strings.TrimSpace(skillID) {
+	case officialImage2ImageSkillID:
+		return normalizeOfficialImage2ImageDirectInput(payload), nil
 	case officialImage2VideoSkillID:
 		return normalizeOfficialImage2VideoDirectInput(payload)
 	default:
 		return cloneMapAny(payload), nil
 	}
+}
+
+func normalizeOfficialImage2ImageDirectInput(payload map[string]any) map[string]any {
+	input := cloneMapAny(payload)
+	if input == nil {
+		input = map[string]any{}
+	}
+
+	if stringValue(input["image"]) == "" {
+		if alias := stringValue(input["image_url"]); alias != "" {
+			input["image"] = alias
+		} else if alias := stringValue(input["reference_image_url"]); alias != "" {
+			input["image"] = alias
+		}
+	}
+	delete(input, "image_url")
+	delete(input, "reference_image_url")
+	return input
 }
 
 func normalizeOfficialImage2VideoDirectInput(payload map[string]any) (map[string]any, error) {
