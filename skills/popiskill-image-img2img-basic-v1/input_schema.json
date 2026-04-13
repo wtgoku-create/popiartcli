@@ -9,13 +9,23 @@
       "type": "string",
       "description": "Preferred PopiArt artifact ID for the source image."
     },
+    "image": {
+      "type": [
+        "string",
+        "array"
+      ],
+      "description": "Reference image URL or Base64 string. Accepts one image string or multiple images for fusion when the route supports it.",
+      "items": {
+        "type": "string"
+      }
+    },
     "image_url": {
       "type": "string",
-      "description": "Fallback stable image URL when no source_artifact_id exists."
+      "description": "Compatibility alias for image when the caller still uses a stable image URL field."
     },
     "reference_image_url": {
       "type": "string",
-      "description": "Compatibility alias for image_url."
+      "description": "Compatibility alias for image."
     },
     "strength": {
       "type": "number",

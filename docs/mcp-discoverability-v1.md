@@ -121,6 +121,7 @@ Preferred input:
 
 Alternative source inputs:
 
+- `image`
 - `image_url`
 - `reference_image_url`
 

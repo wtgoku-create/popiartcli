@@ -40,6 +40,7 @@ Do not use it for:
 - `prompt`: the transformation intent
 - one image source:
   - `source_artifact_id`, or
+  - `image`, or
   - `image_url`, or
   - `reference_image_url`
 
@@ -55,10 +56,11 @@ Do not use it for:
 ## Workflow
 
 1. Prefer `source_artifact_id` when the source image already comes from PopiArt.
-2. Use `image_url` or `reference_image_url` only when the source already lives at a stable URL.
-3. Build the smallest valid JSON payload.
-4. Run the skill through `popiart`.
-5. Wait for completion and pull the output artifact if needed.
+2. Prefer `image` for URL or Base64 image inputs when the source does not already exist as a PopiArt artifact.
+3. Keep `image_url` and `reference_image_url` only as compatibility aliases.
+4. Build the smallest valid JSON payload.
+5. Run the skill through `popiart`.
+6. Wait for completion and pull the output artifact if needed.
 
 ## Command pattern
 
@@ -97,6 +99,7 @@ After the job finishes:
 ## Operating guidance
 
 - For local source files, upload first with `popiart artifacts upload ./source.png --role source`.
-- `reference_image_url` is a compatibility alias for `image_url`.
+- `image` is the preferred portable field for URL or Base64 image inputs.
+- `reference_image_url` and `image_url` are compatibility aliases for `image`.
 - If no source image exists yet, switch to `popiskill-image-text2image-basic-v1`.
 - If the user wants motion from the result, switch to `popiskill-video-image2video-basic-v1`.

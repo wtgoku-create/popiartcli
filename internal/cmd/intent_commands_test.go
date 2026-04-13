@@ -211,8 +211,8 @@ func TestImageTransformAliasUsesOfficialRuntimeJob(t *testing.T) {
 			t.Fatalf("unexpected skill_id: %#v", body["skill_id"])
 		}
 		input := body["input"].(map[string]any)
-		if input["image_url"] != "https://example.com/source.png" {
-			t.Fatalf("unexpected image_url: %#v", input["image_url"])
+		if input["image"] != "https://example.com/source.png" {
+			t.Fatalf("unexpected image: %#v", input["image"])
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_transform_1","status":"pending"}}`)
