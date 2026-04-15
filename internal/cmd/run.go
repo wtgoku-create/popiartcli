@@ -28,6 +28,7 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			normalizeImagePayloadOptions(payload)
 			resolvedSkillID, err := resolveRunnableSkillID(context.Background(), args[0])
 			if err != nil {
 				return err

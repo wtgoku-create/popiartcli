@@ -355,6 +355,9 @@ func normalizeOfficialImage2VideoDirectInput(payload map[string]any) (map[string
 	}
 
 	if stringValue(input["source_artifact_id"]) == "" && stringValue(input["image_url"]) == "" {
+		if stringValue(input["prompt"]) != "" {
+			return input, nil
+		}
 		return nil, output.NewError("VALIDATION_ERROR", "image2video 需要 source_artifact_id 或 image_url", map[string]any{
 			"skill_id": officialImage2VideoSkillID,
 			"hint":     "先上传图片得到 artifact_id，或直接传 image_url / reference_image_url",

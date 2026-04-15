@@ -53,6 +53,40 @@ func TestImageGenerateCommandSubmitsOfficialRuntimeJob(t *testing.T) {
 	}
 }
 
+func TestImageGenerateNormalizesAspectRatioFlag(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/jobs" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		input := body["input"].(map[string]any)
+		if input["aspect_ratio"] != "4:5" {
+			t.Fatalf("unexpected aspect_ratio: %#v", input["aspect_ratio"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_image_generate_ratio_1","status":"pending"}}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "generate",
+		"--prompt", "hero poster",
+		"--aspect-ratio", "4x5",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_image_generate_ratio_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
 func TestImageGenerateModelOverrideUsesModelsInfer(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
