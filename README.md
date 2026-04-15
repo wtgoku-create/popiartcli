@@ -198,9 +198,17 @@ popiart export-schema --command "models route-override set" --format generic
 
 这个命令会直接输出原始 JSON schema，不包在 `{ ok, data }` envelope 里，方便直接喂给工具注册逻辑。
 
-## MiniMax Music / Speech
+## MiniMax Support
 
-当前能力面里，`music` 和 `speech` 暂时按 MiniMax 风格直接实现：
+当前能力面里，MiniMax 相关支持分成 3 组：
+
+- `music` / `speech`
+  - 通过 `models infer` 直连 MiniMax 音乐与语音模型
+- `image-01` / `image-01-live`
+  - 已在测试环境验证 `popiart image generate` / `popiart image img2img` 可以通过服务端链路成功出图
+- Hailuo / T2V / I2V / S2V 视频模型
+  - 已在测试环境验证 `MiniMax-Hailuo-2.3` 文生视频、图生视频，以及 `MiniMax-Hailuo-02` 首尾帧视频可以成功提交并产出视频
+  - `S2V-01` 已验证能通过 `popiart` 正确提交主体参考视频任务
 
 ```sh
 popiart music generate \
@@ -223,6 +231,33 @@ popiart speech synthesize \
 - `speech` / `audio tts` 默认模型：`speech-2.8-hd`
 - 显式传 `--model` 时，会改为本次请求 direct model override
 - 这两条命令当前走 `models infer`，不是远程 `skills schema`
+
+MiniMax 图片 / 视频更推荐显式指定模型：
+
+```sh
+popiart image generate \
+  --model image-01 \
+  --prompt "A watercolor cat portrait" \
+  --aspect-ratio 4:3 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart image img2img \
+  --model image-01 \
+  --image https://example.com/reference.jpg \
+  --prompt "Turn this into a poster-style portrait" \
+  --aspect-ratio 3:4 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+
+popiart models infer MiniMax-Hailuo-2.3 \
+  --input '{"prompt":"A person picks up a book and reads it quietly.","duration":6,"size":"1080P"}' \
+  --wait
+```
 
 ## 可组合 Recipes
 

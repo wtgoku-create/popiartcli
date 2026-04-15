@@ -93,17 +93,17 @@ popiart setup --agent codex --completion zsh
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | \
-  env VERSION=v0.3.4 sh
+  env VERSION=v0.3.7 sh
 
 # 或者在已安装后更新到指定版本
-popiart update --version v0.3.4
+popiart update --version v0.3.7
 ```
 
 如果你希望显式指定 Gitee 仓库主页或 tag 页，也可以：
 
 ```sh
 popiart update --repo https://gitee.com/wattx/popiartcli
-popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.4
+popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.7
 ```
 
 脚本会优先尝试：
@@ -118,7 +118,7 @@ popiart update --repo https://gitee.com/wattx/popiartcli/releases/tag/v0.3.4
 ### 2.3 GitHub Releases 手动安装
 
 ```sh
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.2/popiart_0.3.2_darwin_arm64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.7/popiart_0.3.7_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
@@ -126,7 +126,7 @@ install -m 0755 popiart /usr/local/bin/popiart
 国内镜像：
 
 ```sh
-curl -fsSL https://gitee.com/wattx/popiartcli/releases/download/v0.3.2/popiart_0.3.2_darwin_arm64.tar.gz -o popiart.tar.gz
+curl -fsSL https://gitee.com/wattx/popiartcli/releases/download/v0.3.7/popiart_0.3.7_darwin_arm64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart /usr/local/bin/popiart
 ```
@@ -197,7 +197,7 @@ brew install wtgoku-create/popi/popiart
 amd64 示例：
 
 ```sh
-curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.2/popiart_0.3.2_linux_amd64.tar.gz -o popiart.tar.gz
+curl -fsSL https://github.com/wtgoku-create/popiartcli/releases/download/v0.3.7/popiart_0.3.7_linux_amd64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart "$HOME/.local/bin/popiart"
 ```
@@ -205,7 +205,7 @@ install -m 0755 popiart "$HOME/.local/bin/popiart"
 国内镜像：
 
 ```sh
-curl -fsSL https://gitee.com/wattx/popiartcli/releases/download/v0.3.2/popiart_0.3.2_linux_amd64.tar.gz -o popiart.tar.gz
+curl -fsSL https://gitee.com/wattx/popiartcli/releases/download/v0.3.7/popiart_0.3.7_linux_amd64.tar.gz -o popiart.tar.gz
 tar -xzf popiart.tar.gz
 install -m 0755 popiart "$HOME/.local/bin/popiart"
 ```
@@ -251,7 +251,7 @@ popiart update --source gitee
 安装指定版本：
 
 ```powershell
-$env:VERSION="v0.3.2"
+$env:VERSION="v0.3.7"
 irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 | iex
 ```
 
@@ -276,7 +276,7 @@ irm https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.ps1 
 ### 4.2 GitHub Releases 手动安装
 
 ```powershell
-$version = "0.3.4"
+$version = "0.3.7"
 $zip = "popiart_${version}_windows_amd64.zip"
 Invoke-WebRequest "https://github.com/wtgoku-create/popiartcli/releases/download/v$version/$zip" -OutFile $zip
 Expand-Archive $zip -DestinationPath .
@@ -287,7 +287,7 @@ Copy-Item .\popiart.exe "$env:LOCALAPPDATA\Programs\popiart\bin\popiart.exe" -Fo
 国内镜像：
 
 ```powershell
-$version = "0.3.4"
+$version = "0.3.7"
 $zip = "popiart_${version}_windows_amd64.zip"
 Invoke-WebRequest "https://gitee.com/wattx/popiartcli/releases/download/v$version/$zip" -OutFile $zip
 Expand-Archive $zip -DestinationPath .

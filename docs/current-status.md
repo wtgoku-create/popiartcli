@@ -136,10 +136,21 @@ Validated server-side `img2img` route adapters include:
 
 - `gemini-3-pro-image-preview`
 - `seedream-4-5-251128`
+- `image-01`
 
 Validated test-environment `image2video` routing currently includes:
 
 - `video.image2video -> viduq2-pro-fast`
+
+Validated test-environment MiniMax image/video routing currently includes:
+
+- `image-01` text-to-image
+- `image-01` img2img
+- `image-01-live` text-to-image with `style`
+- `MiniMax-Hailuo-2.3` text-to-video
+- `MiniMax-Hailuo-2.3` image-to-video
+- `MiniMax-Hailuo-02` start-end video
+- `S2V-01` subject-reference video submission
 
 The CLI does not guarantee those provider-specific adapters by itself; they were validated against a deployed `popiartServer` plus `PopiNewAPI` environment.
 

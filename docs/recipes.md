@@ -217,6 +217,68 @@ popiart music generate \
   --non-interactive
 ```
 
+## Recipe: MiniMax image generate
+
+```sh
+popiart image generate \
+  --model image-01 \
+  --prompt "A studio portrait of a corgi" \
+  --aspect-ratio 4:3 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+## Recipe: MiniMax img2img
+
+```sh
+popiart image img2img \
+  --model image-01 \
+  --image https://example.com/reference.jpg \
+  --prompt "Turn this into a poster-style portrait" \
+  --aspect-ratio 3:4 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+## Recipe: Hailuo video via MiniMax models
+
+文生视频：
+
+```sh
+popiart models infer MiniMax-Hailuo-2.3 \
+  --input '{"prompt":"A person picks up a book and reads it quietly.","duration":6,"size":"1080P"}' \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+图生视频：
+
+```sh
+popiart models infer MiniMax-Hailuo-2.3 \
+  --input '{"prompt":"The subject smiles and blinks while the camera slowly pushes in.","duration":6,"size":"1080P","images":["https://example.com/reference.jpg"]}' \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+首尾帧视频：
+
+```sh
+popiart models infer MiniMax-Hailuo-02 \
+  --input '{"prompt":"A little girl grows up into adulthood.","duration":6,"size":"768P","images":["https://example.com/first-frame.jpg","https://example.com/last-frame.jpg"]}' \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
 ## Recipe: schema-first execution
 
 当 agent 需要先理解 skill 契约，再构造输入时：
