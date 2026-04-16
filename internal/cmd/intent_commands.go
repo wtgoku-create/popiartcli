@@ -2,9 +2,15 @@ package cmd
 
 import (
 	"context"
+	"encoding/base64"
 	"io"
+	"mime"
+	"net/http"
+	neturl "net/url"
 	"os"
+	"path"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -303,8 +309,16 @@ func addImageTransformFlags(cmd *cobra.Command) {
 	cmd.Flags().String("model", "", "显式指定本次请求使用的模型；传入后会直接走 models infer")
 	cmd.Flags().String("image", "", "源图 URL 或本地文件路径")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
+	cmd.Flags().StringArray("identity-reference-image", nil, "主体一致性参考图 URL 或本地文件路径，可重复传入")
+	cmd.Flags().StringArray("identity-reference-artifact-id", nil, "已上传主体一致性参考图的 artifact_id，可重复传入")
+	cmd.Flags().StringArray("style-reference-image", nil, "风格参考图 URL 或本地文件路径，可重复传入")
+	cmd.Flags().StringArray("style-reference-artifact-id", nil, "已上传风格参考图的 artifact_id，可重复传入")
+	cmd.Flags().StringArray("reference-image", nil, "参考图 URL 或本地文件路径，可重复传入")
+	cmd.Flags().StringArray("reference-artifact-id", nil, "已上传参考图的 artifact_id，可重复传入")
 	cmd.Flags().String("prompt", "", "转换提示词")
+	cmd.Flags().String("negative-prompt", "", "排除项或不希望出现的元素")
 	cmd.Flags().Float64("strength", 0, "转换强度")
+	cmd.Flags().Bool("preserve-composition", false, "尽量保留原始场景构图与机位关系")
 	cmd.Flags().String("style", "", "视觉风格提示")
 	cmd.Flags().String("size", "", "精确尺寸，例如 1024x1024")
 	cmd.Flags().String("aspect-ratio", "", "画幅比例，例如 1:1、16:9、9:16")
@@ -678,26 +692,37 @@ func hasImageSourceInput(cmd *cobra.Command) bool {
 }
 
 func resolveImageTransformInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
-	payload, preview, err := resolveImageTransformSourceInput(cmd)
+	requiresArtifactSource := img2imgHasReferenceInputs(cmd)
+
+	payload, preview, err := resolveImageTransformSourceInput(cmd, requiresArtifactSource)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	referencePayload, referencePreview, err := resolveImageTransformReferenceInput(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	mergeStringAnyMaps(payload, referencePayload)
+	mergeStringAnyMaps(preview, referencePreview)
 
 	prompt := strings.TrimSpace(flagString(cmd, "prompt"))
 	if prompt == "" {
 		return nil, nil, invalidFlagValueError("--prompt", "", "请传入 img2img 转换提示词")
 	}
 	payload["prompt"] = prompt
+	putString(payload, "negative_prompt", flagString(cmd, "negative-prompt"))
 	putString(payload, "style", flagString(cmd, "style"))
 	putString(payload, "size", flagString(cmd, "size"))
 	putString(payload, "aspect_ratio", normalizePortableAspectRatio(flagString(cmd, "aspect-ratio")))
 	putString(payload, "notes", flagString(cmd, "notes"))
 	putFloat(payload, "strength", flagFloat64(cmd, "strength"))
 	putFloat(payload, "seed", flagFloat64(cmd, "seed"))
+	putBool(payload, "preserve_composition", flagBool(cmd, "preserve-composition"))
 	return payload, preview, nil
 }
 
-func resolveImageTransformSourceInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
+func resolveImageTransformSourceInput(cmd *cobra.Command, forceArtifactSource bool) (map[string]any, map[string]any, error) {
 	sourceArtifactID := strings.TrimSpace(flagString(cmd, "source-artifact-id"))
 	image := strings.TrimSpace(flagString(cmd, "image"))
 
@@ -715,6 +740,25 @@ func resolveImageTransformSourceInput(cmd *cobra.Command) (map[string]any, map[s
 		preview["source"] = map[string]any{
 			"kind":  "artifact",
 			"value": sourceArtifactID,
+		}
+		return payload, preview, nil
+	}
+
+	if forceArtifactSource {
+		artifactID, uploaded, uploadPreview, err := resolveImageInputArtifact(cmd, image, "source")
+		if err != nil {
+			return nil, nil, err
+		}
+		payload["source_artifact_id"] = artifactID
+		preview["source"] = map[string]any{
+			"kind":  "artifact",
+			"value": artifactID,
+		}
+		if uploadPreview != nil {
+			preview["preflight"] = uploadPreview
+		}
+		if uploaded != nil {
+			preview["uploaded_source_artifact"] = uploaded
 		}
 		return payload, preview, nil
 	}
@@ -768,6 +812,325 @@ func resolveImageTransformSourceInput(cmd *cobra.Command) (map[string]any, map[s
 	payload["source_artifact_id"] = artifactID
 	preview["uploaded_source_artifact"] = uploaded
 	return payload, preview, nil
+}
+
+func resolveImageTransformReferenceInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
+	payload := map[string]any{}
+	preview := map[string]any{}
+
+	referenceArtifactIDs := cleanedStringSlice(flagStringArray(cmd, "reference-artifact-id"))
+	referenceImages := cleanedStringSlice(flagStringArray(cmd, "reference-image"))
+	identityReferenceArtifactIDs := cleanedStringSlice(flagStringArray(cmd, "identity-reference-artifact-id"))
+	identityReferenceImages := cleanedStringSlice(flagStringArray(cmd, "identity-reference-image"))
+	styleReferenceArtifactIDs := cleanedStringSlice(flagStringArray(cmd, "style-reference-artifact-id"))
+	styleReferenceImages := cleanedStringSlice(flagStringArray(cmd, "style-reference-image"))
+	if len(referenceArtifactIDs) == 0 && len(referenceImages) == 0 &&
+		len(identityReferenceArtifactIDs) == 0 && len(identityReferenceImages) == 0 &&
+		len(styleReferenceArtifactIDs) == 0 && len(styleReferenceImages) == 0 {
+		return payload, preview, nil
+	}
+
+	generalReferenceArtifactIDs := append([]string(nil), referenceArtifactIDs...)
+	previewSources := make([]map[string]any, 0, len(referenceArtifactIDs)+len(referenceImages)+len(identityReferenceArtifactIDs)+len(identityReferenceImages)+len(styleReferenceArtifactIDs)+len(styleReferenceImages))
+	identityPreviewSources, identityReferenceArtifactIDs, preflightUploads, uploadedArtifacts, err := appendReferenceArtifacts(cmd, previewSources, nil, nil, nil, identityReferenceArtifactIDs, identityReferenceImages, "identity")
+	if err != nil {
+		return nil, nil, err
+	}
+	stylePreviewSources, styleReferenceArtifactIDs, preflightUploads, uploadedArtifacts, err := appendReferenceArtifacts(cmd, identityPreviewSources, nil, preflightUploads, uploadedArtifacts, styleReferenceArtifactIDs, styleReferenceImages, "style")
+	if err != nil {
+		return nil, nil, err
+	}
+	generalPreviewSources, generalReferenceArtifactIDs, preflightUploads, uploadedArtifacts, err := appendReferenceArtifacts(cmd, stylePreviewSources, nil, preflightUploads, uploadedArtifacts, generalReferenceArtifactIDs, referenceImages, "reference")
+	if err != nil {
+		return nil, nil, err
+	}
+	previewSources = generalPreviewSources
+
+	combinedReferenceArtifactIDs := make([]string, 0, len(identityReferenceArtifactIDs)+len(styleReferenceArtifactIDs)+len(generalReferenceArtifactIDs))
+	combinedReferenceArtifactIDs = append(combinedReferenceArtifactIDs, identityReferenceArtifactIDs...)
+	combinedReferenceArtifactIDs = append(combinedReferenceArtifactIDs, styleReferenceArtifactIDs...)
+	combinedReferenceArtifactIDs = append(combinedReferenceArtifactIDs, generalReferenceArtifactIDs...)
+	putStringSlice(payload, "reference_artifact_ids", combinedReferenceArtifactIDs)
+	putStringSlice(payload, "identity_reference_artifact_ids", identityReferenceArtifactIDs)
+	putStringSlice(payload, "style_reference_artifact_ids", styleReferenceArtifactIDs)
+	if len(previewSources) > 0 {
+		preview["reference_sources"] = previewSources
+	}
+	if len(preflightUploads) > 0 {
+		preview["reference_preflight_uploads"] = preflightUploads
+	}
+	if len(uploadedArtifacts) > 0 {
+		preview["uploaded_reference_artifacts"] = uploadedArtifacts
+	}
+	return payload, preview, nil
+}
+
+func appendReferenceArtifacts(cmd *cobra.Command, previewSources []map[string]any, referenceArtifactIDs []string, preflightUploads []map[string]any, uploadedArtifacts []any, artifactIDs []string, images []string, role string) ([]map[string]any, []string, []map[string]any, []any, error) {
+	for _, artifactID := range artifactIDs {
+		referenceArtifactIDs = append(referenceArtifactIDs, artifactID)
+		previewSources = append(previewSources, map[string]any{
+			"kind":  "artifact",
+			"value": artifactID,
+			"role":  role,
+		})
+	}
+	for _, value := range images {
+		artifactID, uploaded, uploadPreview, err := resolveImageInputArtifact(cmd, value, "reference")
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		referenceArtifactIDs = append(referenceArtifactIDs, artifactID)
+		if uploadPreview != nil {
+			preflightUploads = append(preflightUploads, uploadPreview)
+		}
+		if uploaded != nil {
+			uploadedArtifacts = append(uploadedArtifacts, uploaded)
+		}
+		previewSources = append(previewSources, map[string]any{
+			"kind":  "artifact",
+			"value": artifactID,
+			"from":  value,
+			"role":  role,
+		})
+	}
+	return previewSources, referenceArtifactIDs, preflightUploads, uploadedArtifacts, nil
+}
+
+func img2imgHasReferenceInputs(cmd *cobra.Command) bool {
+	return len(cleanedStringSlice(flagStringArray(cmd, "reference-artifact-id"))) > 0 ||
+		len(cleanedStringSlice(flagStringArray(cmd, "reference-image"))) > 0 ||
+		len(cleanedStringSlice(flagStringArray(cmd, "identity-reference-artifact-id"))) > 0 ||
+		len(cleanedStringSlice(flagStringArray(cmd, "identity-reference-image"))) > 0 ||
+		len(cleanedStringSlice(flagStringArray(cmd, "style-reference-artifact-id"))) > 0 ||
+		len(cleanedStringSlice(flagStringArray(cmd, "style-reference-image"))) > 0
+}
+
+func resolveImageInputArtifact(cmd *cobra.Command, value, role string) (string, map[string]any, map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil, nil, output.NewError("VALIDATION_ERROR", "图片输入不能为空", map[string]any{
+			"role": role,
+		})
+	}
+
+	if !looksLikeURL(value) && !looksLikeDataURL(value) {
+		if _, err := os.Stat(value); err != nil {
+			return "", nil, nil, output.NewError("CLI_ERROR", "读取图片输入失败", map[string]any{
+				"path":    value,
+				"role":    role,
+				"details": err.Error(),
+			})
+		}
+		if dryRunMode(cmd) {
+			return "(from artifacts.upload)", nil, map[string]any{
+				"method": "POST",
+				"path":   "/artifacts/upload",
+				"body": map[string]any{
+					"path":       value,
+					"role":       role,
+					"visibility": "unlisted",
+				},
+			}, nil
+		}
+
+		uploaded, err := uploadArtifact(context.Background(), value, artifactUploadOptions{
+			Role:       role,
+			Visibility: "unlisted",
+		})
+		if err != nil {
+			return "", nil, nil, err
+		}
+		artifactID := stringValue(uploaded["artifact_id"])
+		if artifactID == "" {
+			return "", nil, nil, output.NewError("CLI_ERROR", "上传图片后缺少 artifact_id", map[string]any{
+				"path": value,
+				"role": role,
+			})
+		}
+		return artifactID, uploaded, nil, nil
+	}
+
+	if dryRunMode(cmd) {
+		return "(from artifacts.upload)", nil, map[string]any{
+			"method": "POST",
+			"path":   "/artifacts/upload",
+			"body": map[string]any{
+				"source":     value,
+				"role":       role,
+				"visibility": "unlisted",
+			},
+		}, nil
+	}
+
+	filename, contentType, body, err := loadRemoteImageBytes(context.Background(), value)
+	if err != nil {
+		return "", nil, nil, err
+	}
+
+	tempFile, err := os.CreateTemp("", "popiart-image-*")
+	if err != nil {
+		return "", nil, nil, output.NewError("CLI_ERROR", "创建临时图片文件失败", map[string]any{
+			"details": err.Error(),
+			"role":    role,
+		})
+	}
+	tempPath := tempFile.Name()
+	if _, err := tempFile.Write(body); err != nil {
+		tempFile.Close()
+		_ = os.Remove(tempPath)
+		return "", nil, nil, output.NewError("CLI_ERROR", "写入临时图片文件失败", map[string]any{
+			"details": err.Error(),
+			"role":    role,
+		})
+	}
+	if err := tempFile.Close(); err != nil {
+		_ = os.Remove(tempPath)
+		return "", nil, nil, output.NewError("CLI_ERROR", "关闭临时图片文件失败", map[string]any{
+			"details": err.Error(),
+			"role":    role,
+		})
+	}
+	defer os.Remove(tempPath)
+
+	uploaded, err := uploadArtifact(context.Background(), tempPath, artifactUploadOptions{
+		Filename:    filename,
+		ContentType: contentType,
+		Role:        role,
+		Visibility:  "unlisted",
+	})
+	if err != nil {
+		return "", nil, nil, err
+	}
+	artifactID := stringValue(uploaded["artifact_id"])
+	if artifactID == "" {
+		return "", nil, nil, output.NewError("CLI_ERROR", "上传远程图片后缺少 artifact_id", map[string]any{
+			"source": value,
+			"role":   role,
+		})
+	}
+	return artifactID, uploaded, nil, nil
+}
+
+func loadRemoteImageBytes(ctx context.Context, value string) (string, string, []byte, error) {
+	if looksLikeDataURL(value) {
+		return decodeImageDataURL(value)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, value, nil)
+	if err != nil {
+		return "", "", nil, output.NewError("BAD_REQUEST", "构建远程图片请求失败", map[string]any{
+			"source":  value,
+			"details": err.Error(),
+		})
+	}
+	req.Header.Set("User-Agent", "popiart-cli/0.1.0")
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return "", "", nil, output.NewError("NETWORK_ERROR", "下载远程图片失败", map[string]any{
+			"source":  value,
+			"details": err.Error(),
+		})
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return "", "", nil, output.NewError("NETWORK_ERROR", "下载远程图片失败", map[string]any{
+			"source": value,
+			"status": res.StatusCode,
+		})
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", "", nil, output.NewError("NETWORK_ERROR", "读取远程图片失败", map[string]any{
+			"source":  value,
+			"details": err.Error(),
+		})
+	}
+
+	contentType := strings.TrimSpace(res.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = http.DetectContentType(body)
+	}
+	filename := filenameFromImageURL(value, contentType)
+	return filename, contentType, body, nil
+}
+
+func decodeImageDataURL(value string) (string, string, []byte, error) {
+	parts := strings.SplitN(value, ",", 2)
+	if len(parts) != 2 {
+		return "", "", nil, output.NewError("INPUT_PARSE_ERROR", "不合法的 data URL 图片输入", nil)
+	}
+
+	header := strings.TrimSpace(parts[0])
+	bodyPart := parts[1]
+	contentType := strings.TrimPrefix(header, "data:")
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = contentType[:idx]
+	}
+	if contentType == "" {
+		contentType = "image/png"
+	}
+
+	var body []byte
+	var err error
+	if strings.Contains(header, ";base64") {
+		body, err = base64.StdEncoding.DecodeString(bodyPart)
+	} else {
+		decoded, decodeErr := neturl.QueryUnescape(bodyPart)
+		err = decodeErr
+		body = []byte(decoded)
+	}
+	if err != nil {
+		return "", "", nil, output.NewError("INPUT_PARSE_ERROR", "解析 data URL 图片失败", map[string]any{
+			"details": err.Error(),
+		})
+	}
+
+	filename := "image" + extensionForContentType(contentType)
+	return filename, contentType, body, nil
+}
+
+func filenameFromImageURL(value, contentType string) string {
+	parsed, err := neturl.Parse(value)
+	if err == nil {
+		base := path.Base(parsed.Path)
+		base = strings.TrimSpace(base)
+		if base != "" && base != "." && base != "/" {
+			return base
+		}
+	}
+	return "image" + extensionForContentType(contentType)
+}
+
+func extensionForContentType(contentType string) string {
+	if exts, _ := mime.ExtensionsByType(contentType); len(exts) > 0 {
+		return exts[0]
+	}
+	return ".img"
+}
+
+func cleanedStringSlice(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
+func mergeStringAnyMaps(dst, src map[string]any) {
+	if dst == nil || src == nil {
+		return
+	}
+	for key, value := range src {
+		dst[key] = value
+	}
 }
 
 func resolveImageSourceInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {

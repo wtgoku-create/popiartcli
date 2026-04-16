@@ -272,6 +272,103 @@ func TestImageTransformAliasUsesOfficialRuntimeJob(t *testing.T) {
 	}
 }
 
+func TestImageImg2ImgUploadsRemoteSourceAndReferenceImagesForFusion(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	var uploadRoles []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/source.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("source-body"))
+		case r.Method == http.MethodGet && r.URL.Path == "/subject.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("subject-body"))
+		case r.Method == http.MethodGet && r.URL.Path == "/style.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("style-body"))
+		case r.Method == http.MethodPost && r.URL.Path == "/artifacts/upload":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse multipart form: %v", err)
+			}
+			role := r.FormValue("role")
+			uploadRoles = append(uploadRoles, role)
+			switch len(uploadRoles) {
+			case 1:
+				fmt.Fprint(w, `{"ok":true,"data":{"id":"art_source_uploaded","filename":"source.png","content_type":"image/png","size_bytes":11,"created_at":"2026-04-16T00:00:00Z","visibility":"unlisted"}}`)
+			case 2:
+				fmt.Fprint(w, `{"ok":true,"data":{"id":"art_ref_subject","filename":"subject.png","content_type":"image/png","size_bytes":12,"created_at":"2026-04-16T00:00:00Z","visibility":"unlisted"}}`)
+			case 3:
+				fmt.Fprint(w, `{"ok":true,"data":{"id":"art_ref_style","filename":"style.png","content_type":"image/png","size_bytes":10,"created_at":"2026-04-16T00:00:00Z","visibility":"unlisted"}}`)
+			default:
+				t.Fatalf("unexpected extra upload role=%q", role)
+			}
+		case r.Method == http.MethodPost && r.URL.Path == "/jobs":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["skill_id"] != officialImage2ImageSkillID {
+				t.Fatalf("unexpected skill_id: %#v", body["skill_id"])
+			}
+			input := body["input"].(map[string]any)
+			if input["source_artifact_id"] != "art_source_uploaded" {
+				t.Fatalf("unexpected source_artifact_id: %#v", input["source_artifact_id"])
+			}
+			refs, ok := input["reference_artifact_ids"].([]any)
+			if !ok || len(refs) != 2 || refs[0] != "art_ref_subject" || refs[1] != "art_ref_style" {
+				t.Fatalf("unexpected reference_artifact_ids: %#v", input["reference_artifact_ids"])
+			}
+			identityRefs, ok := input["identity_reference_artifact_ids"].([]any)
+			if !ok || len(identityRefs) != 1 || identityRefs[0] != "art_ref_subject" {
+				t.Fatalf("unexpected identity_reference_artifact_ids: %#v", input["identity_reference_artifact_ids"])
+			}
+			styleRefs, ok := input["style_reference_artifact_ids"].([]any)
+			if !ok || len(styleRefs) != 1 || styleRefs[0] != "art_ref_style" {
+				t.Fatalf("unexpected style_reference_artifact_ids: %#v", input["style_reference_artifact_ids"])
+			}
+			if input["negative_prompt"] != "extra people" {
+				t.Fatalf("unexpected negative_prompt: %#v", input["negative_prompt"])
+			}
+			if input["preserve_composition"] != true {
+				t.Fatalf("unexpected preserve_composition: %#v", input["preserve_composition"])
+			}
+			if _, exists := input["image"]; exists {
+				t.Fatalf("did not expect direct image field when fusion uses artifacts: %#v", input["image"])
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_transform_fusion","status":"pending"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "img2img",
+		"--image", server.URL + "/source.png",
+		"--identity-reference-image", server.URL + "/subject.png",
+		"--style-reference-image", server.URL + "/style.png",
+		"--prompt", "fuse the subject into the main scene",
+		"--negative-prompt", "extra people",
+		"--preserve-composition",
+	})
+
+	if len(uploadRoles) != 3 {
+		t.Fatalf("expected three uploads, got %#v", uploadRoles)
+	}
+	if uploadRoles[0] != "source" || uploadRoles[1] != "reference" || uploadRoles[2] != "reference" {
+		t.Fatalf("unexpected upload roles: %#v", uploadRoles)
+	}
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_transform_fusion" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
 func TestImageTransformModelOverrideCanonicalizesImageForModelsInfer(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
@@ -288,14 +385,29 @@ func TestImageTransformModelOverrideCanonicalizesImageForModelsInfer(t *testing.
 			t.Fatalf("unexpected model_id: %#v", body["model_id"])
 		}
 		input := body["input"].(map[string]any)
-		if input["image"] != "https://example.com/source.png" {
-			t.Fatalf("unexpected image: %#v", input["image"])
+		if input["source_artifact_id"] != "art_source_1" {
+			t.Fatalf("unexpected source_artifact_id: %#v", input["source_artifact_id"])
+		}
+		refs, ok := input["reference_artifact_ids"].([]any)
+		if !ok || len(refs) != 2 || refs[0] != "art_ref_1" || refs[1] != "art_ref_2" {
+			t.Fatalf("unexpected reference_artifact_ids: %#v", input["reference_artifact_ids"])
+		}
+		if _, exists := input["image"]; exists {
+			t.Fatalf("did not expect direct image field in direct infer payload: %#v", input["image"])
 		}
 		if _, exists := input["image_url"]; exists {
 			t.Fatalf("did not expect image_url alias in direct infer payload: %#v", input["image_url"])
 		}
 		if _, exists := input["reference_image_url"]; exists {
 			t.Fatalf("did not expect reference_image_url alias in direct infer payload: %#v", input["reference_image_url"])
+		}
+		identityRefs, ok := input["identity_reference_artifact_ids"].([]any)
+		if !ok || len(identityRefs) != 1 || identityRefs[0] != "art_ref_1" {
+			t.Fatalf("unexpected identity_reference_artifact_ids: %#v", input["identity_reference_artifact_ids"])
+		}
+		styleRefs, ok := input["style_reference_artifact_ids"].([]any)
+		if !ok || len(styleRefs) != 1 || styleRefs[0] != "art_ref_2" {
+			t.Fatalf("unexpected style_reference_artifact_ids: %#v", input["style_reference_artifact_ids"])
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_transform_override_1","status":"pending"}}`)
@@ -305,7 +417,9 @@ func TestImageTransformModelOverrideCanonicalizesImageForModelsInfer(t *testing.
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"image", "transform",
-		"--image", "https://example.com/source.png",
+		"--source-artifact-id", "art_source_1",
+		"--identity-reference-artifact-id", "art_ref_1",
+		"--style-reference-artifact-id", "art_ref_2",
 		"--prompt", "restyle it",
 		"--model", "seedream-4-5-251128",
 	})
