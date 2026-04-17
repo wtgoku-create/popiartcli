@@ -120,6 +120,62 @@ popiart bootstrap ...
 - 新用户和 agent 先用意图命令面
 - 平台集成、排障和精细控制再下沉到平台命令面
 
+## 图片输入
+
+`popiart` 在图片命令里支持 4 类常见输入：
+
+| 输入类型 | 示例 | 适用场景 |
+|---|---|---|
+| 本地文件 | `./source.png` | 图片已经在本机磁盘上 |
+| 稳定媒体 URL | `https://server.popi.art/v1/media/med_xxx/content` | 多轮任务复用或跨步骤传递 |
+| artifact_id | `art_xxx` | 已经在 PopiArt runtime 内部存在的输入或产物 |
+| data URL | `data:image/png;base64,...` | 图片只以内联形式存在时的兜底输入 |
+
+输入决策规则：
+
+- 已有本地文件时，优先直接传本地文件，façade 命令会在需要时自动上传。
+- 已有稳定 URL 时，优先直接传 URL，适合 `img2img`、`img2video` 和多轮 agent 工作流。
+- 已在 PopiArt 内部存在的图片，优先传 `artifact_id`，最适合 runtime 链路复用。
+- `data URL` 适合作为内联兜底输入；能用本地文件或稳定 URL 时，优先不用 `data URL`。
+
+概念边界：
+
+- `artifact`：PopiArt runtime 内部的稳定引用，适合同一任务链路内复用。
+- `media URL`：可直接被后续命令消费的稳定地址，适合跨步骤、跨会话传递。
+
+多图任务可以混用本地文件、URL 和 artifact，但为了降低不可见差异，建议同一组参考图尽量使用同一类输入。
+
+## Role-Aware Img2Img
+
+复杂编辑时，推荐把多张图的角色明确表达出来：
+
+- `--image`：源场景图
+- `--identity-reference-image`：角色一致性参考图
+- `--style-reference-image`：风格参考图
+- `--preserve-composition`：尽量保留源场景机位、动作和构图
+
+标准三图示例：
+
+```sh
+popiart image img2img \
+  --image https://server.popi.art/v1/media/med_scene/content \
+  --identity-reference-image https://example.com/identity.jpg \
+  --style-reference-image https://example.com/style.png \
+  --prompt "Replace the person in the source scene with the main character from the identity reference. Keep the exact action and framing from the source scene. Apply only the style from the style reference." \
+  --preserve-composition \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+复杂任务建议优先两步法：
+
+1. 先做 `source + identity`，把角色和动作锁住。
+2. 再用第一步结果做单独风格迁移。
+
+建议先用 `--dry-run` 查看最终请求形状，再执行真实任务。
+
 ## 平台命令面
 
 如果你需要更底层、更可组合的控制，下面这些命令面仍然是 `popiart` 的核心平台接口：

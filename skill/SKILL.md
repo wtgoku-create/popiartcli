@@ -57,6 +57,33 @@ popiart image img2img \
 
 Maps to: `popiskill-image-img2img-basic-v1`
 
+Input rules:
+
+- `--image` accepts a local file path, stable media URL, or supported data URL.
+- `--identity-reference-image` and `--style-reference-image` accept local file paths or URLs and may be repeated.
+- `--source-artifact-id`, `--identity-reference-artifact-id`, and `--style-reference-artifact-id` are preferred when the images already exist inside PopiArt and should be reused across steps.
+- Local files are uploaded automatically when the selected runtime path requires artifacts.
+
+Role-aware multi-image pattern:
+
+```bash
+popiart image img2img \
+  --image https://server.popi.art/v1/media/med_scene/content \
+  --identity-reference-image https://example.com/identity.jpg \
+  --style-reference-image https://example.com/style.png \
+  --prompt "Replace the person in the source scene with the main character from the identity reference. Keep the exact action and framing from the source scene. Apply only the style from the style reference." \
+  --preserve-composition \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Agent guidance:
+
+- Prefer `source + identity` first when character consistency is the highest priority.
+- Add `style` as a second step when a single-pass three-image edit drifts too far from the source action or subject identity.
+- Prefer `--dry-run` before unfamiliar multi-image edits to inspect the normalized request body.
+
 ### Generate a video from a source image
 
 ```bash

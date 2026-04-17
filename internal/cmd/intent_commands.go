@@ -60,7 +60,7 @@ func newImageCmd() *cobra.Command {
 	img2imgCmd := &cobra.Command{
 		Use:   "img2img",
 		Short: "基于一张源图生成新图片",
-		Long:  "默认映射到官方 img2img runtime。传入 --image 时可直接使用稳定 URL 或本地文件路径；本地文件会先自动上传为 source artifact。",
+		Long:  "默认映射到官方 img2img runtime。`--image` 接受本地文件路径、稳定媒体 URL 或支持的 data URL；本地文件会在需要时自动上传为 source artifact。复杂多图编辑时，推荐用 `--image` 传源场景、`--identity-reference-image` 传角色一致性参考、`--style-reference-image` 传风格参考；如果图片已经在 PopiArt 内部存在，优先改用对应的 `--*-artifact-id` 参数复用。",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload, preview, err := resolveImageTransformInput(cmd)
 			if err != nil {
