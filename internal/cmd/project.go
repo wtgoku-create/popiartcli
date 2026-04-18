@@ -69,12 +69,17 @@ func newProjectCmd() *cobra.Command {
 	listCmd.Flags().String("limit", "20", "最大结果数量")
 
 	getCmd := &cobra.Command{
-		Use:   "get <project-id>",
-		Short: "获取项目的完整上下文",
-		Args:  cobra.ExactArgs(1),
+		Use:   "get [project-id]",
+		Short: "获取项目的完整上下文；省略参数时默认读取当前活动项目",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			projectID, err := resolveProjectIDArg(args)
+			if err != nil {
+				return err
+			}
+
 			var project any
-			if err := currentClient().GetJSON(context.Background(), "/projects/"+args[0], nil, &project); err != nil {
+			if err := currentClient().GetJSON(context.Background(), "/projects/"+projectID, nil, &project); err != nil {
 				return err
 			}
 			return writeOutput(cmd, project)
@@ -87,10 +92,11 @@ func newProjectCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectID := flagString(cmd, "project")
 			if projectID == "" {
-				projectID = config.Load().Project
-			}
-			if projectID == "" {
-				return output.NewError("NO_PROJECT", "未设置项目。请使用: popiart project use <id>", nil)
+				var err error
+				projectID, err = resolveProjectIDArg(nil)
+				if err != nil {
+					return err
+				}
 			}
 
 			var ctx any
@@ -104,4 +110,18 @@ func newProjectCmd() *cobra.Command {
 
 	projectCmd.AddCommand(currentCmd, useCmd, listCmd, getCmd, contextCmd)
 	return projectCmd
+}
+
+func resolveProjectIDArg(args []string) (string, error) {
+	if len(args) > 0 && args[0] != "" {
+		return args[0], nil
+	}
+
+	projectID := config.Load().Project
+	if projectID == "" {
+		return "", output.NewError("NO_PROJECT", "未设置项目。请使用: popiart project use <id>", map[string]any{
+			"hint": "也可以显式传入: popiart project get <project-id>",
+		})
+	}
+	return projectID, nil
 }

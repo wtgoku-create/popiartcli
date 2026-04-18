@@ -33,10 +33,17 @@ func newArtifactsCmd() *cobra.Command {
 	}
 
 	listCmd := &cobra.Command{
-		Use:   "list <job-id>",
+		Use:   "list [job-id]",
 		Short: "列出作业生成的工件",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 || args[0] == "" {
+				return output.NewError("VALIDATION_ERROR", "缺少作业 ID", map[string]any{
+					"argument": "job-id",
+					"hint":     "请使用: popiart artifacts list <job-id>。如果你要查看单个工件，请使用: popiart artifacts get <artifact-id> 或 popiart artifacts pull <artifact-id>",
+				})
+			}
+
 			var artifacts types.ArtifactListResponse
 			if err := currentClient().GetJSON(context.Background(), "/jobs/"+args[0]+"/artifacts", nil, &artifacts); err != nil {
 				return err
