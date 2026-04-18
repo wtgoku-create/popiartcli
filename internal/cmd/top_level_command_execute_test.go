@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/wtgoku-create/popiartcli/internal/output"
 )
 
 func TestAuthCommandFlow(t *testing.T) {
@@ -298,9 +300,32 @@ func TestProjectCommands(t *testing.T) {
 		t.Fatalf("unexpected project get payload: %#v", getResp["data"])
 	}
 
+	getCurrentResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"project", "get"})
+	if getCurrentResp["data"].(map[string]any)["id"] != "proj_1" {
+		t.Fatalf("unexpected project get current payload: %#v", getCurrentResp["data"])
+	}
+
 	contextResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"project", "context"})
 	if contextResp["data"].(map[string]any)["runtime"] != "ready" {
 		t.Fatalf("unexpected project context payload: %#v", contextResp["data"])
+	}
+}
+
+func TestProjectGetRequiresCurrentProjectWhenArgOmitted(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	root := NewRootCmd("0.test")
+	_, _, err := executeRootRaw(root, []string{"project", "get"})
+	if err == nil {
+		t.Fatal("expected project get without current project to fail")
+	}
+
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != "NO_PROJECT" {
+		t.Fatalf("expected NO_PROJECT, got %q", cliErr.Code)
 	}
 }
 

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wtgoku-create/popiartcli/internal/output"
 )
 
 func TestArtifactsUploadCommand(t *testing.T) {
@@ -115,5 +117,35 @@ func TestArtifactsUploadCommand(t *testing.T) {
 	}
 	if data["storage_status"] != "ready" {
 		t.Fatalf("unexpected storage_status: %#v", data["storage_status"])
+	}
+}
+
+func TestArtifactsListRequiresJobIDHint(t *testing.T) {
+	root := NewRootCmd("0.test")
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"artifacts", "list"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected artifacts list without job id to fail")
+	}
+
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != "VALIDATION_ERROR" {
+		t.Fatalf("expected VALIDATION_ERROR, got %q", cliErr.Code)
+	}
+	if cliErr.Details["argument"] != "job-id" {
+		t.Fatalf("unexpected argument detail: %#v", cliErr.Details["argument"])
+	}
+	hint, _ := cliErr.Details["hint"].(string)
+	if !strings.Contains(hint, "artifacts get <artifact-id>") {
+		t.Fatalf("unexpected hint: %q", hint)
 	}
 }
