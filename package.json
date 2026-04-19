@@ -2,25 +2,11 @@
   "name": "popiart",
   "private": true,
   "version": "0.1.0",
-  "description": "CLI for creator skills, multimodal auth, and billing for coding agents",
-  "type": "module",
-  "bin": {
-    "popiart": "./bin/popiart.js"
-  },
-  "files": [
-    "bin/",
-    "src/"
-  ],
+  "description": "Workspace metadata for the Go-based PopiArt CLI repository",
   "scripts": {
-    "dev": "node bin/popiart.js",
-    "test": "node --test src/**/*.test.js",
-    "lint": "eslint src/"
-  },
-  "dependencies": {
-    "commander": "^12.0.0"
-  },
-  "engines": {
-    "node": ">=20.0.0"
+    "dev": "go run ./cmd/popiart",
+    "test": "go test ./...",
+    "smoke": "go run ./cmd/popiart --help"
   },
   "license": "MIT"
 }

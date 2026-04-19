@@ -12,6 +12,12 @@ It is intentionally different from the design docs:
 
 ## Repository Status
 
+### Repository Shape
+
+- The authoritative product implementation is the Go CLI under `cmd/popiart` plus `internal/`.
+- The root `package.json` is now repository-task metadata only and no longer publishes the legacy Node shell as the active CLI entrypoint.
+- The old Node shell under `bin/` and `src/` is retained only as migration reference and should not be treated as the shipped product surface.
+
 ### Implemented In `popiartcli`
 
 - `popiart mcp serve`
@@ -184,9 +190,16 @@ Because of that, the current state is:
 - `popiartcli` can keep `popiskill-video-image2video-basic-v1` usable even when the remote catalog entry is missing or still a placeholder
 - `popiartcli` still cannot, by itself, guarantee that all seven baseline runtime skills will execute successfully end to end
 
+Operationally, this means:
+
+- `setup` / `bootstrap --discoverable` should be read as discoverability success, not end-to-end runtime success
+- `mcp doctor` is the required follow-up because it separates `discoverability_status` from `runtime_status`
+- adding more façade commands is lower priority than completing the agent-facing MCP surface and runtime-readiness diagnostics
+
 ## Recommended Next Steps
 
-1. Validate the native MCP install path against real installed `Claude Code`, `OpenClaw`, and `OpenCode` binaries on each target OS.
-2. Publish the tested `popiartServer` route adapters and defaults as a real tracked server release, including `video.image2video -> viduq2-pro-fast`.
-3. Register the seven baseline runtime skills by default in `popiartServer`.
-4. Validate that `popiart mcp doctor` passes against a real deployed environment with the intended default route table.
+1. Complete the agent-facing MCP surface with `resources`, `prompts`, `sampling`, and richer artifact-aware tool results before adding more façade commands.
+2. Validate the native MCP install path against real installed `Claude Code`, `OpenClaw`, and `OpenCode` binaries on each target OS.
+3. Publish the tested `popiartServer` route adapters and defaults as a real tracked server release, including `video.image2video -> viduq2-pro-fast`.
+4. Register the seven baseline runtime skills by default in `popiartServer`.
+5. Validate that `popiart mcp doctor` passes against a real deployed environment with the intended default route table.

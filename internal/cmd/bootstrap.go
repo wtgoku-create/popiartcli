@@ -495,7 +495,12 @@ func bootstrapNextSteps(result bootstrapResult) []string {
 		steps = append(steps, "运行 `popiart skills list --search popiskill-image-text2image-basic-v1` 或 `popiart skills list --tag image`")
 	}
 	if result.RuntimeBaseline != "" {
-		steps = append(steps, "运行 `popiart mcp doctor` 检查官方 runtime baseline 与 discoverability 状态")
+		doctorCmd := "popiart mcp doctor"
+		if len(result.Agents) == 1 {
+			doctorCmd += " --agent " + result.Agents[0]
+		}
+		steps = append(steps, fmt.Sprintf("运行 `%s`，分别检查 `discoverability_status` 和 `runtime_status`", doctorCmd))
+		steps = append(steps, "注意：discoverability 通过只代表 agent 已能发现 PopiArt；runtime_status 通过才代表远端 runtime baseline 更接近可执行")
 	}
 	for _, file := range result.GeneratedFiles {
 		if file.Kind == "completion" {
@@ -569,6 +574,7 @@ func writeBootstrapPlain(w io.Writer, result bootstrapResult) {
 	}
 	if result.RuntimeBaseline != "" {
 		fmt.Fprintf(w, "runtime baseline: %s\n", result.RuntimeBaseline)
+		fmt.Fprintln(w, "runtime note: discoverability does not guarantee remote runtime readiness")
 	}
 	if len(result.GeneratedFiles) > 0 {
 		fmt.Fprintln(w, "generated files:")

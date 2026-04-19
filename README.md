@@ -64,6 +64,14 @@ popiart video generate \
 
 它们是面向新用户和 agent 的 opinionated façade，内部仍然映射到官方 runtime skill，不改变底层架构。
 
+## 当前保证范围
+
+- 仓库中的权威实现是 Go CLI：`cmd/popiart`。根目录 `package.json` 只保留仓库任务入口，不再代表一个正式发布的 Node CLI。
+- `popiart setup --agent ...` 会优先把 PopiArt 做到 agent 可发现，但“可发现”不等于“远端 runtime 已就绪”。
+- `popiart mcp doctor` 现在会分别返回 `discoverability_status` 和 `runtime_status`。
+- 当前 MCP server 重点实现的是 `tools/list` / `tools/call` 工具面；`resources`、`prompts`、`sampling` 仍未完成。
+- 七个 official runtime baseline skill 已有 discoverability 契约，但 CLI 目前仍不能单独保证七个 skill 都能端到端执行成功。
+
 ## Agent / CI 契约
 
 在 agent 或 CI 环境里，推荐统一使用：
@@ -80,6 +88,18 @@ popiart video generate \
 - `--output plain`：人类可读模式；`--plain` 仍保留兼容
 
 完整 agent 契约见 [skill/SKILL.md](./skill/SKILL.md)。
+
+如果你刚完成初始化，推荐先运行：
+
+```sh
+popiart mcp doctor --agent codex
+```
+
+判读方式：
+
+- `discoverability_status=pass`：本地 agent 原生 MCP / skill 入口大致已就位
+- `runtime_status=pass`：远端登录态、baseline skill 注册与默认路由更接近可执行
+- 两者都通过之前，不要把 `setup` 视为“已经可端到端跑通”
 
 ## 用户意图命令面
 

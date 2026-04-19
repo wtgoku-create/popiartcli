@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -178,10 +179,16 @@ func newMCPCmd() *cobra.Command {
 				}
 			}
 
+			discoverabilityStatus := doctorStatusForChecks(checks, isDiscoverabilityDoctorCheck)
+			runtimeStatus := doctorStatusForChecks(checks, isRuntimeDoctorCheck)
+
 			return writeOutput(cmd, map[string]any{
 				"server_name":             popiartMCPServerName,
 				"server_id":               popiartMCPServerID,
 				"overall_status":          status,
+				"discoverability_status":  discoverabilityStatus,
+				"runtime_status":          runtimeStatus,
+				"status_hint":             "discoverability_status 代表本地 agent 是否能发现 PopiArt；runtime_status 代表远端 baseline skill 与路由是否更接近可执行",
 				"agent":                   agent,
 				"official_runtime_skills": officialRuntimeSkills(),
 				"checks":                  checks,
@@ -280,12 +287,55 @@ func checkFileExists(id, path, message string) doctorCheck {
 	if _, err := os.Stat(path); err != nil {
 		return failCheck(id, message, map[string]any{
 			"path": path,
-			"hint": "先运行 `popiart bootstrap --agent <agent> --discoverable`",
+			"hint": "先运行 `popiart setup --agent <agent>` 或 `popiart bootstrap --agent <agent> --discoverable`",
 		})
 	}
 	return passCheck(id, message, map[string]any{
 		"path": path,
 	})
+}
+
+func doctorStatusForChecks(checks []doctorCheck, include func(string) bool) string {
+	status := "pass"
+	found := false
+	for _, check := range checks {
+		if !include(check.ID) {
+			continue
+		}
+		found = true
+		if check.Status == "fail" {
+			return "fail"
+		}
+		if check.Status == "warn" {
+			status = "warn"
+		}
+	}
+	if !found {
+		return "not_applicable"
+	}
+	return status
+}
+
+func isDiscoverabilityDoctorCheck(id string) bool {
+	switch {
+	case id == "config_dir":
+		return true
+	case strings.HasPrefix(id, "agent_"):
+		return true
+	default:
+		return false
+	}
+}
+
+func isRuntimeDoctorCheck(id string) bool {
+	switch {
+	case id == "endpoint", id == "key", id == "auth_me", id == "skills_api", id == "model_routes":
+		return true
+	case strings.HasPrefix(id, "runtime_skill:"):
+		return true
+	default:
+		return false
+	}
 }
 
 func passCheck(id, message string, details map[string]any) doctorCheck {

@@ -62,6 +62,12 @@ popiart setup --agent codex
 - `~/.popiart/agents/<agent>/` 下的 bootstrap 资产
 - agent 原生配置和原生 skill 目录
 
+但要注意：
+
+- `setup` 解决的是 discoverability 默认路径，不是远端 runtime 就绪保证
+- 完成后应立即运行 `popiart mcp doctor --agent codex`
+- 重点看 `discoverability_status` 和 `runtime_status`，两者含义不同
+
 如果你需要细粒度控制，仍然可以继续使用 `popiart bootstrap --discoverable`。
 
 ### 2.2 官方安装脚本
@@ -148,6 +154,11 @@ popiart --help
 git pull --tags
 go install ./cmd/popiart
 ```
+
+仓库补充说明：
+
+- 主实现是 Go CLI：`cmd/popiart`
+- 根目录 `package.json` 现在只作为仓库任务入口，不再表示正式发布的 Node CLI 分发面
 
 ## 3. Linux 安装
 

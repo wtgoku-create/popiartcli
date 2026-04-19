@@ -142,6 +142,24 @@ func TestSetupCommandFlow(t *testing.T) {
 	if data["runtime_baseline"] != "runtime-baseline" {
 		t.Fatalf("unexpected runtime_baseline: %#v", data["runtime_baseline"])
 	}
+	nextSteps, ok := data["next_steps"].([]any)
+	if !ok || len(nextSteps) == 0 {
+		t.Fatalf("expected setup next_steps, got %#v", data["next_steps"])
+	}
+	var sawDoctorStep bool
+	var sawRuntimeNote bool
+	for _, item := range nextSteps {
+		step, _ := item.(string)
+		if strings.Contains(step, "popiart mcp doctor --agent codex") {
+			sawDoctorStep = true
+		}
+		if strings.Contains(step, "discoverability") && strings.Contains(step, "runtime_status") {
+			sawRuntimeNote = true
+		}
+	}
+	if !sawDoctorStep || !sawRuntimeNote {
+		t.Fatalf("expected setup next_steps to explain doctor/runtime distinction, got %#v", nextSteps)
+	}
 	for _, path := range []string{
 		filepath.Join(configDir, "bootstrap.json"),
 		filepath.Join(configDir, "agents", "codex", "env.sh"),
@@ -384,8 +402,15 @@ func TestMCPCommands(t *testing.T) {
 	}
 
 	doctorResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"mcp", "doctor", "--agent", "codex"})
-	if doctorResp["data"].(map[string]any)["overall_status"] != "pass" {
+	doctorData := doctorResp["data"].(map[string]any)
+	if doctorData["overall_status"] != "pass" {
 		t.Fatalf("unexpected mcp doctor payload: %#v", doctorResp["data"])
+	}
+	if doctorData["discoverability_status"] != "pass" {
+		t.Fatalf("unexpected discoverability_status: %#v", doctorResp["data"])
+	}
+	if doctorData["runtime_status"] != "pass" {
+		t.Fatalf("unexpected runtime_status: %#v", doctorResp["data"])
 	}
 }
 

@@ -1,6 +1,6 @@
-// src/cli.js
-// 根 Commander 程序。注册所有子命令。
-// 全局标志（--plain, --endpoint, --project）在此处被提升。
+// Legacy Node CLI surface kept only as a migration reference.
+// The active product surface is the Go implementation under ./cmd/popiart.
+// This file is intentionally no longer the repository's default distribution path.
 
 import { Command } from 'commander';
 import { authCmd }      from './commands/auth.js';
