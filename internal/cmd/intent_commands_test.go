@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wtgoku-create/popiartcli/internal/output"
@@ -124,6 +126,121 @@ func TestImageGenerateModelOverrideUsesModelsInfer(t *testing.T) {
 	}
 	if data["execution_mode"] != "direct-model-override" {
 		t.Fatalf("unexpected execution_mode: %#v", data["execution_mode"])
+	}
+}
+
+func TestImageDescribeReturnsDescriptionPrompt(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/models/infer":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["model_id"] != "gemini-2.5-flash" {
+				t.Fatalf("unexpected model_id: %#v", body["model_id"])
+			}
+			input := body["input"].(map[string]any)
+			if input["image_url"] != "https://example.com/source.png" {
+				t.Fatalf("unexpected image_url: %#v", input["image_url"])
+			}
+			if !strings.Contains(input["prompt"].(string), "补充要求：请写成适合文生图反推的 prompt") {
+				t.Fatalf("unexpected describe prompt: %#v", input["prompt"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_image_describe_1","status":"pending"}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/jobs/job_image_describe_1":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_image_describe_1","status":"done","output_text":"一位年轻女性站在海边木栈道上，逆光，长发被海风吹起，电影感中景。"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "describe",
+		"--image", "https://example.com/source.png",
+		"--model", "gemini-2.5-flash",
+		"--prompt", "请写成适合文生图反推的 prompt",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_image_describe_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+	if data["description_prompt"] != "一位年轻女性站在海边木栈道上，逆光，长发被海风吹起，电影感中景。" {
+		t.Fatalf("unexpected description_prompt: %#v", data["description_prompt"])
+	}
+}
+
+func TestImageDescribeHydratesArtifactURLWhenAvailable(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/artifacts/art_source_vision_1":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"art_source_vision_1","url":"https://media.popi.test/source-vision.png"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/models/infer":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			input := body["input"].(map[string]any)
+			if input["image_url"] != "https://media.popi.test/source-vision.png" {
+				t.Fatalf("expected hydrated artifact url, got %#v", input["image_url"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_image_describe_artifact_1","status":"pending"}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/jobs/job_image_describe_artifact_1":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_image_describe_artifact_1","status":"done","text":"一张白底产品图，主体居中，柔和棚拍光。"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "describe",
+		"--source-artifact-id", "art_source_vision_1",
+		"--model", "gemini-2.5-flash",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["description_prompt"] != "一张白底产品图，主体居中，柔和棚拍光。" {
+		t.Fatalf("unexpected description_prompt: %#v", data["description_prompt"])
+	}
+}
+
+func TestImageDescribeDryRunShowsModelsInferRequest(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "describe",
+		"--image", "https://example.com/source.png",
+		"--model", "gemini-2.5-flash",
+		"--dry-run",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["action"] != "image.describe" {
+		t.Fatalf("unexpected action: %#v", data["action"])
+	}
+	if data["model_id"] != "gemini-2.5-flash" {
+		t.Fatalf("unexpected model_id: %#v", data["model_id"])
+	}
+	request := data["request"].(map[string]any)
+	if request["path"] != "/models/infer" {
+		t.Fatalf("unexpected request path: %#v", request["path"])
 	}
 }
 
@@ -613,6 +730,228 @@ func TestVideoGeneratePromptOnlyWithModelOverrideUsesModelsInfer(t *testing.T) {
 	}
 }
 
+func TestVideoGenerateWithPromptEnhancerModelUsesTwoStageModelsInfer(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	modelInferCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/models/infer":
+			modelInferCalls++
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			input := body["input"].(map[string]any)
+			switch modelInferCalls {
+			case 1:
+				if body["model_id"] != "gemini-2.5-flash" {
+					t.Fatalf("unexpected prompt enhancer model: %#v", body["model_id"])
+				}
+				if input["image_url"] != "https://example.com/source.png" {
+					t.Fatalf("unexpected enhancer image_url: %#v", input["image_url"])
+				}
+				if !strings.Contains(input["prompt"].(string), "用户原始意图：让人物轻轻转头，镜头慢慢推进") {
+					t.Fatalf("unexpected enhancer prompt: %#v", input["prompt"])
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_prompt_enhance_1","status":"pending"}}`)
+			case 2:
+				if body["model_id"] != "viduq2-pro-fast" {
+					t.Fatalf("unexpected video model: %#v", body["model_id"])
+				}
+				if input["prompt"] != "保留人物姿态，头发轻微摆动，人物轻轻转头，镜头缓慢推进，背景有自然风动。" {
+					t.Fatalf("unexpected enhanced prompt in video request: %#v", input["prompt"])
+				}
+				if input["image_url"] != "https://example.com/source.png" {
+					t.Fatalf("unexpected video image_url: %#v", input["image_url"])
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_video_prompt_enhanced_1","status":"pending"}}`)
+			default:
+				t.Fatalf("unexpected extra models infer call: %d", modelInferCalls)
+			}
+		case r.Method == http.MethodGet && r.URL.Path == "/jobs/job_prompt_enhance_1":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_prompt_enhance_1","status":"done","output":{"text":"保留人物姿态，头发轻微摆动，人物轻轻转头，镜头缓慢推进，背景有自然风动。"}}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--image", "https://example.com/source.png",
+		"--prompt", "让人物轻轻转头，镜头慢慢推进",
+		"--prompt-enhancer-model", "gemini-2.5-flash",
+		"--model", "viduq2-pro-fast",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_video_prompt_enhanced_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+	if data["resolved_prompt"] != "保留人物姿态，头发轻微摆动，人物轻轻转头，镜头缓慢推进，背景有自然风动。" {
+		t.Fatalf("unexpected resolved_prompt: %#v", data["resolved_prompt"])
+	}
+	enhancement := data["prompt_enhancement"].(map[string]any)
+	if enhancement["job_id"] != "job_prompt_enhance_1" {
+		t.Fatalf("unexpected prompt enhancement job_id: %#v", enhancement["job_id"])
+	}
+	if enhancement["enhanced_prompt"] != data["resolved_prompt"] {
+		t.Fatalf("expected prompt enhancement payload to surface enhanced prompt, got %#v", enhancement["enhanced_prompt"])
+	}
+}
+
+func TestVideoGenerateWithPromptEnhancerUsesArtifactJSONFallback(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	modelInferCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/models/infer":
+			modelInferCalls++
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			switch modelInferCalls {
+			case 1:
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_prompt_artifact_1","status":"pending"}}`)
+			case 2:
+				input := body["input"].(map[string]any)
+				if input["prompt"] != "人物站定，眼神看向镜头，衣摆和发丝有轻微风动，镜头缓慢推近。" {
+					t.Fatalf("unexpected artifact-derived prompt: %#v", input["prompt"])
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_video_from_artifact_prompt_1","status":"pending"}}`)
+			default:
+				t.Fatalf("unexpected extra models infer call: %d", modelInferCalls)
+			}
+		case r.Method == http.MethodGet && r.URL.Path == "/jobs/job_prompt_artifact_1":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_prompt_artifact_1","status":"done","artifact_ids":["art_prompt_json_1"]}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/artifacts/art_prompt_json_1":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"art_prompt_json_1","filename":"result.json","content_type":"application/json"}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/artifacts/art_prompt_json_1/content":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"resolved_prompt":"人物站定，眼神看向镜头，衣摆和发丝有轻微风动，镜头缓慢推近。"}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--image", "https://example.com/source.png",
+		"--prompt", "让人物更自然一点",
+		"--prompt-enhancer-model", "kimi-2.5-vision",
+		"--model", "viduq2-pro-fast",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["resolved_prompt"] != "人物站定，眼神看向镜头，衣摆和发丝有轻微风动，镜头缓慢推近。" {
+		t.Fatalf("unexpected resolved_prompt: %#v", data["resolved_prompt"])
+	}
+}
+
+func TestVideoGeneratePromptEnhancerDryRunShowsTwoStageRequests(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--image", "https://example.com/source.png",
+		"--prompt", "make it cinematic",
+		"--prompt-enhancer-model", "gemini-2.5-flash",
+		"--model", "viduq2-pro-fast",
+		"--dry-run",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["execution_mode"] != "prompt-enhanced-image2video" {
+		t.Fatalf("unexpected execution_mode: %#v", data["execution_mode"])
+	}
+	enhancement := data["prompt_enhancement"].(map[string]any)
+	if enhancement["model_id"] != "gemini-2.5-flash" {
+		t.Fatalf("unexpected prompt enhancement model_id: %#v", enhancement["model_id"])
+	}
+	videoGeneration := data["video_generation"].(map[string]any)
+	if videoGeneration["model_id"] != "viduq2-pro-fast" {
+		t.Fatalf("unexpected video_generation model_id: %#v", videoGeneration["model_id"])
+	}
+	request := videoGeneration["request"].(map[string]any)
+	input := request["body"].(map[string]any)["input"].(map[string]any)
+	if input["prompt"] != "(generated by prompt enhancer)" {
+		t.Fatalf("unexpected placeholder prompt in dry-run: %#v", input["prompt"])
+	}
+}
+
+func TestVideoGeneratePromptEnhancerHydratesArtifactURLWhenAvailable(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	modelInferCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/artifacts/art_source_1":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"art_source_1","url":"https://media.popi.test/source.png"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/models/infer":
+			modelInferCalls++
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			input := body["input"].(map[string]any)
+			switch modelInferCalls {
+			case 1:
+				if input["image_url"] != "https://media.popi.test/source.png" {
+					t.Fatalf("expected hydrated artifact url, got %#v", input["image_url"])
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_prompt_hydrate_1","status":"pending"}}`)
+			case 2:
+				if input["prompt"] != "人物稳定站立，镜头轻微前推。" {
+					t.Fatalf("unexpected hydrated follow-up prompt: %#v", input["prompt"])
+				}
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_video_hydrate_1","status":"pending"}}`)
+			default:
+				t.Fatalf("unexpected extra models infer call: %d", modelInferCalls)
+			}
+		case r.Method == http.MethodGet && r.URL.Path == "/jobs/job_prompt_hydrate_1":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_prompt_hydrate_1","status":"done","output_text":"人物稳定站立，镜头轻微前推。"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--source-artifact-id", "art_source_1",
+		"--prompt", "轻一点",
+		"--prompt-enhancer-model", "gemini-2.5-flash",
+		"--model", "viduq2-pro-fast",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_video_hydrate_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
 func TestVideoParentSugarPromptOnlyReturnsCapabilityUnavailable(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
@@ -629,6 +968,86 @@ func TestVideoParentSugarPromptOnlyReturnsCapabilityUnavailable(t *testing.T) {
 	}
 	if cliErr.Code != "CAPABILITY_UNAVAILABLE" {
 		t.Fatalf("expected CAPABILITY_UNAVAILABLE, got %#v", cliErr.Code)
+	}
+}
+
+func TestVideoActionTransferUsesJimengDreamActorPayload(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/models/infer" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["model_id"] != defaultJimengActionTransferModelID {
+			t.Fatalf("unexpected model_id: %#v", body["model_id"])
+		}
+		if body["model_type"] != "video" {
+			t.Fatalf("unexpected model_type: %#v", body["model_type"])
+		}
+		input := body["input"].(map[string]any)
+		images := input["images"].([]any)
+		if len(images) != 1 || images[0] != "https://example.com/face.jpg" {
+			t.Fatalf("unexpected images payload: %#v", input["images"])
+		}
+		videos := input["videos"].([]any)
+		if len(videos) != 1 || videos[0] != "https://example.com/action.mp4" {
+			t.Fatalf("unexpected videos payload: %#v", input["videos"])
+		}
+		metadata := input["metadata"].(map[string]any)
+		if metadata["action"] != "actionGenerate" {
+			t.Fatalf("unexpected action metadata: %#v", metadata)
+		}
+		if metadata["cut_result_first_second_switch"] != true {
+			t.Fatalf("unexpected cut switch: %#v", metadata)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_jimeng_action_transfer_1","status":"pending"}}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "action-transfer",
+		"--image", "https://example.com/face.jpg",
+		"--video", "https://example.com/action.mp4",
+		"--cut-result-first-second-switch",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_jimeng_action_transfer_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+	if data["execution_mode"] != "direct-model-default" {
+		t.Fatalf("unexpected execution_mode: %#v", data["execution_mode"])
+	}
+}
+
+func TestVideoActionTransferStripsJimengImageDataURLPrefix(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	imageBase64 := base64.StdEncoding.EncodeToString([]byte("fake-jpeg-body-for-jimeng"))
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "action-transfer",
+		"--image", "data:image/jpeg;base64," + imageBase64,
+		"--video", "https://example.com/action.mp4",
+		"--dry-run",
+	})
+
+	data := resp["data"].(map[string]any)
+	request := data["request"].(map[string]any)
+	body := request["body"].(map[string]any)
+	input := body["input"].(map[string]any)
+	images := input["images"].([]any)
+	if len(images) != 1 || images[0] != imageBase64 {
+		t.Fatalf("expected pure base64 image payload, got %#v", input["images"])
+	}
+	if strings.HasPrefix(images[0].(string), "data:image/") {
+		t.Fatalf("did not expect data URL prefix in Jimeng payload: %#v", images[0])
 	}
 }
 
@@ -960,8 +1379,8 @@ func TestMusicRootSugarUsesPositionalPromptAndInstrumental(t *testing.T) {
 		if input["prompt"] != "Warm morning folk" {
 			t.Fatalf("unexpected prompt: %#v", input["prompt"])
 		}
-		if input["instrumental"] != true {
-			t.Fatalf("unexpected instrumental flag: %#v", input["instrumental"])
+		if input["is_instrumental"] != true {
+			t.Fatalf("unexpected instrumental flag: %#v", input["is_instrumental"])
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_music_root_1","status":"pending"}}`)
@@ -1025,5 +1444,74 @@ func TestMusicGenerateDryRunLoadsLyricsFile(t *testing.T) {
 	input := body["input"].(map[string]any)
 	if input["lyrics"] != "line one\nline two" {
 		t.Fatalf("unexpected lyrics payload: %#v", input["lyrics"])
+	}
+}
+
+func TestMusicGenerateUsesGatewayFieldNames(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"music", "generate",
+		"--prompt", "Warm vlog bed",
+		"--instrumental",
+		"--output-format", "url",
+		"--format", "mp3",
+		"--sample-rate-hz", "44100",
+		"--bitrate", "256000",
+		"--dry-run",
+	})
+
+	data := resp["data"].(map[string]any)
+	request := data["request"].(map[string]any)
+	body := request["body"].(map[string]any)
+	if body["model_type"] != "music" {
+		t.Fatalf("expected music model_type, got %#v", body["model_type"])
+	}
+	input := body["input"].(map[string]any)
+	if input["is_instrumental"] != true {
+		t.Fatalf("expected gateway is_instrumental field, got %#v", input)
+	}
+	if input["output_format"] != "url" {
+		t.Fatalf("expected output_format=url, got %#v", input["output_format"])
+	}
+	if _, ok := input["instrumental"]; ok {
+		t.Fatalf("did not expect legacy instrumental field: %#v", input)
+	}
+	if _, ok := input["format"]; ok {
+		t.Fatalf("did not expect top-level format field: %#v", input)
+	}
+	audioSetting := input["audio_setting"].(map[string]any)
+	if audioSetting["format"] != "mp3" || audioSetting["sample_rate"] != float64(44100) || audioSetting["bitrate"] != float64(256000) {
+		t.Fatalf("unexpected audio_setting: %#v", audioSetting)
+	}
+}
+
+func TestMusicCoverRequiresExactlyOneAudioSource(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
+		"music", "generate",
+		"--model", "music-cover",
+		"--prompt", "female pop cover",
+		"--dry-run",
+	})
+	if err == nil {
+		t.Fatal("expected missing cover audio source to fail")
+	}
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"music", "generate",
+		"--model", "music-cover",
+		"--prompt", "female pop cover",
+		"--audio-url", "https://example.com/demo.mp3",
+		"--output-format", "url",
+		"--dry-run",
+	})
+	data := resp["data"].(map[string]any)
+	request := data["request"].(map[string]any)
+	body := request["body"].(map[string]any)
+	input := body["input"].(map[string]any)
+	if input["audio_url"] != "https://example.com/demo.mp3" || input["output_format"] != "url" {
+		t.Fatalf("unexpected cover payload: %#v", input)
 	}
 }

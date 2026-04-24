@@ -11,7 +11,7 @@ version: v1
 model_type: image
 estimated_duration_s: 150
 default_profile: true
-profile_description: Official PopiArt runtime baseline for single-image image-to-image generation.
+profile_description: Official PopiArt runtime baseline for image-to-image generation with an optional reference image set.
 ---
 
 # PopiArt Image To Image Basic
@@ -28,6 +28,7 @@ Use it when the goal is to:
 - take one existing image and restyle or redraw it
 - validate that image-conditioned generation works
 - make one lightweight variation from a PopiArt artifact or a stable image URL
+- fuse a main source image with one or more subject/style reference images
 
 Do not use it for:
 
@@ -50,17 +51,21 @@ Do not use it for:
 - `style`
 - `size`
 - `aspect_ratio`
+- `reference_artifact_ids`
+- `negative_prompt`
+- `preserve_composition`
 - `seed`
 - `notes`
 
 ## Workflow
 
 1. Prefer `source_artifact_id` when the source image already comes from PopiArt.
-2. Prefer `image` for URL or Base64 image inputs when the source does not already exist as a PopiArt artifact.
-3. Keep `image_url` and `reference_image_url` only as compatibility aliases.
-4. Build the smallest valid JSON payload.
-5. Run the skill through `popiart`.
-6. Wait for completion and pull the output artifact if needed.
+2. Prefer `reference_artifact_ids` for one or more extra reference images used for subject or style fusion.
+3. Prefer `image` for URL or Base64 image inputs when the source does not already exist as a PopiArt artifact.
+4. Keep `image_url` and `reference_image_url` only as compatibility aliases.
+5. Use `negative_prompt` and `preserve_composition` when the route needs stronger scene preservation or exclusion constraints.
+6. Run the skill through `popiart`.
+7. Wait for completion and pull the output artifact if needed.
 
 ## Command pattern
 
@@ -80,6 +85,9 @@ popiart run popiskill-image-img2img-basic-v1 --input '{"prompt":"convert this in
 {
   "prompt": "convert this into a watercolor illustration",
   "source_artifact_id": "art_123",
+  "reference_artifact_ids": ["art_ref_subject", "art_ref_style"],
+  "negative_prompt": "extra people, broken reflection",
+  "preserve_composition": true,
   "strength": 0.6,
   "style": "soft pastel",
   "aspect_ratio": "1:1",
@@ -99,6 +107,8 @@ After the job finishes:
 ## Operating guidance
 
 - For local source files, upload first with `popiart artifacts upload ./source.png --role source`.
+- For local or remote reference images, prefer turning them into PopiArt artifacts and passing them through `reference_artifact_ids`.
+- Product-layer façades may distinguish identity references from style references, but the current runtime contract still accepts them through `reference_artifact_ids`.
 - `image` is the preferred portable field for URL or Base64 image inputs.
 - `reference_image_url` and `image_url` are compatibility aliases for `image`.
 - If no source image exists yet, switch to `popiskill-image-text2image-basic-v1`.

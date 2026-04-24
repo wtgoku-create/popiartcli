@@ -27,6 +27,21 @@
       "type": "string",
       "description": "Compatibility alias for image."
     },
+    "reference_artifact_ids": {
+      "type": "array",
+      "description": "Additional PopiArt artifact IDs used as reference images for subject or style fusion.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "negative_prompt": {
+      "type": "string",
+      "description": "Optional constraints describing what should not appear in the result."
+    },
+    "preserve_composition": {
+      "type": "boolean",
+      "description": "Prefer to keep the source scene composition and camera relationship when the route supports it."
+    },
     "strength": {
       "type": "number",
       "description": "How strongly to transform the source image."

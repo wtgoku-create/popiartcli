@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -20,8 +21,9 @@ import (
 )
 
 const (
-	defaultMiniMaxMusicModelID  = "music-2.6-free"
-	defaultMiniMaxSpeechModelID = "speech-2.8-hd"
+	defaultMiniMaxMusicModelID         = "music-2.6-free"
+	defaultMiniMaxSpeechModelID        = "speech-2.8-hd"
+	defaultJimengActionTransferModelID = "jimeng_dreamactor_m20_gen_video"
 )
 
 func newImageCmd() *cobra.Command {
@@ -87,7 +89,9 @@ func newImageCmd() *cobra.Command {
 	addCommonExecutionFlags(transformCmd)
 	addImageTransformFlags(transformCmd)
 
-	imageCmd.AddCommand(generateCmd, img2imgCmd, transformCmd)
+	describeCmd := newImageDescribeCmd()
+
+	imageCmd.AddCommand(generateCmd, img2imgCmd, transformCmd, describeCmd)
 	return imageCmd
 }
 
@@ -104,7 +108,7 @@ func newVideoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeSkillRun(cmd, officialImage2VideoSkillID, payload, "video", preview)
+			return executeVideoGenerateCommand(cmd, payload, "video", preview)
 		},
 	}
 	addVideoGenerateFlags(videoCmd)
@@ -119,7 +123,7 @@ func newVideoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeSkillRun(cmd, officialImage2VideoSkillID, payload, "video.generate", preview)
+			return executeVideoGenerateCommand(cmd, payload, "video.generate", preview)
 		},
 	}
 	addCommonExecutionFlags(generateCmd)
@@ -134,7 +138,7 @@ func newVideoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeSkillRun(cmd, officialImage2VideoSkillID, payload, "video.img2video", preview)
+			return executeVideoGenerateCommand(cmd, payload, "video.img2video", preview)
 		},
 	}
 	addCommonExecutionFlags(img2videoCmd)
@@ -149,13 +153,29 @@ func newVideoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeSkillRun(cmd, officialImage2VideoSkillID, payload, "video.from-image", preview)
+			return executeVideoGenerateCommand(cmd, payload, "video.from-image", preview)
 		},
 	}
 	addCommonExecutionFlags(fromImageCmd)
 	addVideoGenerateFlags(fromImageCmd)
 
-	videoCmd.AddCommand(generateCmd, img2videoCmd, fromImageCmd)
+	actionTransferCmd := &cobra.Command{
+		Use:     "action-transfer",
+		Aliases: []string{"motion-transfer", "dreamactor"},
+		Short:   "通过即梦 DreamActor 做动作迁移",
+		Long:    "提交一张身份图和一个动作参考视频到即梦动作迁移模型。默认模型为 jimeng_dreamactor_m20_gen_video，payload 会按统一网关规整为 images[0]、videos[0] 和 metadata.action=actionGenerate。",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			payload, preview, err := resolveVideoActionTransferInput(cmd)
+			if err != nil {
+				return err
+			}
+			return executeDirectModelCommand(cmd, defaultJimengActionTransferModelID, payload, "video.action-transfer", preview)
+		},
+	}
+	addCommonExecutionFlags(actionTransferCmd)
+	addVideoActionTransferFlags(actionTransferCmd)
+
+	videoCmd.AddCommand(generateCmd, img2videoCmd, fromImageCmd, actionTransferCmd)
 	return videoCmd
 }
 
@@ -328,6 +348,7 @@ func addImageTransformFlags(cmd *cobra.Command) {
 
 func addVideoGenerateFlags(cmd *cobra.Command) {
 	cmd.Flags().String("model", "", "显式指定本次请求使用的模型；传入后会直接走 models infer")
+	cmd.Flags().String("prompt-enhancer-model", "", "显式指定前置图像理解/提示词增强模型；传入后会先生成增强后的图生视频 prompt 再提交视频任务")
 	cmd.Flags().String("from", "", "源图路径或 URL（等同于 --image）")
 	cmd.Flags().String("image", "", "源图 URL 或本地文件路径")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
@@ -340,6 +361,16 @@ func addVideoGenerateFlags(cmd *cobra.Command) {
 	cmd.Flags().String("style", "", "视觉风格提示")
 	cmd.Flags().String("aspect-ratio", "", "画幅比例，例如 16:9、9:16")
 	cmd.Flags().Float64("seed", 0, "可选复现种子")
+	cmd.Flags().String("notes", "", "额外约束说明")
+}
+
+func addVideoActionTransferFlags(cmd *cobra.Command) {
+	cmd.Flags().String("model", defaultJimengActionTransferModelID, "即梦动作迁移模型；默认 jimeng_dreamactor_m20_gen_video")
+	cmd.Flags().String("image", "", "身份图 URL、本地文件路径、纯 base64，或 data:image/*;base64 URL（会自动剥离前缀）")
+	cmd.Flags().String("video", "", "动作参考视频 URL 或本地文件路径；会作为 videos[0] 提交")
+	cmd.Flags().String("prompt", "", "可选动作迁移补充提示；即梦动作模仿可不传")
+	cmd.Flags().String("action", "actionGenerate", "显式 metadata.action；默认 actionGenerate")
+	cmd.Flags().Bool("cut-result-first-second-switch", false, "即梦动作模仿参数 cut_result_first_second_switch")
 	cmd.Flags().String("notes", "", "额外约束说明")
 }
 
@@ -385,9 +416,13 @@ func addMusicGenerateFlags(cmd *cobra.Command) {
 	cmd.Flags().String("references", "", "参考曲目或歌手")
 	cmd.Flags().String("extra", "", "额外细粒度要求")
 	cmd.Flags().Bool("aigc-watermark", false, "嵌入 AI 生成内容水印")
+	cmd.Flags().String("output-format", "", "网关响应格式: hex | url")
+	cmd.Flags().Bool("stream", false, "请求流式音乐生成；仅允许 output-format=hex")
 	cmd.Flags().String("format", "", "输出格式，例如 mp3、wav")
 	cmd.Flags().Int("sample-rate-hz", 0, "输出采样率提示")
 	cmd.Flags().Int("bitrate", 0, "输出码率提示")
+	cmd.Flags().String("audio-url", "", "music-cover 参考音频 URL")
+	cmd.Flags().String("audio-base64", "", "music-cover 参考音频 Base64")
 }
 
 func executeSkillRun(cmd *cobra.Command, skillID string, payload map[string]any, action string, extras map[string]any) error {
@@ -494,7 +529,7 @@ func executeDirectModelCommand(cmd *cobra.Command, defaultModelID string, payloa
 			"request": map[string]any{
 				"method": "POST",
 				"path":   "/models/infer",
-				"body":   buildModelInferBody(modelID, payload, flagString(cmd, "priority"), flagString(cmd, "idempotency-key")),
+				"body":   buildModelInferBodyWithModelType(modelID, payload, flagString(cmd, "priority"), flagString(cmd, "idempotency-key"), directModelTypeForAction(action)),
 			},
 		}
 		for key, value := range extras {
@@ -503,7 +538,7 @@ func executeDirectModelCommand(cmd *cobra.Command, defaultModelID string, payloa
 		return writeDryRunPreview(cmd, action, preview)
 	}
 
-	job, err := submitModelInferJob(context.Background(), modelID, payload, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key"))
+	job, err := submitModelInferJobWithModelType(context.Background(), modelID, payload, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key"), directModelTypeForAction(action))
 	if err != nil {
 		return err
 	}
@@ -520,6 +555,17 @@ func directModelExecutionMode(modelID, defaultModelID string) string {
 		return "direct-model-default"
 	}
 	return "direct-model-override"
+}
+
+func directModelTypeForAction(action string) string {
+	switch strings.TrimSpace(action) {
+	case "music", "music.generate":
+		return "music"
+	case "video.action-transfer":
+		return "video"
+	default:
+		return ""
+	}
 }
 
 func buildSkillJobBody(skillID string, payload map[string]any, priority, idempotencyKey string) map[string]any {
@@ -543,11 +589,18 @@ func buildSkillJobBodyAny(skillID string, payload any, priority, idempotencyKey 
 }
 
 func buildModelInferBody(modelID string, payload any, priority, idempotencyKey string) map[string]any {
+	return buildModelInferBodyWithModelType(modelID, payload, priority, idempotencyKey, "")
+}
+
+func buildModelInferBodyWithModelType(modelID string, payload any, priority, idempotencyKey, modelType string) map[string]any {
 	cfg := config.Load()
 	body := map[string]any{
 		"model_id": modelID,
 		"input":    payload,
 		"priority": priority,
+	}
+	if strings.TrimSpace(modelType) != "" {
+		body["model_type"] = strings.TrimSpace(modelType)
 	}
 	if cfg.Project != "" {
 		body["project_id"] = cfg.Project
@@ -591,6 +644,12 @@ func resolveMusicGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 	}
 	lyricsOptimizer := flagBool(cmd, "lyrics-optimizer")
 	instrumental := flagBool(cmd, "instrumental")
+	modelID := strings.TrimSpace(flagString(cmd, "model"))
+	audioURL := strings.TrimSpace(flagString(cmd, "audio-url"))
+	audioBase64 := strings.TrimSpace(flagString(cmd, "audio-base64"))
+	outputFormat := strings.TrimSpace(flagString(cmd, "output-format"))
+	stream := flagBool(cmd, "stream")
+	isCoverModel := strings.HasPrefix(modelID, "music-cover")
 
 	switch {
 	case lyrics != "" && lyricsOptimizer:
@@ -605,6 +664,34 @@ func resolveMusicGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 		return nil, output.NewError("VALIDATION_ERROR", "lyrics-optimizer 不能与 instrumental 同时使用", map[string]any{
 			"flags": []string{"lyrics-optimizer", "instrumental"},
 		})
+	case outputFormat != "" && outputFormat != "hex" && outputFormat != "url":
+		return nil, invalidFlagValueError("--output-format", outputFormat, "请传入 hex 或 url")
+	case stream && outputFormat != "" && outputFormat != "hex":
+		return nil, output.NewError("VALIDATION_ERROR", "stream=true 时只能使用 output-format=hex", map[string]any{
+			"flags": []string{"stream", "output-format"},
+		})
+	case audioURL != "" && audioBase64 != "":
+		return nil, output.NewError("VALIDATION_ERROR", "audio-url 和 audio-base64 只能提供一个", map[string]any{
+			"flags": []string{"audio-url", "audio-base64"},
+		})
+	case isCoverModel && prompt == "":
+		return nil, invalidFlagValueError("--prompt", "", "music-cover 模型必须传入 prompt")
+	case isCoverModel && audioURL == "" && audioBase64 == "":
+		return nil, output.NewError("VALIDATION_ERROR", "music-cover 模型必须传入 audio-url 或 audio-base64", map[string]any{
+			"flags": []string{"audio-url", "audio-base64"},
+		})
+	case isCoverModel && (lyricsOptimizer || instrumental):
+		return nil, output.NewError("VALIDATION_ERROR", "music-cover 模型不支持 lyrics-optimizer 或 instrumental", map[string]any{
+			"flags": []string{"lyrics-optimizer", "instrumental"},
+		})
+	case !isCoverModel && (audioURL != "" || audioBase64 != ""):
+		return nil, output.NewError("VALIDATION_ERROR", "music-2.6 模型不支持 audio-url 或 audio-base64", map[string]any{
+			"flags": []string{"audio-url", "audio-base64"},
+		})
+	case !isCoverModel && instrumental && prompt == "":
+		return nil, invalidFlagValueError("--prompt", "", "instrumental=true 时必须传入 prompt")
+	case !isCoverModel && !instrumental && lyrics == "" && !lyricsOptimizer:
+		return nil, invalidFlagValueError("--lyrics", "", "非纯音乐必须传入 lyrics，或使用 --lyrics-optimizer")
 	case prompt == "" && lyrics == "":
 		return nil, invalidFlagValueError("--prompt", "", "请传入 --prompt、--lyrics，或通过 --lyrics-file 提供歌词")
 	}
@@ -612,25 +699,56 @@ func resolveMusicGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 	payload := map[string]any{}
 	putString(payload, "prompt", prompt)
 	putString(payload, "lyrics", lyrics)
-	putString(payload, "vocals", flagString(cmd, "vocals"))
-	putString(payload, "genre", flagString(cmd, "genre"))
-	putString(payload, "mood", flagString(cmd, "mood"))
-	putString(payload, "instruments", flagString(cmd, "instruments"))
-	putString(payload, "tempo", flagString(cmd, "tempo"))
-	putString(payload, "key", flagString(cmd, "key"))
-	putString(payload, "avoid", flagString(cmd, "avoid"))
-	putString(payload, "use_case", flagString(cmd, "use-case"))
-	putString(payload, "structure", flagString(cmd, "structure"))
-	putString(payload, "references", flagString(cmd, "references"))
-	putString(payload, "extra", flagString(cmd, "extra"))
-	putString(payload, "format", flagString(cmd, "format"))
+	putString(payload, "output_format", outputFormat)
+	putString(payload, "audio_url", audioURL)
+	putString(payload, "audio_base64", audioBase64)
 	putBool(payload, "lyrics_optimizer", lyricsOptimizer)
-	putBool(payload, "instrumental", instrumental)
+	putBool(payload, "is_instrumental", instrumental)
+	putBool(payload, "stream", stream)
 	putBool(payload, "aigc_watermark", flagBool(cmd, "aigc-watermark"))
-	putInt(payload, "bpm", flagInt(cmd, "bpm"))
-	putInt(payload, "sample_rate_hz", flagInt(cmd, "sample-rate-hz"))
-	putInt(payload, "bitrate", flagInt(cmd, "bitrate"))
+	if audioSetting := musicAudioSetting(cmd); len(audioSetting) > 0 {
+		payload["audio_setting"] = audioSetting
+	}
+	if promptAddendum := musicPromptAddendum(cmd); promptAddendum != "" {
+		if payload["prompt"] == nil {
+			payload["prompt"] = promptAddendum
+		} else {
+			payload["prompt"] = strings.TrimSpace(payload["prompt"].(string) + "\n\n" + promptAddendum)
+		}
+	}
 	return payload, nil
+}
+
+func musicAudioSetting(cmd *cobra.Command) map[string]any {
+	audioSetting := map[string]any{}
+	putString(audioSetting, "format", flagString(cmd, "format"))
+	putInt(audioSetting, "sample_rate", flagInt(cmd, "sample-rate-hz"))
+	putInt(audioSetting, "bitrate", flagInt(cmd, "bitrate"))
+	return audioSetting
+}
+
+func musicPromptAddendum(cmd *cobra.Command) string {
+	parts := []string{}
+	appendPart := func(label, flagName string) {
+		if value := strings.TrimSpace(flagString(cmd, flagName)); value != "" {
+			parts = append(parts, label+": "+value)
+		}
+	}
+	appendPart("vocals", "vocals")
+	appendPart("genre", "genre")
+	appendPart("mood", "mood")
+	appendPart("instruments", "instruments")
+	appendPart("tempo", "tempo")
+	appendPart("key", "key")
+	appendPart("avoid", "avoid")
+	appendPart("use case", "use-case")
+	appendPart("structure", "structure")
+	appendPart("references", "references")
+	appendPart("extra", "extra")
+	if bpm := flagInt(cmd, "bpm"); bpm > 0 {
+		parts = append(parts, fmt.Sprintf("bpm: %d", bpm))
+	}
+	return strings.Join(parts, "\n")
 }
 
 func resolveVideoGenerateInput(cmd *cobra.Command, args []string) (map[string]any, map[string]any, error) {
@@ -682,6 +800,203 @@ func resolveVideoGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 	putFloat(payload, "seed", flagFloat64(cmd, "seed"))
 
 	return payload, preview, nil
+}
+
+func resolveVideoActionTransferInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
+	image := strings.TrimSpace(flagString(cmd, "image"))
+	if image == "" {
+		return nil, nil, invalidFlagValueError("--image", "", "动作迁移需要一张身份图")
+	}
+	video := strings.TrimSpace(flagString(cmd, "video"))
+	if video == "" {
+		return nil, nil, invalidFlagValueError("--video", "", "动作迁移需要一个动作参考视频")
+	}
+
+	imageValue, imageSource, imagePreflight, uploadedImage, err := resolveJimengImageGatewaySource(cmd, image)
+	if err != nil {
+		return nil, nil, err
+	}
+	videoValue, videoSource, videoPreflight, uploadedVideo, err := resolveGatewayMediaURLSource(cmd, video, "source_video")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	metadata := map[string]any{}
+	action := strings.TrimSpace(flagString(cmd, "action"))
+	if action == "" {
+		action = "actionGenerate"
+	}
+	metadata["action"] = action
+	putBool(metadata, "cut_result_first_second_switch", flagBool(cmd, "cut-result-first-second-switch"))
+
+	payload := map[string]any{
+		"images":   []string{imageValue},
+		"videos":   []string{videoValue},
+		"metadata": metadata,
+	}
+	putString(payload, "prompt", flagString(cmd, "prompt"))
+	putString(payload, "notes", flagString(cmd, "notes"))
+
+	preview := map[string]any{
+		"image_source": imageSource,
+		"video_source": videoSource,
+	}
+	preflights := []map[string]any{}
+	if imagePreflight != nil {
+		preflights = append(preflights, imagePreflight)
+	}
+	if videoPreflight != nil {
+		preflights = append(preflights, videoPreflight)
+	}
+	if len(preflights) > 0 {
+		preview["preflight_uploads"] = preflights
+	}
+	uploads := []map[string]any{}
+	if uploadedImage != nil {
+		uploads = append(uploads, uploadedImage)
+	}
+	if uploadedVideo != nil {
+		uploads = append(uploads, uploadedVideo)
+	}
+	if len(uploads) > 0 {
+		preview["uploaded_media"] = uploads
+	}
+	return payload, preview, nil
+}
+
+func resolveJimengImageGatewaySource(cmd *cobra.Command, value string) (string, map[string]any, map[string]any, map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil, nil, nil, invalidFlagValueError("--image", "", "动作迁移身份图不能为空")
+	}
+	if pureBase64, ok, err := stripImageDataURLPrefix(value); ok || err != nil {
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+		return pureBase64, map[string]any{
+			"kind": "base64",
+			"note": "data URL prefix stripped for Jimeng binary_data_base64 compatibility",
+		}, nil, nil, nil
+	}
+	if looksLikeURL(value) {
+		return value, map[string]any{
+			"kind":  "url",
+			"value": value,
+		}, nil, nil, nil
+	}
+	if looksLikePureBase64Payload(value) {
+		return value, map[string]any{
+			"kind": "base64",
+		}, nil, nil, nil
+	}
+	return resolveGatewayMediaURLSource(cmd, value, "source_image")
+}
+
+func resolveGatewayMediaURLSource(cmd *cobra.Command, value, role string) (string, map[string]any, map[string]any, map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil, nil, nil, output.NewError("VALIDATION_ERROR", "媒体输入不能为空", map[string]any{
+			"role": role,
+		})
+	}
+	if looksLikeURL(value) {
+		return value, map[string]any{
+			"kind":  "url",
+			"value": value,
+			"role":  role,
+		}, nil, nil, nil
+	}
+	if _, err := os.Stat(value); err != nil {
+		return "", nil, nil, nil, output.NewError("CLI_ERROR", "读取媒体输入失败", map[string]any{
+			"path":    value,
+			"role":    role,
+			"details": err.Error(),
+		})
+	}
+	if dryRunMode(cmd) {
+		placeholder := "(from artifacts.upload.url)"
+		return placeholder, map[string]any{
+				"kind":  "upload_url",
+				"value": placeholder,
+				"from":  value,
+				"role":  role,
+			}, map[string]any{
+				"method": "POST",
+				"path":   "/artifacts/upload",
+				"body": map[string]any{
+					"path":       value,
+					"role":       role,
+					"visibility": "unlisted",
+				},
+			}, nil, nil
+	}
+
+	uploaded, err := uploadArtifact(context.Background(), value, artifactUploadOptions{
+		Role:       role,
+		Visibility: "unlisted",
+	})
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
+	mediaURL := stringValue(uploaded["url"])
+	if mediaURL == "" {
+		return "", nil, nil, nil, output.NewError("CLI_ERROR", "上传媒体后缺少可提交给网关的 URL", map[string]any{
+			"path":        value,
+			"role":        role,
+			"artifact_id": stringValue(uploaded["artifact_id"]),
+			"hint":        "即梦动作迁移需要 images[0] / videos[0] 使用 URL 或纯 base64；请确认 artifact 服务返回稳定 URL，或直接传入 URL",
+		})
+	}
+	return mediaURL, map[string]any{
+		"kind":  "upload_url",
+		"value": mediaURL,
+		"from":  value,
+		"role":  role,
+	}, nil, uploaded, nil
+}
+
+func stripImageDataURLPrefix(value string) (string, bool, error) {
+	if !looksLikeDataURL(value) {
+		return "", false, nil
+	}
+	parts := strings.SplitN(value, ",", 2)
+	if len(parts) != 2 {
+		return "", true, output.NewError("INPUT_PARSE_ERROR", "不合法的图片 data URL", nil)
+	}
+	header := strings.ToLower(strings.TrimSpace(parts[0]))
+	if !strings.Contains(header, ";base64") {
+		return "", true, output.NewError("INPUT_PARSE_ERROR", "即梦图片 data URL 必须使用 base64 编码", map[string]any{
+			"hint": "请传入 data:image/*;base64,xxxx，或直接传纯 base64 / URL / 本地文件",
+		})
+	}
+	body := strings.TrimSpace(parts[1])
+	if !looksLikePureBase64Payload(body) {
+		return "", true, output.NewError("INPUT_PARSE_ERROR", "图片 data URL 的 base64 内容不合法", nil)
+	}
+	return body, true, nil
+}
+
+func looksLikePureBase64Payload(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 32 {
+		return false
+	}
+	if strings.ContainsAny(value, " \t\r\n") {
+		return false
+	}
+	if _, err := base64.StdEncoding.DecodeString(value); err == nil {
+		return true
+	}
+	if _, err := base64.RawStdEncoding.DecodeString(value); err == nil {
+		return true
+	}
+	if _, err := base64.URLEncoding.DecodeString(value); err == nil {
+		return true
+	}
+	if _, err := base64.RawURLEncoding.DecodeString(value); err == nil {
+		return true
+	}
+	return false
 }
 
 func hasImageSourceInput(cmd *cobra.Command) bool {

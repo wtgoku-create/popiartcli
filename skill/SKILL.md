@@ -43,6 +43,24 @@ popiart image generate \
 
 Maps to: `popiskill-image-text2image-basic-v1`
 
+### Describe an image into a reusable prompt
+
+```bash
+popiart image describe \
+  --image ./source.png \
+  --model gemini-2.5-flash \
+  --prompt "请写成适合文生图复用的 prompt" \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Behavior:
+
+- `--image` accepts a local file path or stable media URL.
+- `--source-artifact-id` can be used when the source image already exists inside PopiArt.
+- the command waits for the multimodal model to finish, then returns `description_prompt` directly instead of only returning a `job_id`.
+
 ### Transform an image into a new image
 
 ```bash
@@ -107,6 +125,43 @@ Behavior:
 
 For an explicit command name, `popiart video img2video ...` is equivalent to `popiart video generate ...`.
 
+Optional prompt enhancement:
+
+```bash
+popiart video generate \
+  --image ./source.png \
+  --prompt "让人物自然转头，镜头慢慢推进" \
+  --prompt-enhancer-model gemini-2.5-flash \
+  --model viduq2-pro-fast \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+When `--prompt-enhancer-model` is provided, PopiArt first sends the source image plus the user's simple motion intent to the specified multimodal model, extracts one final image-to-video prompt, then submits the video job with that resolved prompt.
+
+### Transfer an action with Jimeng DreamActor
+
+```bash
+popiart video action-transfer \
+  --image ./face.jpg \
+  --video https://example.com/source-action.mp4 \
+  --cut-result-first-second-switch \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Default model: `jimeng_dreamactor_m20_gen_video` via direct model infer.
+
+Behavior:
+
+- `--image` becomes `images[0]`; URL, local file, pure base64, and `data:image/*;base64,...` are accepted.
+- `--video` becomes `videos[0]`; URL and local file are accepted.
+- Local files are uploaded first and submitted by stable artifact URL.
+- Image data URLs are normalized to pure base64 before submission because Jimeng rejects the `data:image/*;base64,` prefix.
+
 ### Text-to-speech
 
 ```bash
@@ -127,6 +182,8 @@ Default model: `speech-2.8-hd` via direct model infer
 popiart music generate \
   --prompt "Upbeat pop" \
   --lyrics "La la la" \
+  --output-format url \
+  --format mp3 \
   --output json \
   --quiet \
   --non-interactive
@@ -137,12 +194,17 @@ Or instrumental:
 ```bash
 popiart music "Warm morning folk" \
   --instrumental \
+  --output-format url \
+  --format mp3 \
   --output json \
   --quiet \
   --non-interactive
 ```
 
 Default model: `music-2.6-free` via direct model infer
+Gateway mapping: `--instrumental` is sent as `is_instrumental`; `--output-format`
+is sent as `output_format`; `--format`, `--sample-rate-hz`, and `--bitrate`
+are sent under `audio_setting`.
 
 ## Platform Commands
 

@@ -162,6 +162,48 @@ popiart video generate \
   --non-interactive
 ```
 
+## Recipe: Jimeng action transfer
+
+即梦动作迁移需要一张身份图和一个动作参考视频。CLI 默认使用 `jimeng_dreamactor_m20_gen_video`，并提交 `metadata.action=actionGenerate`。
+
+```sh
+popiart video action-transfer \
+  --image ./face.jpg \
+  --video https://example.com/source-action.mp4 \
+  --cut-result-first-second-switch \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+如果 `--image` 传入 `data:image/jpeg;base64,...`，CLI 会自动剥离 data URL 前缀，按即梦上游要求只提交纯 base64。
+
+本地文件也可以直接传入；CLI 会先上传为 stable media URL，再提交给服务端：
+
+```sh
+popiart video action-transfer \
+  --image ./face.jpg \
+  --video ./source-action.mp4 \
+  --cut-result-first-second-switch \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+成功返回 `artifact_ids` 后，可拉取结果：
+
+```sh
+popiart artifacts pull <artifact-id> --out ./action-transfer-preview.mp4
+```
+
+测试服验证过的 5 秒预览形态：
+
+- 输入：一张身份图 + 一个约 5 秒动作参考视频
+- 输出：MP4 artifact
+- 示例输出参数：约 5.04 秒，H.264 + AAC
+
 ## Recipe: text-to-speech
 
 ```sh
@@ -191,6 +233,8 @@ popiart speech synthesize \
 popiart music generate \
   --prompt "Upbeat pop" \
   --lyrics "La la la" \
+  --output-format url \
+  --format mp3 \
   --output json \
   --quiet \
   --non-interactive
@@ -201,6 +245,8 @@ popiart music generate \
 ```sh
 popiart music "Warm morning folk" \
   --instrumental \
+  --output-format url \
+  --format mp3 \
   --output json \
   --quiet \
   --non-interactive
@@ -212,10 +258,15 @@ popiart music "Warm morning folk" \
 popiart music generate \
   --prompt "Upbeat summer pop" \
   --lyrics-file ./lyrics.txt \
+  --output-format url \
+  --format mp3 \
   --output json \
   --quiet \
   --non-interactive
 ```
+
+`--output-format` maps to the MiniMax gateway `output_format` (`hex` or `url`). `--format`,
+`--sample-rate-hz`, and `--bitrate` are sent under the gateway `audio_setting` object.
 
 ## Recipe: MiniMax image generate
 

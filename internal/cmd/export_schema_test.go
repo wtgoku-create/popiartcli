@@ -63,6 +63,107 @@ func TestExportSchemaIncludesRunnableParentSugarCommand(t *testing.T) {
 	}
 }
 
+func TestExportSchemaImageImg2ImgIncludesReferenceFusionFlags(t *testing.T) {
+	root := NewRootCmd("0.test")
+
+	stdout, stderr, err := executeRootRaw(root, []string{
+		"export-schema",
+		"--command", "image img2img",
+		"--format", "generic",
+	})
+	if err != nil {
+		t.Fatalf("export-schema failed: %v stderr=%s", err, stderr)
+	}
+
+	var tools []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &tools); err != nil {
+		t.Fatalf("unmarshal export-schema output: %v output=%q", err, stdout)
+	}
+	properties := tools[0]["input_schema"].(map[string]any)["properties"].(map[string]any)
+	if properties["identity_reference_image"] == nil || properties["style_reference_image"] == nil {
+		t.Fatalf("expected split reference flags, got %#v", properties)
+	}
+	if properties["negative_prompt"] == nil || properties["preserve_composition"] == nil {
+		t.Fatalf("expected composition control flags, got %#v", properties)
+	}
+	if properties["reference_image"] == nil || properties["reference_artifact_id"] == nil {
+		t.Fatalf("expected fusion reference flags, got %#v", properties)
+	}
+}
+
+func TestExportSchemaImageDescribeRequiresModelAndImageSource(t *testing.T) {
+	root := NewRootCmd("0.test")
+
+	stdout, stderr, err := executeRootRaw(root, []string{
+		"export-schema",
+		"--command", "image describe",
+		"--format", "generic",
+	})
+	if err != nil {
+		t.Fatalf("export-schema failed: %v stderr=%s", err, stderr)
+	}
+
+	var tools []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &tools); err != nil {
+		t.Fatalf("unmarshal export-schema output: %v output=%q", err, stdout)
+	}
+	properties := tools[0]["input_schema"].(map[string]any)["properties"].(map[string]any)
+	if properties["model"] == nil || properties["image"] == nil || properties["source_artifact_id"] == nil {
+		t.Fatalf("expected image describe flags, got %#v", properties)
+	}
+	required := tools[0]["input_schema"].(map[string]any)["required"].([]any)
+	foundModel := false
+	for _, item := range required {
+		if item == "model" {
+			foundModel = true
+			break
+		}
+	}
+	if !foundModel {
+		t.Fatalf("expected model to be required, got %#v", required)
+	}
+	if tools[0]["input_schema"].(map[string]any)["oneOf"] == nil {
+		t.Fatalf("expected oneOf image source constraint, got %#v", tools[0]["input_schema"])
+	}
+}
+
+func TestExportSchemaVideoActionTransferRequiresImageAndVideo(t *testing.T) {
+	root := NewRootCmd("0.test")
+
+	stdout, stderr, err := executeRootRaw(root, []string{
+		"export-schema",
+		"--command", "video action-transfer",
+		"--format", "generic",
+	})
+	if err != nil {
+		t.Fatalf("export-schema failed: %v stderr=%s", err, stderr)
+	}
+
+	var tools []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &tools); err != nil {
+		t.Fatalf("unmarshal export-schema output: %v output=%q", err, stdout)
+	}
+	inputSchema := tools[0]["input_schema"].(map[string]any)
+	properties := inputSchema["properties"].(map[string]any)
+	if properties["image"] == nil || properties["video"] == nil || properties["cut_result_first_second_switch"] == nil {
+		t.Fatalf("expected Jimeng action-transfer flags, got %#v", properties)
+	}
+	required := inputSchema["required"].([]any)
+	hasImage := false
+	hasVideo := false
+	for _, item := range required {
+		if item == "image" {
+			hasImage = true
+		}
+		if item == "video" {
+			hasVideo = true
+		}
+	}
+	if !hasImage || !hasVideo {
+		t.Fatalf("expected image and video to be required, got %#v", required)
+	}
+}
+
 func TestExportSchemaOpenAICompletionCommandUsesShellEnum(t *testing.T) {
 	root := NewRootCmd("0.test")
 

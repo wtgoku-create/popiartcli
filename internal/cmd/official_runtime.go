@@ -407,11 +407,18 @@ func submitModelInferWithFallback(ctx context.Context, modelIDs []string, payloa
 }
 
 func submitModelInferJob(ctx context.Context, modelID string, payload map[string]any, priority, projectID, idempotencyKey string) (map[string]any, error) {
+	return submitModelInferJobWithModelType(ctx, modelID, payload, priority, projectID, idempotencyKey, "")
+}
+
+func submitModelInferJobWithModelType(ctx context.Context, modelID string, payload map[string]any, priority, projectID, idempotencyKey, modelType string) (map[string]any, error) {
 	cfg := config.Load()
 	body := map[string]any{
 		"model_id": modelID,
 		"input":    payload,
 		"priority": defaultString(strings.TrimSpace(priority), "normal"),
+	}
+	if strings.TrimSpace(modelType) != "" {
+		body["model_type"] = strings.TrimSpace(modelType)
 	}
 	if cfg.Project != "" {
 		body["project_id"] = cfg.Project

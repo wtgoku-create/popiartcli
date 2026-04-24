@@ -50,15 +50,65 @@ popiart video generate \
   --non-interactive
 ```
 
+如果你想直接识别一张图并返回可复用的描述性 prompt，可以执行：
+
+```sh
+popiart image describe \
+  --image ./source.png \
+  --model gemini-2.5-flash \
+  --prompt "请写成适合文生图复用的 prompt" \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+如果想先让带图像理解的模型把“一张图 + 一句简单描述”扩写成更完整的图生视频提示词，再提交视频模型，可以加：
+
+```sh
+popiart video generate \
+  --image ./source.png \
+  --prompt "让人物自然转头，镜头慢慢推进" \
+  --prompt-enhancer-model gemini-2.5-flash \
+  --model viduq2-pro-fast \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+如果要做即梦动作迁移，传一张身份图和一个动作参考视频：
+
+```sh
+popiart video action-transfer \
+  --image ./face.jpg \
+  --video https://example.com/source-action.mp4 \
+  --cut-result-first-second-switch \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+行为说明：
+
+- 默认模型是 `jimeng_dreamactor_m20_gen_video`。
+- `--image` 是身份图，会提交为统一网关 `images[0]`。
+- `--video` 是动作参考视频，会提交为统一网关 `videos[0]`。
+- `--cut-result-first-second-switch` 会提交为 `metadata.cut_result_first_second_switch=true`。
+- 本地图片 / 视频会先上传为 stable media URL，再提交给服务端。
+- 如果 `--image` 是 `data:image/*;base64,...`，CLI 会自动剥离前缀，只提交即梦要求的纯 base64。
+
 ## 默认入口
 
-推荐优先记住这 4 个入口：
+推荐优先记住这几个入口：
 
 - `popiart setup --agent codex`
 - `popiart image generate`
+- `popiart image describe`
 - `popiart image img2img`
 - `popiart video generate`
 - `popiart video img2video`
+- `popiart video action-transfer`
 - `popiart speech synthesize`
 - `popiart music generate`
 
@@ -285,11 +335,18 @@ popiart export-schema --command "models route-override set" --format generic
 - Hailuo / T2V / I2V / S2V 视频模型
   - 已在测试环境验证 `MiniMax-Hailuo-2.3` 文生视频、图生视频，以及 `MiniMax-Hailuo-02` 首尾帧视频可以成功提交并产出视频
   - `S2V-01` 已验证能通过 `popiart` 正确提交主体参考视频任务
+- 即梦动作迁移
+  - `popiart video action-transfer` 默认使用 `jimeng_dreamactor_m20_gen_video`
+  - CLI 会提交 `images[0]`、`videos[0]`、`metadata.action=actionGenerate`
+  - 即梦图片 data URL 会自动剥离 `data:image/*;base64,` 前缀，避免上游 base64 解码失败
+  - 已在测试服 `http://101.42.99.35:18080/v1` 验证 5 秒动作迁移预览可完成并返回 MP4 artifact
 
 ```sh
 popiart music generate \
   --prompt "Upbeat pop" \
   --lyrics "La la la" \
+  --output-format url \
+  --format mp3 \
   --output json \
   --quiet \
   --non-interactive
@@ -306,6 +363,7 @@ popiart speech synthesize \
 - `music` 默认模型：`music-2.6-free`
 - `speech` / `audio tts` 默认模型：`speech-2.8-hd`
 - 显式传 `--model` 时，会改为本次请求 direct model override
+- `music --instrumental` 会映射为网关 `is_instrumental`；`--output-format` 映射为 `output_format`；`--format`、`--sample-rate-hz`、`--bitrate` 会写入 `audio_setting`
 - 这两条命令当前走 `models infer`，不是远程 `skills schema`
 
 MiniMax 图片 / 视频更推荐显式指定模型：

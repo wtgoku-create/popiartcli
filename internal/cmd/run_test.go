@@ -40,6 +40,10 @@ func TestRunPassesImageParametersThroughUnchanged(t *testing.T) {
 		if input["reference_image_url"] != "https://example.com/reference-alias.png" {
 			t.Fatalf("expected reference_image_url to pass through, got %#v", input["reference_image_url"])
 		}
+		refs, ok := input["reference_artifact_ids"].([]any)
+		if !ok || len(refs) != 2 || refs[0] != "art_ref_1" || refs[1] != "art_ref_2" {
+			t.Fatalf("expected reference_artifact_ids to pass through, got %#v", input["reference_artifact_ids"])
+		}
 		if _, exists := input["size"]; exists {
 			t.Fatalf("expected no injected size, got %#v", input["size"])
 		}
@@ -52,7 +56,7 @@ func TestRunPassesImageParametersThroughUnchanged(t *testing.T) {
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"run", "popiskill-image-img2img-basic-v1",
-		"--input", `{"prompt":"keep subject","aspect_ratio":"9:16","resolution":"1024x1820","image_url":"https://example.com/reference.png","reference_image_url":"https://example.com/reference-alias.png"}`,
+		"--input", `{"prompt":"keep subject","aspect_ratio":"9:16","resolution":"1024x1820","image_url":"https://example.com/reference.png","reference_image_url":"https://example.com/reference-alias.png","reference_artifact_ids":["art_ref_1","art_ref_2"]}`,
 	})
 
 	data, ok := resp["data"].(map[string]any)
