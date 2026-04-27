@@ -758,7 +758,7 @@ func getMediaTool(ctx context.Context, args map[string]any) (any, error) {
 	if err := currentClient().GetJSON(ctx, "/media/"+mediaID, nil, &media); err != nil {
 		return nil, err
 	}
-	return media, nil
+	return mediaOutput(media), nil
 }
 
 func uploadMediaTool(ctx context.Context, args map[string]any) (any, error) {

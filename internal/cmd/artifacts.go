@@ -276,9 +276,7 @@ func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions
 	if artifact.MediaID != "" {
 		result["media_id"] = artifact.MediaID
 	}
-	if artifact.URL != "" {
-		result["url"] = artifact.URL
-	}
+	addStableURLFields(result, artifact.URL)
 	if artifact.Visibility != "" {
 		result["visibility"] = artifact.Visibility
 	}

@@ -32,7 +32,7 @@ func newMediaCmd() *cobra.Command {
 			if err := currentClient().GetJSON(context.Background(), "/media/"+args[0], nil, &media); err != nil {
 				return err
 			}
-			return writeOutput(cmd, media)
+			return writeOutput(cmd, mediaOutput(media))
 		},
 	}
 
@@ -121,9 +121,7 @@ func uploadMedia(ctx context.Context, path string, opts mediaUploadOptions) (map
 	if media.ProjectID != "" {
 		result["project_id"] = media.ProjectID
 	}
-	if media.URL != "" {
-		result["url"] = media.URL
-	}
+	addStableURLFields(result, media.URL)
 	if media.Visibility != "" {
 		result["visibility"] = media.Visibility
 	}
@@ -131,4 +129,37 @@ func uploadMedia(ctx context.Context, path string, opts mediaUploadOptions) (map
 		result["sha256"] = media.SHA256
 	}
 	return result, nil
+}
+
+func mediaOutput(media types.Media) map[string]any {
+	result := map[string]any{
+		"id":       media.ID,
+		"media_id": media.ID,
+	}
+	if media.ArtifactID != "" {
+		result["artifact_id"] = media.ArtifactID
+	}
+	if media.ProjectID != "" {
+		result["project_id"] = media.ProjectID
+	}
+	if media.Filename != "" {
+		result["filename"] = media.Filename
+	}
+	if media.ContentType != "" {
+		result["content_type"] = media.ContentType
+	}
+	if media.SizeBytes != 0 {
+		result["size_bytes"] = media.SizeBytes
+	}
+	if media.CreatedAt != "" {
+		result["created_at"] = media.CreatedAt
+	}
+	addStableURLFields(result, media.URL)
+	if media.Visibility != "" {
+		result["visibility"] = media.Visibility
+	}
+	if media.SHA256 != "" {
+		result["sha256"] = media.SHA256
+	}
+	return result
 }
