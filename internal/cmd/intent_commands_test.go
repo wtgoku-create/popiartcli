@@ -1051,6 +1051,291 @@ func TestVideoActionTransferStripsJimengImageDataURLPrefix(t *testing.T) {
 	}
 }
 
+func TestVideoSeedanceUsesDefaultModelAndGatewayFieldNames(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/video/generations" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["model"] != defaultSeedanceVideoModelID {
+			t.Fatalf("unexpected model: %#v", body["model"])
+		}
+		if _, ok := body["input"]; ok {
+			t.Fatalf("did not expect models/infer input wrapper: %#v", body["input"])
+		}
+		if body["prompt"] != "keep the motion style consistent" {
+			t.Fatalf("unexpected prompt: %#v", body["prompt"])
+		}
+		images := body["images"].([]any)
+		if len(images) != 1 || images[0] != "https://example.com/frame.jpg" {
+			t.Fatalf("unexpected images: %#v", body["images"])
+		}
+		videos := body["videos"].([]any)
+		if len(videos) != 1 || videos[0] != "https://example.com/ref.mp4" {
+			t.Fatalf("unexpected videos: %#v", body["videos"])
+		}
+		audios := body["audios"].([]any)
+		if len(audios) != 1 || audios[0] != "https://example.com/ref.mp3" {
+			t.Fatalf("unexpected audios: %#v", body["audios"])
+		}
+		metadata := body["metadata"].(map[string]any)
+		if metadata["ratio"] != "16:9" || metadata["return_last_frame"] != true || metadata["generate_audio"] != true {
+			t.Fatalf("unexpected metadata: %#v", metadata)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task_seedance_1","status":"PENDING"}}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--prompt", "keep the motion style consistent",
+		"--image", "https://example.com/frame.jpg",
+		"--video", "https://example.com/ref.mp4",
+		"--audio", "https://example.com/ref.mp3",
+		"--ratio", "16:9",
+		"--return-last-frame",
+		"--generate-audio",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["task_id"] != "task_seedance_1" {
+		t.Fatalf("unexpected task_id: %#v", data["task_id"])
+	}
+	if data["execution_mode"] != "direct-model-default" {
+		t.Fatalf("unexpected execution_mode: %#v", data["execution_mode"])
+	}
+}
+
+func TestVideoSeedanceTextOnlyDryRunUsesDefaultModelAndMetadata(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"--dry-run",
+		"video", "seedance",
+		"--prompt", "a cat chasing a butterfly",
+		"--size", "720p",
+		"--duration", "5",
+		"--frames", "120",
+		"--ratio", "adaptive",
+		"--action", "textGenerate",
+		"--seed", "42",
+		"--service-tier", "flex",
+		"--execution-expires-after", "600",
+		"--draft",
+		"--tools-json", `[{"type":"camera_control"}]`,
+		"--safety-identifier", "safe-user-1",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["action"] != "video.seedance" {
+		t.Fatalf("unexpected action: %#v", data["action"])
+	}
+	if data["model_id"] != defaultSeedanceVideoModelID {
+		t.Fatalf("unexpected model_id: %#v", data["model_id"])
+	}
+	request := data["request"].(map[string]any)
+	body := request["body"].(map[string]any)
+	if body["model"] != defaultSeedanceVideoModelID {
+		t.Fatalf("unexpected dry-run model: %#v", body)
+	}
+	if _, ok := body["input"]; ok {
+		t.Fatalf("did not expect models/infer input wrapper: %#v", body["input"])
+	}
+	if body["prompt"] != "a cat chasing a butterfly" || body["size"] != "720p" || body["duration"] != float64(5) {
+		t.Fatalf("unexpected text-only body: %#v", body)
+	}
+	if _, ok := body["images"]; ok {
+		t.Fatalf("did not expect images in text-only Seedance body: %#v", body["images"])
+	}
+	if _, ok := body["videos"]; ok {
+		t.Fatalf("did not expect videos in text-only Seedance body: %#v", body["videos"])
+	}
+	if _, ok := body["audios"]; ok {
+		t.Fatalf("did not expect audios in text-only Seedance body: %#v", body["audios"])
+	}
+	metadata := body["metadata"].(map[string]any)
+	if metadata["action"] != "textGenerate" || metadata["ratio"] != "adaptive" || metadata["seed"] != float64(42) {
+		t.Fatalf("unexpected metadata basics: %#v", metadata)
+	}
+	if metadata["frames"] != float64(120) || metadata["execution_expires_after"] != float64(600) {
+		t.Fatalf("unexpected metadata numeric fields: %#v", metadata)
+	}
+	if metadata["service_tier"] != "flex" || metadata["draft"] != true || metadata["safety_identifier"] != "safe-user-1" {
+		t.Fatalf("unexpected metadata extended fields: %#v", metadata)
+	}
+	tools := metadata["tools"].([]any)
+	if len(tools) != 1 || tools[0].(map[string]any)["type"] != "camera_control" {
+		t.Fatalf("unexpected tools metadata: %#v", metadata["tools"])
+	}
+}
+
+func TestVideoSeedanceStartEndFramesKeepsImageDataURLs(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	const firstFrame = "data:image/jpeg;base64,Zmlyc3QtZnJhbWU="
+	const lastFrame = "data:image/jpeg;base64,bGFzdC1mcmFtZQ=="
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/video/generations" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["model"] != defaultSeedanceVideoModelID {
+			t.Fatalf("unexpected model: %#v", body["model"])
+		}
+		images := body["images"].([]any)
+		if len(images) != 2 || images[0] != firstFrame || images[1] != lastFrame {
+			t.Fatalf("unexpected start/end images: %#v", body["images"])
+		}
+		metadata := body["metadata"].(map[string]any)
+		if metadata["action"] != "firstTailGenerate" {
+			t.Fatalf("unexpected action metadata: %#v", metadata)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task_seedance_start_end_1","status":"PENDING"}}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--prompt", "animate between the first and last frame",
+		"--image", firstFrame,
+		"--image", lastFrame,
+		"--action", "firstTailGenerate",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["task_id"] != "task_seedance_start_end_1" {
+		t.Fatalf("unexpected task_id: %#v", data["task_id"])
+	}
+}
+
+func TestVideoSeedanceImageModeDoesNotRequirePrompt(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/video/generations" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if _, ok := body["prompt"]; ok {
+			t.Fatalf("did not expect empty prompt to be sent: %#v", body["prompt"])
+		}
+		images := body["images"].([]any)
+		if len(images) != 1 || images[0] != "https://example.com/frame.jpg" {
+			t.Fatalf("unexpected images: %#v", body["images"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task_seedance_image_1","status":"PENDING"}}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--image", "https://example.com/frame.jpg",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["task_id"] != "task_seedance_image_1" {
+		t.Fatalf("unexpected task_id: %#v", data["task_id"])
+	}
+}
+
+func TestVideoSeedanceWaitPollsGatewayAndSurfacesLastFrameURL(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	pollCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/video/generations":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["model"] != defaultSeedanceVideoModelID {
+				t.Fatalf("unexpected model: %#v", body["model"])
+			}
+			fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task_seedance_wait_1","status":"PENDING"}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/video/generations/task_seedance_wait_1":
+			pollCount++
+			fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task_seedance_wait_1","status":"SUCCESS","metadata":{"url":"https://cdn.example.com/video.mp4","last_frame_url":"https://cdn.example.com/last-frame.png"}}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--prompt", "keep the motion style consistent",
+		"--return-last-frame",
+		"--wait",
+		"--interval", "1",
+	})
+
+	if pollCount != 1 {
+		t.Fatalf("unexpected poll count: %d", pollCount)
+	}
+	data := resp["data"].(map[string]any)
+	if data["status"] != "SUCCESS" {
+		t.Fatalf("unexpected status: %#v", data["status"])
+	}
+	if data["result_url"] != "https://cdn.example.com/video.mp4" {
+		t.Fatalf("unexpected result_url: %#v", data["result_url"])
+	}
+	if data["last_frame_url"] != "https://cdn.example.com/last-frame.png" {
+		t.Fatalf("unexpected last_frame_url: %#v", data["last_frame_url"])
+	}
+}
+
+func TestVideoSeedanceRejectsAudioWithoutImageOrVideo(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
+		"--dry-run",
+		"video", "seedance",
+		"--audio", "https://example.com/ref.mp3",
+	})
+	if err == nil {
+		t.Fatal("expected audio-only Seedance input to fail")
+	}
+}
+
+func TestVideoSeedanceRejectsInvalidToolsJSON(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
+		"--dry-run",
+		"video", "seedance",
+		"--prompt", "a cat chasing a butterfly",
+		"--tools-json", `{"type":"camera_control"}`,
+	})
+	if err == nil {
+		t.Fatal("expected invalid tools-json to fail")
+	}
+}
+
 func TestAudioTTSCommandReadsTextFileAndSubmitsJob(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")

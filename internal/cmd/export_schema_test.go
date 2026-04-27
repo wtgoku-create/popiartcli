@@ -164,6 +164,36 @@ func TestExportSchemaVideoActionTransferRequiresImageAndVideo(t *testing.T) {
 	}
 }
 
+func TestExportSchemaVideoSeedanceRequiresPromptOrVisualReference(t *testing.T) {
+	root := NewRootCmd("0.test")
+
+	stdout, stderr, err := executeRootRaw(root, []string{
+		"export-schema",
+		"--command", "video seedance",
+		"--format", "generic",
+	})
+	if err != nil {
+		t.Fatalf("export-schema failed: %v stderr=%s", err, stderr)
+	}
+
+	var tools []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &tools); err != nil {
+		t.Fatalf("unmarshal export-schema output: %v output=%q", err, stdout)
+	}
+	inputSchema := tools[0]["input_schema"].(map[string]any)
+	properties := inputSchema["properties"].(map[string]any)
+	if properties["image"] == nil || properties["video"] == nil || properties["audio"] == nil || properties["ratio"] == nil {
+		t.Fatalf("expected Seedance flags, got %#v", properties)
+	}
+	if _, ok := inputSchema["required"]; ok {
+		t.Fatalf("did not expect prompt to be globally required: %#v", inputSchema["required"])
+	}
+	oneOf := inputSchema["oneOf"].([]any)
+	if len(oneOf) != 3 {
+		t.Fatalf("expected prompt/image/video oneOf, got %#v", oneOf)
+	}
+}
+
 func TestExportSchemaOpenAICompletionCommandUsesShellEnum(t *testing.T) {
 	root := NewRootCmd("0.test")
 

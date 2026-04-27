@@ -322,6 +322,12 @@ func applyExportSchemaOverlay(commandPath string, schema map[string]any) map[str
 	case "video action-transfer":
 		addRequired("image")
 		addRequired("video")
+	case "video seedance":
+		schema["oneOf"] = []map[string]any{
+			{"required": []string{"prompt"}},
+			{"required": []string{"image"}},
+			{"required": []string{"video"}},
+		}
 	case "audio tts", "speech synthesize":
 		schema["oneOf"] = []map[string]any{
 			{"required": []string{"text"}},

@@ -98,6 +98,20 @@ popiart video action-transfer \
 - 本地图片 / 视频会先上传为 stable media URL，再提交给服务端。
 - 如果 `--image` 是 `data:image/*;base64,...`，CLI 会自动剥离前缀，只提交即梦要求的纯 base64。
 
+如果要走 Seedance / 豆包视频模型，可以直接用专门入口：
+
+```sh
+popiart video seedance \
+  --prompt "保持主体动作风格一致" \
+  --video https://example.com/ref.mp4 \
+  --ratio 16:9 \
+  --return-last-frame \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
 ## 默认入口
 
 推荐优先记住这几个入口：
@@ -109,6 +123,7 @@ popiart video action-transfer \
 - `popiart video generate`
 - `popiart video img2video`
 - `popiart video action-transfer`
+- `popiart video seedance`
 - `popiart speech synthesize`
 - `popiart music generate`
 
@@ -340,6 +355,13 @@ popiart export-schema --command "models route-override set" --format generic
   - CLI 会提交 `images[0]`、`videos[0]`、`metadata.action=actionGenerate`
   - 即梦图片 data URL 会自动剥离 `data:image/*;base64,` 前缀，避免上游 base64 解码失败
   - 已在测试服 `http://101.42.99.35:18080/v1` 验证 5 秒动作迁移预览可完成并返回 MP4 artifact
+- Seedance / Doubao 视频
+  - `popiart video seedance` 默认使用 `doubao-seedance-2-0-260128`
+  - CLI 直接提交到统一网关 `POST /v1/video/generations`，请求体使用网关字段 `model`、`prompt`、`size`、`duration`、`images[]`、`videos[]`、`audios[]`
+  - 只有文生视频强制要求 `--prompt`；参考图、首尾帧、参考视频可不传 prompt；参考音频必须同时搭配图片或视频
+  - 支持 `--image`、`--video`、`--audio` 多模态输入，映射到统一网关 `images[]`、`videos[]`、`audios[]`
+  - `--ratio`、`--return-last-frame`、`--generate-audio`、`--frames`、`--tools-json` 等会写入 `metadata`
+  - `--wait` 会查询 `GET /v1/video/generations/{task_id}`；成功结果会透出 `result_url`，如果网关返回 `metadata.last_frame_url` 也会透出 `last_frame_url`
 
 ```sh
 popiart music generate \

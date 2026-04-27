@@ -204,6 +204,74 @@ popiart artifacts pull <artifact-id> --out ./action-transfer-preview.mp4
 - 输出：MP4 artifact
 - 示例输出参数：约 5.04 秒，H.264 + AAC
 
+## Recipe: Seedance video
+
+Seedance / 豆包视频建议使用专门命令面。默认模型是 `doubao-seedance-2-0-260128`。
+CLI 会直接提交到统一网关 `POST /v1/video/generations`，不会再包一层 `models/infer` 输入。
+
+文生视频需要 `--prompt`：
+
+```sh
+popiart video seedance \
+  --prompt "一只猫追蝴蝶" \
+  --ratio 16:9 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+参考图、首尾帧、参考图和参考视频模式下 `--prompt` 可选；只传 `--audio` 不合法，参考音频必须同时搭配图片或视频。
+
+参考视频：
+
+```sh
+popiart video seedance \
+  --prompt "保持主体动作风格一致" \
+  --video https://example.com/ref.mp4 \
+  --ratio 16:9 \
+  --return-last-frame \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+带 Seedance 2.0 扩展 metadata：
+
+```sh
+popiart video seedance \
+  --prompt "保持主体动作风格一致" \
+  --video https://example.com/ref.mp4 \
+  --frames 120 \
+  --ratio 16:9 \
+  --return-last-frame \
+  --generate-audio \
+  --tools-json '[{"type":"camera_control"}]' \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+`--wait` 会查询 `GET /v1/video/generations/{task_id}`。如果网关返回 `metadata.url` / `metadata.last_frame_url`，CLI 会同时透出 `result_url` / `last_frame_url`。
+
+本地文件也可以直接传入；CLI 会先上传成 stable media URL：
+
+```sh
+popiart video seedance \
+  --prompt "多图融合参考" \
+  --image ./a.jpg \
+  --image ./b.jpg \
+  --video ./ref.mp4 \
+  --audio ./ref.mp3 \
+  --generate-audio \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
 ## Recipe: text-to-speech
 
 ```sh

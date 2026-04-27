@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
@@ -24,6 +25,7 @@ const (
 	defaultMiniMaxMusicModelID         = "music-2.6-free"
 	defaultMiniMaxSpeechModelID        = "speech-2.8-hd"
 	defaultJimengActionTransferModelID = "jimeng_dreamactor_m20_gen_video"
+	defaultSeedanceVideoModelID        = "doubao-seedance-2-0-260128"
 )
 
 func newImageCmd() *cobra.Command {
@@ -175,7 +177,23 @@ func newVideoCmd() *cobra.Command {
 	addCommonExecutionFlags(actionTransferCmd)
 	addVideoActionTransferFlags(actionTransferCmd)
 
-	videoCmd.AddCommand(generateCmd, img2videoCmd, fromImageCmd, actionTransferCmd)
+	seedanceCmd := &cobra.Command{
+		Use:     "seedance",
+		Aliases: []string{"doubao", "doubao-seedance"},
+		Short:   "通过 Seedance / 豆包视频模型生成视频",
+		Long:    "提交文生、图生、参考视频或参考音频请求到 Seedance / Doubao 视频模型。默认模型为 doubao-seedance-2-0-260128，走统一网关 video/generations JSON 接口。",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			payload, preview, err := resolveSeedanceVideoInput(cmd)
+			if err != nil {
+				return err
+			}
+			return executeSeedanceVideoCommand(cmd, payload, "video.seedance", preview)
+		},
+	}
+	addCommonExecutionFlags(seedanceCmd)
+	addVideoSeedanceFlags(seedanceCmd)
+
+	videoCmd.AddCommand(generateCmd, img2videoCmd, fromImageCmd, actionTransferCmd, seedanceCmd)
 	return videoCmd
 }
 
@@ -374,6 +392,28 @@ func addVideoActionTransferFlags(cmd *cobra.Command) {
 	cmd.Flags().String("notes", "", "额外约束说明")
 }
 
+func addVideoSeedanceFlags(cmd *cobra.Command) {
+	cmd.Flags().String("model", defaultSeedanceVideoModelID, "Seedance / 豆包视频模型；默认 doubao-seedance-2-0-260128")
+	cmd.Flags().String("prompt", "", "视频提示词；文生视频必填，参考图/视频/音频模式可选")
+	cmd.Flags().StringArray("image", nil, "参考图片 URL、data URL 或本地文件路径，可重复传入")
+	cmd.Flags().StringArray("video", nil, "参考视频 URL 或本地文件路径，可重复传入")
+	cmd.Flags().StringArray("audio", nil, "参考音频 URL 或本地文件路径，可重复传入")
+	cmd.Flags().String("size", "", "分辨率，例如 720p、1080p")
+	cmd.Flags().Float64("duration", 0, "视频时长（秒）")
+	cmd.Flags().Int("frames", 0, "帧数；传入后优先级高于 duration")
+	cmd.Flags().String("ratio", "", "宽高比，例如 16:9、9:16、adaptive")
+	cmd.Flags().String("action", "", "显式 metadata.action，例如 textGenerate、generate、firstTailGenerate、referenceGenerate")
+	cmd.Flags().Int("seed", 0, "随机种子")
+	cmd.Flags().Bool("return-last-frame", false, "返回最后一帧图片")
+	cmd.Flags().Bool("generate-audio", false, "生成带声音的视频")
+	cmd.Flags().String("service-tier", "", "服务等级，例如 default、flex")
+	cmd.Flags().Int("execution-expires-after", 0, "任务超时秒数")
+	cmd.Flags().Bool("draft", false, "样片模式，仅部分 Seedance 模型支持")
+	cmd.Flags().String("tools-json", "", "Seedance 2.0 工具列表 JSON array")
+	cmd.Flags().String("safety-identifier", "", "安全标识符")
+	cmd.Flags().String("notes", "", "额外约束说明")
+}
+
 func addSpeechSynthesizeFlags(cmd *cobra.Command) {
 	cmd.Flags().String("model", defaultMiniMaxSpeechModelID, "显式指定本次请求使用的语音模型；默认使用 MiniMax speech-2.8-hd")
 	cmd.Flags().String("text", "", "要合成的文本")
@@ -550,6 +590,168 @@ func executeDirectModelCommand(cmd *cobra.Command, defaultModelID string, payloa
 	return writeJobResultOrWait(cmd, job)
 }
 
+func executeSeedanceVideoCommand(cmd *cobra.Command, payload map[string]any, action string, extras map[string]any) error {
+	if err := validateJobExecutionFlags(cmd); err != nil {
+		return err
+	}
+	modelID := strings.TrimSpace(flagString(cmd, "model"))
+	if modelID == "" {
+		modelID = defaultSeedanceVideoModelID
+	}
+	if modelID == "" {
+		return output.NewError("VALIDATION_ERROR", "缺少可用 Seedance 模型", map[string]any{
+			"flag": "model",
+			"hint": "请显式传入 --model，或使用默认 doubao-seedance-2-0-260128",
+		})
+	}
+
+	body := buildSeedanceVideoGenerationBody(modelID, payload)
+	if dryRunMode(cmd) {
+		preview := map[string]any{
+			"model_id":       modelID,
+			"execution_mode": directModelExecutionMode(modelID, defaultSeedanceVideoModelID),
+			"request": map[string]any{
+				"method": "POST",
+				"path":   "/video/generations",
+				"body":   body,
+			},
+		}
+		for key, value := range extras {
+			preview[key] = value
+		}
+		return writeDryRunPreview(cmd, action, preview)
+	}
+
+	var task map[string]any
+	if err := currentClient().PostJSON(context.Background(), "/video/generations", body, &task); err != nil {
+		return err
+	}
+	task = normalizeSeedanceVideoResponse(task)
+	task["model_id"] = modelID
+	task["execution_mode"] = directModelExecutionMode(modelID, defaultSeedanceVideoModelID)
+	for key, value := range extras {
+		task[key] = value
+	}
+	return writeSeedanceVideoResultOrWait(cmd, task)
+}
+
+func buildSeedanceVideoGenerationBody(modelID string, payload map[string]any) map[string]any {
+	body := cloneMapAny(payload)
+	body["model"] = modelID
+	return body
+}
+
+func writeSeedanceVideoResultOrWait(cmd *cobra.Command, task map[string]any) error {
+	wait, err := shouldWaitForJob(cmd)
+	if err != nil {
+		return err
+	}
+	if !wait {
+		return writeOutput(cmd, task)
+	}
+
+	taskID := seedanceTaskID(task)
+	if taskID == "" {
+		return output.NewError("CLI_ERROR", "Seedance 响应中缺少 task_id", nil)
+	}
+
+	interval, err := intervalDuration(cmd, "interval")
+	if err != nil {
+		return err
+	}
+	done, err := waitForSeedanceVideoTask(context.Background(), taskID, interval, 300)
+	if err != nil {
+		return err
+	}
+	done = normalizeSeedanceVideoResponse(done)
+	if _, ok := done["model_id"]; !ok {
+		done["model_id"] = task["model_id"]
+	}
+	if _, ok := done["execution_mode"]; !ok {
+		done["execution_mode"] = task["execution_mode"]
+	}
+	return writeOutput(cmd, done)
+}
+
+func waitForSeedanceVideoTask(ctx context.Context, taskID string, interval time.Duration, maxPolls int) (map[string]any, error) {
+	for pollIndex := 0; pollIndex < maxPolls; pollIndex++ {
+		var task map[string]any
+		if err := currentClient().GetJSON(ctx, "/video/generations/"+taskID, nil, &task); err != nil {
+			return nil, err
+		}
+		task = normalizeSeedanceVideoResponse(task)
+
+		status := strings.ToUpper(strings.TrimSpace(stringValue(task["status"])))
+		switch status {
+		case "SUCCESS", "SUCCEEDED", "DONE", "COMPLETED":
+			return task, nil
+		case "FAILED", "FAILURE", "CANCELLED", "CANCELED":
+			return nil, output.NewError("JOB_FAILED", seedanceTaskFailureMessage(task), map[string]any{
+				"task_id": taskID,
+				"status":  status,
+				"error":   task["error"],
+			})
+		}
+
+		fmt.Fprintf(os.Stderr, "\r⏳ %s - %s (%ds)   ", taskID, status, int(interval.Seconds())*pollIndex)
+		time.Sleep(interval)
+	}
+
+	return nil, output.NewError("POLL_TIMEOUT", fmt.Sprintf("Seedance task %s did not complete within the timeout", taskID), map[string]any{
+		"task_id":         taskID,
+		"timeout_seconds": int(interval.Seconds()) * maxPolls,
+	})
+}
+
+func normalizeSeedanceVideoResponse(task map[string]any) map[string]any {
+	if task == nil {
+		return map[string]any{}
+	}
+	if data, ok := task["data"].(map[string]any); ok {
+		task = cloneMapAny(data)
+	}
+	if taskID := seedanceTaskID(task); taskID != "" {
+		task["task_id"] = taskID
+	}
+	if metadata, ok := task["metadata"].(map[string]any); ok {
+		if stringValue(task["result_url"]) == "" {
+			if url := strings.TrimSpace(stringValue(metadata["url"])); url != "" {
+				task["result_url"] = url
+			}
+		}
+		if stringValue(task["last_frame_url"]) == "" {
+			if lastFrameURL := strings.TrimSpace(stringValue(metadata["last_frame_url"])); lastFrameURL != "" {
+				task["last_frame_url"] = lastFrameURL
+			}
+		}
+	}
+	return task
+}
+
+func seedanceTaskID(task map[string]any) string {
+	if task == nil {
+		return ""
+	}
+	for _, key := range []string{"task_id", "id", "job_id"} {
+		if value := strings.TrimSpace(stringValue(task[key])); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func seedanceTaskFailureMessage(task map[string]any) string {
+	if message := strings.TrimSpace(stringValue(task["message"])); message != "" {
+		return message
+	}
+	if errMap, ok := task["error"].(map[string]any); ok {
+		if message := strings.TrimSpace(stringValue(errMap["message"])); message != "" {
+			return message
+		}
+	}
+	return "Seedance video task failed"
+}
+
 func directModelExecutionMode(modelID, defaultModelID string) string {
 	if strings.TrimSpace(modelID) != "" && strings.TrimSpace(defaultModelID) != "" && strings.TrimSpace(modelID) == strings.TrimSpace(defaultModelID) {
 		return "direct-model-default"
@@ -562,6 +764,8 @@ func directModelTypeForAction(action string) string {
 	case "music", "music.generate":
 		return "music"
 	case "video.action-transfer":
+		return "video"
+	case "video.seedance":
 		return "video"
 	default:
 		return ""
@@ -864,6 +1068,87 @@ func resolveVideoActionTransferInput(cmd *cobra.Command) (map[string]any, map[st
 	return payload, preview, nil
 }
 
+func resolveSeedanceVideoInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
+	prompt := strings.TrimSpace(flagString(cmd, "prompt"))
+
+	images, imagePreview, err := resolvePortableMediaInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "image")), "reference_image", true)
+	if err != nil {
+		return nil, nil, err
+	}
+	videos, videoPreview, err := resolvePortableMediaInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "video")), "reference_video", false)
+	if err != nil {
+		return nil, nil, err
+	}
+	audios, audioPreview, err := resolvePortableMediaInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "audio")), "reference_audio", false)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if prompt == "" && len(images) == 0 && len(videos) == 0 && len(audios) == 0 {
+		return nil, nil, invalidFlagValueError("--prompt", "", "文生视频请传入 Seedance 视频提示词")
+	}
+	if len(audios) > 0 && len(images) == 0 && len(videos) == 0 {
+		return nil, nil, output.NewError("VALIDATION_ERROR", "Seedance 参考音频必须同时提供图片或视频", map[string]any{
+			"flags": []string{"audio", "image", "video"},
+			"hint":  "请同时传入 --image 或 --video，或移除 --audio",
+		})
+	}
+
+	payload := map[string]any{}
+	putString(payload, "prompt", prompt)
+	putStringSlice(payload, "images", images)
+	putStringSlice(payload, "videos", videos)
+	putStringSlice(payload, "audios", audios)
+	putString(payload, "size", flagString(cmd, "size"))
+	putString(payload, "notes", flagString(cmd, "notes"))
+	putFloat(payload, "duration", flagFloat64(cmd, "duration"))
+
+	metadata := map[string]any{}
+	putString(metadata, "action", flagString(cmd, "action"))
+	putString(metadata, "ratio", normalizePortableAspectRatio(flagString(cmd, "ratio")))
+	putString(metadata, "service_tier", flagString(cmd, "service-tier"))
+	putInt(metadata, "frames", flagInt(cmd, "frames"))
+	putInt(metadata, "seed", flagInt(cmd, "seed"))
+	putInt(metadata, "execution_expires_after", flagInt(cmd, "execution-expires-after"))
+	putBool(metadata, "return_last_frame", flagBool(cmd, "return-last-frame"))
+	putBool(metadata, "generate_audio", flagBool(cmd, "generate-audio"))
+	putBool(metadata, "draft", flagBool(cmd, "draft"))
+	putString(metadata, "safety_identifier", flagString(cmd, "safety-identifier"))
+	if toolsJSON := strings.TrimSpace(flagString(cmd, "tools-json")); toolsJSON != "" {
+		tools, err := parseJSONArrayFlag("--tools-json", toolsJSON)
+		if err != nil {
+			return nil, nil, err
+		}
+		metadata["tools"] = tools
+	}
+	if len(metadata) > 0 {
+		payload["metadata"] = metadata
+	}
+
+	preview := map[string]any{}
+	mergeStringAnyMaps(preview, imagePreview)
+	mergeStringAnyMaps(preview, videoPreview)
+	mergeStringAnyMaps(preview, audioPreview)
+	return payload, preview, nil
+}
+
+func parseJSONArrayFlag(flagName, value string) ([]any, error) {
+	var parsed any
+	if err := json.Unmarshal([]byte(value), &parsed); err != nil {
+		return nil, output.NewError("INPUT_PARSE_ERROR", "JSON 参数解析失败", map[string]any{
+			"flag":    flagName,
+			"details": err.Error(),
+		})
+	}
+	array, ok := parsed.([]any)
+	if !ok {
+		return nil, output.NewError("VALIDATION_ERROR", flagName+" 必须是 JSON array", map[string]any{
+			"flag": flagName,
+		})
+	}
+	return array, nil
+}
+
 func resolveJimengImageGatewaySource(cmd *cobra.Command, value string) (string, map[string]any, map[string]any, map[string]any, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -953,6 +1238,53 @@ func resolveGatewayMediaURLSource(cmd *cobra.Command, value, role string) (strin
 		"from":  value,
 		"role":  role,
 	}, nil, uploaded, nil
+}
+
+func resolvePortableMediaInputs(cmd *cobra.Command, values []string, role string, allowDataURL bool) ([]string, map[string]any, error) {
+	out := make([]string, 0, len(values))
+	sources := []map[string]any{}
+	preflights := []map[string]any{}
+	uploads := []map[string]any{}
+
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		switch {
+		case looksLikeURL(value):
+			out = append(out, value)
+			sources = append(sources, map[string]any{"kind": "url", "value": value, "role": role})
+		case allowDataURL && looksLikeDataURL(value):
+			out = append(out, value)
+			sources = append(sources, map[string]any{"kind": "data_url", "role": role})
+		default:
+			normalized, source, preflight, uploaded, err := resolveGatewayMediaURLSource(cmd, value, role)
+			if err != nil {
+				return nil, nil, err
+			}
+			out = append(out, normalized)
+			sources = append(sources, source)
+			if preflight != nil {
+				preflights = append(preflights, preflight)
+			}
+			if uploaded != nil {
+				uploads = append(uploads, uploaded)
+			}
+		}
+	}
+
+	preview := map[string]any{}
+	if len(sources) > 0 {
+		preview[role+"_sources"] = sources
+	}
+	if len(preflights) > 0 {
+		preview[role+"_preflight_uploads"] = preflights
+	}
+	if len(uploads) > 0 {
+		preview[role+"_uploaded_media"] = uploads
+	}
+	return out, preview, nil
 }
 
 func stripImageDataURLPrefix(value string) (string, bool, error) {
