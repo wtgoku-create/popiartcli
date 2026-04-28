@@ -252,6 +252,78 @@ popiart models routes --output json --quiet --non-interactive
 
 Default to `popiart run` with a skill. Use `popiart models infer` only when the user explicitly asks for a specific model.
 
+## Model Switching
+
+Use the lightest model-switching surface that matches the user's intent:
+
+| Intent | Use |
+|---|---|
+| One request should use a named model | Pass `--model <model-id>` on intent commands that support it. |
+| A project should keep using a model for a whole skill type | Use `popiart models route-override set`. |
+| The user wants to call a raw model directly | Use `popiart models infer <model-id>`. |
+| The user only asks for "best/default" behavior | Do not switch models; let PopiArt route through the skill. |
+
+Single-request override examples:
+
+```bash
+popiart image generate \
+  --model image-01 \
+  --prompt "A clean editorial product photo" \
+  --aspect-ratio 1:1 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+```bash
+popiart video generate \
+  --model viduq2-pro-fast \
+  --image ./source.png \
+  --prompt "Subtle camera push-in and natural motion" \
+  --duration 5 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Project-level route override examples:
+
+```bash
+popiart models route-override set \
+  --project proj_abc123 \
+  --skill-type image.img2img \
+  --model seedream-4-5-251128 \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+```bash
+popiart models route-override set \
+  --project proj_abc123 \
+  --skill-type video.image2video \
+  --model viduq2-pro-fast \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Inspect and undo overrides:
+
+```bash
+popiart models route-override list --project proj_abc123 --output json --quiet --non-interactive
+popiart models route-override unset --project proj_abc123 --skill-type video.image2video --output json --quiet --non-interactive
+```
+
+Agent rules:
+
+- Prefer `--model` for a single user request.
+- Prefer `route-override set` only when the user asks to pin future project behavior.
+- Run `models list` or `models routes` before recommending a model, because available models and pricing can change.
+- Avoid `models infer` when an intent command or skill exists, unless the user explicitly names a raw model or asks for low-level routing/debugging.
+
 ## MCP And Tool Schemas
 
 Expose PopiArt to MCP-capable agents with:

@@ -92,6 +92,8 @@ func buildAgentSkillWrapperLines() []string {
 		"- Use `--dry-run` to preview normalized requests before a network write.",
 		"- Use `--async` for explicit non-blocking job creation, or `--wait` for blocking mode.",
 		"- Prefer intent-first commands before falling back to `skills`, `run`, `jobs`, and `artifacts`.",
+		"- For one request, switch models with intent-command `--model <model-id>` when supported.",
+		"- For project-wide future routing, use `popiart models route-override set`; reserve `models infer` for raw model calls.",
 		"",
 		"Intent-first commands:",
 		"",
