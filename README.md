@@ -154,6 +154,22 @@ popiart video seedance \
 
 完整 agent 契约见 [skill/SKILL.md](./skill/SKILL.md)。
 
+## Agent Skill 安装
+
+最优先推荐用 CLI 自己安装 native agent 入口：
+
+```sh
+popiart setup --agent codex --completion zsh
+```
+
+这会同时生成本地 MCP 配置、agent skill wrapper、runtime baseline 与诊断清单。随后运行：
+
+```sh
+popiart mcp doctor --agent codex
+```
+
+如果用户的 agent 支持直接从 GitHub 安装 skill，可以把本仓库的 [`skill/`](./skill/) 目录作为安装目标；这个目录只有一个权威入口 [`skill/SKILL.md`](./skill/SKILL.md)，适合被 Codex、Claude Code、OpenCode、OpenClaw 等 agent 复制到自己的 skills 目录。`skills/` 目录是 PopiArt runtime skill 的 bundled seed，不是 agent skill 安装入口。
+
 如果你刚完成初始化，推荐先运行：
 
 ```sh

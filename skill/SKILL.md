@@ -1,113 +1,136 @@
 ---
 name: popiart-cli
-description: Use PopiArt when an agent needs creator skill discovery, multimodal runtime execution, jobs, artifacts, stable media URLs, or an MCP server entrypoint. Prefer the intent-first image/video/audio commands for common media tasks, and fall back to skills/run/jobs/artifacts for platform-level control.
+description: Use PopiArt to discover and run creator skills for image, video, animation, audio, jobs, artifacts, budgets, model routing, and per-project context from the terminal. Use when the user mentions popiart, popiskill-*, skillhub.popi.art, or asks to generate or transform multimodal content such as text-to-image, img2img, image-to-video, TTS, music, upscaling, or job/artifact management.
 ---
 
-# PopiArt CLI Agent Contract
+# PopiArt CLI
 
-Use `popiart` as an agent-facing runtime for creator skills and multimodal jobs.
+Use `popiart` as the agent-facing runtime for PopiArt creator workflows. The CLI handles authentication, skill discovery, job orchestration, artifact transport, budgeting, routing, and MCP discoverability, so agents should not call upstream model providers directly.
 
-## Standard Agent Flags
+## Install And Setup
 
-In agent or CI contexts, prefer these flags consistently:
+Install the CLI first:
+
+```bash
+brew tap wtgoku-create/popi
+brew install wtgoku-create/popi/popiart
+```
+
+Or:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/install.sh | sh
+```
+
+Then initialize the local agent integration:
+
+```bash
+popiart setup --agent codex --completion zsh
+popiart auth login --key <product-key>
+popiart mcp doctor --agent codex
+```
+
+Supported `--agent` values are `codex`, `claude-code`, `openclaw`, and `opencode`.
+
+## Output Contract
+
+Default stdout is JSON:
+
+```json
+{ "ok": true, "data": {} }
+```
+
+Failures use:
+
+```json
+{ "ok": false, "error": { "code": "VALIDATION_ERROR", "message": "..." } }
+```
+
+In agent or CI contexts, prefer:
+
+```bash
+--output json --quiet --non-interactive
+```
+
+Useful global flags:
 
 | Flag | Purpose |
 |---|---|
-| `--output json` | Stable machine-readable stdout envelope |
-| `--quiet` | Reserve stderr for unavoidable prompts or diagnostics |
-| `--non-interactive` | Fail fast instead of prompting for missing input |
-| `--dry-run` | Preview the normalized network request without executing writes |
-| `--async` | Be explicit that the command should return a job immediately |
-| `--wait` | Block until the job finishes |
+| `--output json` | Stable machine-readable output. This is the default. |
+| `--output plain` / `--plain` | Human-readable output. |
+| `--quiet` | Suppress non-result output. |
+| `--non-interactive` | Fail instead of prompting. |
+| `--dry-run` | Preview normalized requests without executing network writes. |
+| `--async` | Return a job immediately. |
+| `--wait` | Block until the job reaches a terminal state. |
+| `--endpoint <url>` | Override the API endpoint. |
+| `--project <id>` | Override the active project. |
+| `--no-color` | Disable ANSI color in plain mode. |
 
-Notes:
+Treat the JSON envelope and `error.code` as the source of truth. Do not pattern-match on human-readable messages.
 
-- `--output plain` is supported for human-readable output; `--plain` remains as a compatibility alias.
-- PopiArt keeps stdout data-oriented. When a command supports `--dry-run`, the preview is emitted on stdout using the selected output format.
-- `--yes` is available as a stable confirmation flag for future prompts; current media/runtime flows do not require it.
+## Intent Commands
 
-## Intent-First Commands
+Prefer these high-level commands for common user requests.
 
-Prefer these commands for common user intents:
-
-### Generate an image
+### Text To Image
 
 ```bash
 popiart image generate \
-  --prompt "A cinematic portrait of a young creator in warm sunset light" \
-  --aspect-ratio 9:16 \
+  --prompt "a sunset over Tokyo, cinematic, 35mm" \
+  --aspect-ratio 16:9 \
+  --wait \
   --output json \
   --quiet \
   --non-interactive
 ```
 
-Maps to: `popiskill-image-text2image-basic-v1`
-
-### Describe an image into a reusable prompt
+### Image Description
 
 ```bash
 popiart image describe \
   --image ./source.png \
   --model gemini-2.5-flash \
-  --prompt "请写成适合文生图复用的 prompt" \
+  --prompt "Write a reusable text-to-image prompt" \
   --output json \
   --quiet \
   --non-interactive
 ```
 
-Behavior:
-
-- `--image` accepts a local file path or stable media URL.
-- `--source-artifact-id` can be used when the source image already exists inside PopiArt.
-- the command waits for the multimodal model to finish, then returns `description_prompt` directly instead of only returning a `job_id`.
-
-### Transform an image into a new image
+### Img2Img
 
 ```bash
 popiart image img2img \
   --image ./source.png \
-  --prompt "Turn this into a watercolor illustration" \
+  --prompt "Keep the subject, recolor to dusk cinematic" \
   --strength 0.6 \
+  --wait \
   --output json \
   --quiet \
   --non-interactive
 ```
 
-Maps to: `popiskill-image-img2img-basic-v1`
-
-Input rules:
-
-- `--image` accepts a local file path, stable media URL, or supported data URL.
-- `--identity-reference-image` and `--style-reference-image` accept local file paths or URLs and may be repeated.
-- `--source-artifact-id`, `--identity-reference-artifact-id`, and `--style-reference-artifact-id` are preferred when the images already exist inside PopiArt and should be reused across steps.
-- Local files are uploaded automatically when the selected runtime path requires artifacts.
-
-Role-aware multi-image pattern:
+For role-aware multi-image edits:
 
 ```bash
 popiart image img2img \
-  --image https://server.popi.art/v1/media/med_scene/content \
-  --identity-reference-image https://example.com/identity.jpg \
-  --style-reference-image https://example.com/style.png \
-  --prompt "Replace the person in the source scene with the main character from the identity reference. Keep the exact action and framing from the source scene. Apply only the style from the style reference." \
+  --image ./scene.png \
+  --identity-reference-image ./character.png \
+  --style-reference-image ./style.png \
+  --prompt "Replace the person in the source scene with the character from the identity reference. Preserve action and camera framing. Apply only the visual style from the style reference." \
   --preserve-composition \
+  --wait \
   --output json \
   --quiet \
   --non-interactive
 ```
 
-Agent guidance:
-
-- Prefer `source + identity` first when character consistency is the highest priority.
-- Add `style` as a second step when a single-pass three-image edit drifts too far from the source action or subject identity.
-- Prefer `--dry-run` before unfamiliar multi-image edits to inspect the normalized request body.
-
-### Generate a video from a source image
+### Image To Video
 
 ```bash
 popiart video generate \
   --image ./source.png \
-  --prompt "Subtle camera push-in and natural hair movement" \
+  --prompt "Hair and fabric drift in a soft breeze; slow camera push-in" \
   --duration 5 \
   --wait \
   --output json \
@@ -115,32 +138,23 @@ popiart video generate \
   --non-interactive
 ```
 
-Maps to: `popiskill-video-image2video-basic-v1`
-
-Behavior:
-
-- `--image` accepts either an `https://...` URL or a local file path.
-- When `--image` is a local file, PopiArt uploads it first as a source artifact, then submits the runtime job.
-- `--source-artifact-id` can be used instead of `--image` when the source is already uploaded.
-
-For an explicit command name, `popiart video img2video ...` is equivalent to `popiart video generate ...`.
+`popiart video img2video` is an explicit alias for this flow.
 
 Optional prompt enhancement:
 
 ```bash
 popiart video generate \
   --image ./source.png \
-  --prompt "让人物自然转头，镜头慢慢推进" \
+  --prompt "Make the person naturally turn toward camera" \
   --prompt-enhancer-model gemini-2.5-flash \
   --model viduq2-pro-fast \
+  --wait \
   --output json \
   --quiet \
   --non-interactive
 ```
 
-When `--prompt-enhancer-model` is provided, PopiArt first sends the source image plus the user's simple motion intent to the specified multimodal model, extracts one final image-to-video prompt, then submits the video job with that resolved prompt.
-
-### Transfer an action with Jimeng DreamActor
+### Action Transfer
 
 ```bash
 popiart video action-transfer \
@@ -153,30 +167,17 @@ popiart video action-transfer \
   --non-interactive
 ```
 
-Default model: `jimeng_dreamactor_m20_gen_video` via direct model infer.
-
-Behavior:
-
-- `--image` becomes `images[0]`; URL, local file, pure base64, and `data:image/*;base64,...` are accepted.
-- `--video` becomes `videos[0]`; URL and local file are accepted.
-- Local files are uploaded first and submitted by stable artifact URL.
-- Image data URLs are normalized to pure base64 before submission because Jimeng rejects the `data:image/*;base64,` prefix.
-
-### Text-to-speech
+### Speech And Music
 
 ```bash
 popiart speech synthesize \
-  --text "今天我们来做一个更适合 agent 调用的 CLI。" \
+  --text "Today we are building a CLI for agents." \
   --voice narrator_female \
   --format mp3 \
   --output json \
   --quiet \
   --non-interactive
 ```
-
-Default model: `speech-2.8-hd` via direct model infer
-
-### Music generation
 
 ```bash
 popiart music generate \
@@ -189,69 +190,112 @@ popiart music generate \
   --non-interactive
 ```
 
-Or instrumental:
-
-```bash
-popiart music "Warm morning folk" \
-  --instrumental \
-  --output-format url \
-  --format mp3 \
-  --output json \
-  --quiet \
-  --non-interactive
-```
-
-Default model: `music-2.6-free` via direct model infer
-Gateway mapping: `--instrumental` is sent as `is_instrumental`; `--output-format`
-is sent as `output_format`; `--format`, `--sample-rate-hz`, and `--bitrate`
-are sent under `audio_setting`.
-
 ## Platform Commands
 
-Use the lower-level platform surface when the agent needs precise control:
+Use lower-level commands when the agent needs exact skill control:
 
 ```bash
+popiart skills list --search "image upscale" --output json --quiet --non-interactive
 popiart skills get <skill-id> --output json --quiet --non-interactive
 popiart skills schema <skill-id> --output json --quiet --non-interactive
-popiart run <skill-id> --input @params.json --output json --quiet --non-interactive
+popiart run <skill-id> --input @params.json --wait --output json --quiet --non-interactive
 popiart jobs wait <job-id> --output json --quiet --non-interactive
-popiart artifacts pull-all <job-id> --output json --quiet --non-interactive
+popiart artifacts pull-all <job-id> --dir ./results --output json --quiet --non-interactive
 ```
 
-## Dry-Run Pattern
+When picking a skill, prefer `skills list --search` or `skills schema` over guessing ids. The returned `id` is the value to pass to `run`.
 
-Use `--dry-run` before any write when the agent needs to inspect the exact request shape:
+## File Transport
+
+For intent commands, local files can usually be passed directly with flags like `--image`; the CLI uploads them when needed.
+
+For low-level `popiart run`, do not place local file paths inside `--input`. Upload first:
 
 ```bash
-popiart image generate \
-  --prompt "Editorial skincare product shot" \
-  --aspect-ratio 1:1 \
-  --dry-run \
+ARTIFACT_ID=$(popiart artifacts upload ./source.png --role source --output json --quiet --non-interactive | jq -r '.data.artifact_id')
+
+popiart run popiskill-image-img2img-basic-v1 \
+  --input "{\"source_artifact_id\":\"$ARTIFACT_ID\",\"prompt\":\"keep the subject, cinematic dusk\"}" \
+  --wait \
   --output json \
   --quiet \
   --non-interactive
 ```
 
-PopiArt returns:
+If the agent already has a public HTTPS URL or stable PopiArt media URL, pass that URL directly when the target command or schema supports it.
 
-- normalized `skill_id`
-- request `method`, `path`, and `body`
-- resolved agent protocol metadata such as output mode and wait/async behavior
+## Jobs
 
-## Official Runtime Baseline
+Prefer `run --wait` or `jobs wait` over manual polling:
 
-- `popiskill-image-text2image-basic-v1`
-- `popiskill-image-img2img-basic-v1`
-- `popiskill-image-img2img-popistudio-alice-showcase-v1`
-- `popiskill-video-image2video-basic-v1`
-- `popiskill-video-image2video-popistudio-alice-showcase-v1`
-- `popiskill-audio-tts-multimodel-v1`
-- `popiskill-audio-stt-local-v1`
+```bash
+popiart jobs get <job-id> --output json --quiet --non-interactive
+popiart jobs wait <job-id> --output json --quiet --non-interactive
+popiart jobs logs <job-id> --output json --quiet --non-interactive
+popiart jobs cancel <job-id> --output json --quiet --non-interactive
+```
 
-## MCP Entrypoint
+If a wait command returns `POLL_TIMEOUT`, the server-side job may still be running. Resume with `popiart jobs wait <same-job-id>`; do not submit the same generation again.
+
+## Budget, Project, Models
+
+Re-query these values instead of assuming they are current:
+
+```bash
+popiart budget status --output json --quiet --non-interactive
+popiart budget usage --group-by skill --output json --quiet --non-interactive
+popiart project current --output json --quiet --non-interactive
+popiart project context --output json --quiet --non-interactive
+popiart models list --output json --quiet --non-interactive
+popiart models routes --output json --quiet --non-interactive
+```
+
+Default to `popiart run` with a skill. Use `popiart models infer` only when the user explicitly asks for a specific model.
+
+## MCP And Tool Schemas
+
+Expose PopiArt to MCP-capable agents with:
 
 ```bash
 popiart mcp serve
 ```
 
-Use `popiart mcp print-config --agent codex` or `popiart bootstrap --agent codex --discoverable` when the agent host needs discoverability scaffolding.
+For agents that register CLI commands as native tools:
+
+```bash
+popiart export-schema --format openai
+popiart export-schema --format anthropic
+popiart export-schema --command "video generate" --format openai
+```
+
+`export-schema` emits raw tool schema JSON rather than the normal `{ ok, data }` envelope.
+
+## Error Handling
+
+Common `error.code` values:
+
+| Code | Agent response |
+|---|---|
+| `UNAUTHENTICATED` | Stop and ask the user to run `popiart auth login`. |
+| `FORBIDDEN` | Stop; surface the permission or project issue. |
+| `NOT_FOUND` | Re-check ids with `skills list`, `jobs list`, or `artifacts list`. |
+| `VALIDATION_ERROR` | Fix the invalid fields before retrying. |
+| `RATE_LIMITED` | Back off, then retry. Optionally check `budget status`. |
+| `JOB_FAILED` | Surface provider details; do not blindly retry. |
+| `POLL_TIMEOUT` | Resume waiting on the same job id. |
+| `NETWORK_ERROR` | Retry with backoff. After repeated failures, surface the issue. |
+| `INPUT_PARSE_ERROR` | Fix JSON syntax. |
+| `INPUT_NOT_FOUND` | Stop and check the local path. |
+| `CONFLICT` | Reuse the existing result or choose a fresh idempotency key. |
+| `SERVER_ERROR` | Retry once; if it persists, surface the issue. |
+| `CLI_ERROR` / `FATAL` | Stop and report the full JSON envelope. |
+
+## Anti-Patterns
+
+- Do not call upstream providers directly when a PopiArt skill or command exists.
+- Do not inline local file paths inside low-level `run --input`; upload first.
+- Do not loop `sleep + jobs get`; use `jobs wait`.
+- Do not re-run a job after `POLL_TIMEOUT`; wait on the same job id.
+- Do not assume budget, pricing, routes, or available models; query them.
+- Do not echo or commit `pk-...` keys.
+- Do not run bundled seed or authoring-only skills as remote runtime skills.
