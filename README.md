@@ -168,7 +168,21 @@ popiart setup --agent codex --completion zsh
 popiart mcp doctor --agent codex
 ```
 
-如果用户的 agent 支持直接从 GitHub 安装 skill，可以把本仓库的 [`skill/`](./skill/) 目录作为安装目标；这个目录只有一个权威入口 [`skill/SKILL.md`](./skill/SKILL.md)，适合被 Codex、Claude Code、OpenCode、OpenClaw 等 agent 复制到自己的 skills 目录。`skills/` 目录是 PopiArt runtime skill 的 bundled seed，不是 agent skill 安装入口。
+如果用户的 agent 支持直接从 GitHub 安装 skill，可以把本仓库的 [`skill/`](./skill/) 目录作为安装目标；这个目录只有一个权威入口 [`skill/SKILL.md`](./skill/SKILL.md)，适合被 Codex、Claude Code、OpenCode、OpenClaw 等 agent 复制到自己的 skills 目录。仓库里的 [`popiskills/`](./popiskills/) 是 PopiArt runtime skill 的 bundled seed，不是 agent skill 安装入口。
+
+OpenClaw 用户不要发仓库根目录或 `blob/main/skill/SKILL.md` 给安装器；很多安装器会优先扫描仓库内的 `skills/` 约定目录或递归安装所有 `SKILL.md`。推荐使用目录链接：
+
+```text
+https://github.com/wtgoku-create/popiartcli/tree/main/skill
+```
+
+或手动安装 raw 文件：
+
+```sh
+mkdir -p ~/.openclaw/skills/popiart-cli
+curl -fsSL https://raw.githubusercontent.com/wtgoku-create/popiartcli/main/skill/SKILL.md \
+  -o ~/.openclaw/skills/popiart-cli/SKILL.md
+```
 
 模型切换规则也写在这个 agent skill 里：单次请求优先用 intent 命令的 `--model <model-id>`，项目级长期切换才用 `popiart models route-override set`，只有用户明确要直连某个底层模型时才用 `popiart models infer`。
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/wtgoku-create/popiartcli/internal/types"
-	skillassets "github.com/wtgoku-create/popiartcli/skills"
+	skillassets "github.com/wtgoku-create/popiartcli/popiskills"
 )
 
 type BundledSkill struct {
@@ -54,7 +54,7 @@ func mustLoadBundledSkills() []BundledSkill {
 
 	bundled := make([]BundledSkill, 0, len(items))
 	for _, item := range items {
-		repoPath := "skills/" + item.ID
+		repoPath := "popiskills/" + item.ID
 		bundled = append(bundled, BundledSkill{
 			ID:                 item.ID,
 			Name:               item.Name,
