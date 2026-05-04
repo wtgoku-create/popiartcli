@@ -168,6 +168,10 @@ popiart setup --agent codex --completion zsh
 popiart mcp doctor --agent codex
 ```
 
+如果你正在让 Codex、Claude Code、OpenCode、OpenClaw 等 agent 帮你接入 PopiArt，可以先直接把这句话发给 agent：
+
+> 从 `https://github.com/wtgoku-create/popiartcli/tree/main/skill` 安装 PopiArt agent skill，安装名使用 `popiart-cli`。只安装这个 `skill/` 目录，不要安装仓库根目录、`blob/main/skill/SKILL.md` 或 `popiskills/`。如果本机还没有 `popiart` CLI，先按 README 的 Homebrew 或 `install.sh` 方式安装 CLI，再执行 `popiart setup --agent codex --completion zsh` 和 `popiart mcp doctor --agent codex`。
+
 如果用户的 agent 支持直接从 GitHub 安装 skill，可以把本仓库的 [`skill/`](./skill/) 目录作为安装目标；这个目录只有一个权威入口 [`skill/SKILL.md`](./skill/SKILL.md)，适合被 Codex、Claude Code、OpenCode、OpenClaw 等 agent 复制到自己的 skills 目录。仓库里的 [`popiskills/`](./popiskills/) 是 PopiArt runtime skill 的 bundled seed，不是 agent skill 安装入口。
 
 OpenClaw 用户不要发仓库根目录或 `blob/main/skill/SKILL.md` 给安装器；很多安装器会优先扫描仓库内的 `skills/` 约定目录或递归安装所有 `SKILL.md`。推荐使用目录链接：
