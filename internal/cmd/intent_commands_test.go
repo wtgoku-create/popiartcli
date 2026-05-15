@@ -1223,6 +1223,45 @@ func TestVideoSeedanceStartEndFramesKeepsImageDataURLs(t *testing.T) {
 	}
 }
 
+func TestVideoSeedanceLastFrameFlagAppendsSecondImage(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/video/generations" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		images := body["images"].([]any)
+		if len(images) != 2 || images[0] != "https://example.com/first.jpg" || images[1] != "https://example.com/last.jpg" {
+			t.Fatalf("unexpected images: %#v", body["images"])
+		}
+		metadata := body["metadata"].(map[string]any)
+		if metadata["action"] != "firstTailGenerate" {
+			t.Fatalf("unexpected action metadata: %#v", metadata)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task_seedance_last_frame_1","status":"PENDING"}}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--prompt", "transition smoothly",
+		"--image", "https://example.com/first.jpg",
+		"--last-frame", "https://example.com/last.jpg",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["task_id"] != "task_seedance_last_frame_1" {
+		t.Fatalf("unexpected task_id: %#v", data["task_id"])
+	}
+}
+
 func TestVideoSeedanceImageModeDoesNotRequirePrompt(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
@@ -1425,6 +1464,148 @@ func TestVideoImg2VideoCommandSubmitsOfficialRuntimeJob(t *testing.T) {
 
 	data := resp["data"].(map[string]any)
 	if data["job_id"] != "job_img2video_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestVideoGenerateStartEndFramesSubmitsOfficialRuntimeJob(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/skills/"+officialImage2VideoSkillID:
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"`+officialImage2VideoSkillID+`","name":"Basic Image2Video","description":"usable runtime","tags":["official"],"version":"1.0.0","model_type":"video","input_schema":{"type":"object"},"output_schema":{"type":"object"}}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/jobs":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["skill_id"] != officialImage2VideoSkillID {
+				t.Fatalf("unexpected skill_id: %#v", body["skill_id"])
+			}
+			input := body["input"].(map[string]any)
+			if input["image_url"] != "https://example.com/first.png" {
+				t.Fatalf("unexpected first frame image_url: %#v", input["image_url"])
+			}
+			if input["last_frame_image_url"] != "https://example.com/last.png" || input["end_frame_image_url"] != "https://example.com/last.png" {
+				t.Fatalf("unexpected last frame aliases: %#v", input)
+			}
+			images := input["images"].([]any)
+			if len(images) != 2 || images[0] != "https://example.com/first.png" || images[1] != "https://example.com/last.png" {
+				t.Fatalf("unexpected start/end images: %#v", input["images"])
+			}
+			metadata := input["metadata"].(map[string]any)
+			if metadata["action"] != "firstTailGenerate" {
+				t.Fatalf("unexpected metadata action: %#v", metadata)
+			}
+			if input["size"] != "720p" || input["duration_s"] != float64(5) {
+				t.Fatalf("unexpected size/duration: %#v", input)
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_video_start_end_1","status":"pending"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--image", "https://example.com/first.png",
+		"--last-frame", "https://example.com/last.png",
+		"--prompt", "transition naturally",
+		"--duration", "5",
+		"--size", "720p",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_video_start_end_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestVideoGenerateStartEndFramesModelOverrideUsesGatewayImages(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	tempDir := t.TempDir()
+	firstPath := filepath.Join(tempDir, "first.png")
+	lastPath := filepath.Join(tempDir, "last.png")
+	if err := os.WriteFile(firstPath, []byte("first-frame"), 0o644); err != nil {
+		t.Fatalf("write first frame: %v", err)
+	}
+	if err := os.WriteFile(lastPath, []byte("last-frame"), 0o644); err != nil {
+		t.Fatalf("write last frame: %v", err)
+	}
+
+	uploadCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/artifacts/upload":
+			uploadCalls++
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse multipart form: %v", err)
+			}
+			switch uploadCalls {
+			case 1:
+				if r.FormValue("role") != "source" {
+					t.Fatalf("unexpected first upload role: %q", r.FormValue("role"))
+				}
+				fmt.Fprint(w, `{"ok":true,"data":{"id":"art_first_1","filename":"first.png","content_type":"image/png","size_bytes":11,"created_at":"2026-05-15T00:00:00Z","url":"https://media.popi.test/first.png","visibility":"unlisted"}}`)
+			case 2:
+				if r.FormValue("role") != "last_frame" {
+					t.Fatalf("unexpected last upload role: %q", r.FormValue("role"))
+				}
+				fmt.Fprint(w, `{"ok":true,"data":{"id":"art_last_1","filename":"last.png","content_type":"image/png","size_bytes":10,"created_at":"2026-05-15T00:00:00Z","url":"https://media.popi.test/last.png","visibility":"unlisted"}}`)
+			default:
+				t.Fatalf("unexpected upload call %d", uploadCalls)
+			}
+		case r.Method == http.MethodPost && r.URL.Path == "/models/infer":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["model_id"] != "MiniMax-Hailuo-02" {
+				t.Fatalf("unexpected model_id: %#v", body["model_id"])
+			}
+			input := body["input"].(map[string]any)
+			images := input["images"].([]any)
+			if len(images) != 2 || images[0] != "https://media.popi.test/first.png" || images[1] != "https://media.popi.test/last.png" {
+				t.Fatalf("unexpected start/end images: %#v", input["images"])
+			}
+			metadata := input["metadata"].(map[string]any)
+			if metadata["action"] != "firstTailGenerate" {
+				t.Fatalf("unexpected metadata action: %#v", metadata)
+			}
+			if input["source_artifact_id"] != "art_first_1" || input["last_frame_image_url"] != "https://media.popi.test/last.png" {
+				t.Fatalf("unexpected frame payload: %#v", input)
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_hailuo_start_end_1","status":"pending"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--image", firstPath,
+		"--last-frame", lastPath,
+		"--prompt", "A little girl grows up.",
+		"--duration", "6",
+		"--size", "768P",
+		"--model", "MiniMax-Hailuo-02",
+	})
+
+	if uploadCalls != 2 {
+		t.Fatalf("expected two uploads, got %d", uploadCalls)
+	}
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "job_hailuo_start_end_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
 }
