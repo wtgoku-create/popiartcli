@@ -353,8 +353,9 @@ func normalizeOfficialImage2VideoDirectInput(payload map[string]any) (map[string
 			input["duration_s"] = seconds
 		}
 	}
+	normalizeOfficialImage2VideoStartEndInput(input)
 
-	if stringValue(input["source_artifact_id"]) == "" && stringValue(input["image_url"]) == "" {
+	if stringValue(input["source_artifact_id"]) == "" && stringValue(input["image_url"]) == "" && len(extractStringSliceAny(input["images"])) == 0 {
 		if stringValue(input["prompt"]) != "" {
 			return input, nil
 		}
@@ -364,6 +365,51 @@ func normalizeOfficialImage2VideoDirectInput(payload map[string]any) (map[string
 		})
 	}
 	return input, nil
+}
+
+func normalizeOfficialImage2VideoStartEndInput(input map[string]any) {
+	images := extractStringSliceAny(input["images"])
+	if len(images) > 0 && stringValue(input["image_url"]) == "" {
+		input["image_url"] = images[0]
+	}
+	if len(images) > 1 {
+		if stringValue(input["last_frame_image_url"]) == "" {
+			input["last_frame_image_url"] = images[1]
+		}
+		if stringValue(input["end_frame_image_url"]) == "" {
+			input["end_frame_image_url"] = images[1]
+		}
+		ensureOfficialImage2VideoAction(input)
+		return
+	}
+
+	firstFrame := strings.TrimSpace(stringValue(input["image_url"]))
+	lastFrame := ""
+	for _, key := range []string{"last_frame_image_url", "end_frame_image_url", "last_frame_url"} {
+		if value := strings.TrimSpace(stringValue(input[key])); value != "" {
+			lastFrame = value
+			break
+		}
+	}
+	if firstFrame == "" || lastFrame == "" {
+		if stringValue(input["last_frame_artifact_id"]) != "" || stringValue(input["end_frame_artifact_id"]) != "" {
+			ensureOfficialImage2VideoAction(input)
+		}
+		return
+	}
+	input["images"] = []string{firstFrame, lastFrame}
+	ensureOfficialImage2VideoAction(input)
+}
+
+func ensureOfficialImage2VideoAction(input map[string]any) {
+	metadata, _ := input["metadata"].(map[string]any)
+	if metadata == nil {
+		metadata = map[string]any{}
+		input["metadata"] = metadata
+	}
+	if strings.TrimSpace(stringValue(metadata["action"])) == "" {
+		metadata["action"] = "firstTailGenerate"
+	}
 }
 
 func preferredOfficialRuntimeModelIDs(skillID string, input map[string]any, fallback []string) []string {
