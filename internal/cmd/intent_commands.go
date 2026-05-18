@@ -103,7 +103,7 @@ func newVideoCmd() *cobra.Command {
 		Short: "围绕官方 video runtime 的意图化命令面",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 && strings.TrimSpace(flagString(cmd, "prompt")) == "" && strings.TrimSpace(flagString(cmd, "from")) == "" && strings.TrimSpace(flagString(cmd, "image")) == "" {
+			if len(args) == 0 && strings.TrimSpace(flagString(cmd, "prompt")) == "" && !hasImageSourceInput(cmd) {
 				return cmd.Help()
 			}
 			payload, preview, err := resolveVideoGenerateInput(cmd, args)
@@ -368,12 +368,15 @@ func addVideoGenerateFlags(cmd *cobra.Command) {
 	cmd.Flags().String("model", "", "显式指定本次请求使用的模型；传入后会直接走 models infer")
 	cmd.Flags().String("prompt-enhancer-model", "", "显式指定前置图像理解/提示词增强模型；传入后会先生成增强后的图生视频 prompt 再提交视频任务")
 	cmd.Flags().String("from", "", "源图路径或 URL（等同于 --image）")
-	cmd.Flags().String("image", "", "源图 URL 或本地文件路径")
+	cmd.Flags().String("image", "", "源图 URL、本地文件路径或 data:image/*;base64 URL")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
+	cmd.Flags().String("last-frame", "", "尾帧图片 URL、本地文件路径或 data:image/*;base64 URL；传入后按首尾帧视频提交")
+	cmd.Flags().String("last-frame-artifact-id", "", "已上传尾帧图片的 artifact_id；传入后按首尾帧视频提交")
 	cmd.Flags().String("prompt", "", "动作或镜头提示词")
 	cmd.Flags().String("negative-prompt", "", "排除项或不希望出现的运动/风格")
 	cmd.Flags().Float64("duration", 0, "视频时长（秒）")
 	cmd.Flags().Float64("fps", 0, "帧率提示")
+	cmd.Flags().String("size", "", "分辨率或尺寸，例如 720p、1080P、1280x720")
 	cmd.Flags().String("camera-motion", "", "镜头运动提示")
 	cmd.Flags().String("motion-intensity", "", "运动强度提示")
 	cmd.Flags().String("style", "", "视觉风格提示")
@@ -396,6 +399,7 @@ func addVideoSeedanceFlags(cmd *cobra.Command) {
 	cmd.Flags().String("model", defaultSeedanceVideoModelID, "Seedance / 豆包视频模型；默认 doubao-seedance-2-0-260128")
 	cmd.Flags().String("prompt", "", "视频提示词；文生视频必填，参考图/视频/音频模式可选")
 	cmd.Flags().StringArray("image", nil, "参考图片 URL、data URL 或本地文件路径，可重复传入")
+	cmd.Flags().String("last-frame", "", "尾帧图片 URL、data URL 或本地文件路径；会追加为 images[1] 并默认 metadata.action=firstTailGenerate")
 	cmd.Flags().StringArray("video", nil, "参考视频 URL 或本地文件路径，可重复传入")
 	cmd.Flags().StringArray("audio", nil, "参考音频 URL 或本地文件路径，可重复传入")
 	cmd.Flags().String("size", "", "分辨率，例如 720p、1080p")
@@ -962,6 +966,13 @@ func resolveVideoGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 	}
 	modelOverride := strings.TrimSpace(flagString(cmd, "model"))
 
+	if hasVideoLastFrameInput(cmd) && !hasImageSourceInput(cmd) {
+		return nil, nil, output.NewError("VALIDATION_ERROR", "首尾帧视频需要同时提供首帧图片", map[string]any{
+			"flags": []string{"image", "from", "source-artifact-id", "last-frame", "last-frame-artifact-id"},
+			"hint":  "请用 --image / --from / --source-artifact-id 提供首帧，再用 --last-frame 或 --last-frame-artifact-id 提供尾帧",
+		})
+	}
+
 	if !hasImageSourceInput(cmd) {
 		if prompt == "" {
 			return nil, nil, invalidFlagValueError("--prompt", "", "请传入视频提示词，或通过 --image / --from / --source-artifact-id 提供源图")
@@ -973,6 +984,7 @@ func resolveVideoGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 			putString(payload, "camera_motion", flagString(cmd, "camera-motion"))
 			putString(payload, "motion_intensity", flagString(cmd, "motion-intensity"))
 			putString(payload, "style", flagString(cmd, "style"))
+			putString(payload, "size", flagString(cmd, "size"))
 			putString(payload, "aspect_ratio", normalizePortableAspectRatio(flagString(cmd, "aspect-ratio")))
 			putString(payload, "notes", flagString(cmd, "notes"))
 			putFloat(payload, "duration_s", flagFloat64(cmd, "duration"))
@@ -997,11 +1009,15 @@ func resolveVideoGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 	putString(payload, "camera_motion", flagString(cmd, "camera-motion"))
 	putString(payload, "motion_intensity", flagString(cmd, "motion-intensity"))
 	putString(payload, "style", flagString(cmd, "style"))
+	putString(payload, "size", flagString(cmd, "size"))
 	putString(payload, "aspect_ratio", normalizePortableAspectRatio(flagString(cmd, "aspect-ratio")))
 	putString(payload, "notes", flagString(cmd, "notes"))
 	putFloat(payload, "duration_s", flagFloat64(cmd, "duration"))
 	putFloat(payload, "fps", flagFloat64(cmd, "fps"))
 	putFloat(payload, "seed", flagFloat64(cmd, "seed"))
+	if err := applyVideoLastFrameInput(cmd, payload, preview); err != nil {
+		return nil, nil, err
+	}
 
 	return payload, preview, nil
 }
@@ -1075,6 +1091,27 @@ func resolveSeedanceVideoInput(cmd *cobra.Command) (map[string]any, map[string]a
 	if err != nil {
 		return nil, nil, err
 	}
+	lastFramePreview := map[string]any{}
+	if lastFrame := strings.TrimSpace(flagString(cmd, "last-frame")); lastFrame != "" {
+		if len(images) == 0 {
+			return nil, nil, output.NewError("VALIDATION_ERROR", "Seedance 首尾帧需要先提供首帧图片", map[string]any{
+				"flags": []string{"image", "last-frame"},
+				"hint":  "请传入 --image <first-frame> --last-frame <last-frame>",
+			})
+		}
+		if len(images) > 1 {
+			return nil, nil, output.NewError("VALIDATION_ERROR", "--last-frame 不能与多个 --image 同时使用", map[string]any{
+				"flags": []string{"image", "last-frame"},
+				"hint":  "请使用 --image first --last-frame last，或直接重复 --image first --image last",
+			})
+		}
+		lastFrames, preview, err := resolvePortableMediaInputs(cmd, []string{lastFrame}, "last_frame", true)
+		if err != nil {
+			return nil, nil, err
+		}
+		images = append(images, lastFrames...)
+		lastFramePreview = preview
+	}
 	videos, videoPreview, err := resolvePortableMediaInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "video")), "reference_video", false)
 	if err != nil {
 		return nil, nil, err
@@ -1105,6 +1142,9 @@ func resolveSeedanceVideoInput(cmd *cobra.Command) (map[string]any, map[string]a
 
 	metadata := map[string]any{}
 	putString(metadata, "action", flagString(cmd, "action"))
+	if strings.TrimSpace(flagString(cmd, "action")) == "" && strings.TrimSpace(flagString(cmd, "last-frame")) != "" {
+		metadata["action"] = "firstTailGenerate"
+	}
 	putString(metadata, "ratio", normalizePortableAspectRatio(flagString(cmd, "ratio")))
 	putString(metadata, "service_tier", flagString(cmd, "service-tier"))
 	putInt(metadata, "frames", flagInt(cmd, "frames"))
@@ -1127,9 +1167,108 @@ func resolveSeedanceVideoInput(cmd *cobra.Command) (map[string]any, map[string]a
 
 	preview := map[string]any{}
 	mergeStringAnyMaps(preview, imagePreview)
+	mergeStringAnyMaps(preview, lastFramePreview)
 	mergeStringAnyMaps(preview, videoPreview)
 	mergeStringAnyMaps(preview, audioPreview)
 	return payload, preview, nil
+}
+
+func applyVideoLastFrameInput(cmd *cobra.Command, payload, preview map[string]any) error {
+	lastFrame := strings.TrimSpace(flagString(cmd, "last-frame"))
+	lastFrameArtifactID := strings.TrimSpace(flagString(cmd, "last-frame-artifact-id"))
+	switch {
+	case lastFrame == "" && lastFrameArtifactID == "":
+		return nil
+	case lastFrame != "" && lastFrameArtifactID != "":
+		return conflictingAgentFlagsError("last-frame", "last-frame-artifact-id")
+	}
+
+	if lastFrameArtifactID != "" {
+		payload["last_frame_artifact_id"] = lastFrameArtifactID
+		payload["end_frame_artifact_id"] = lastFrameArtifactID
+		preview["last_frame_source"] = map[string]any{
+			"kind":  "artifact",
+			"value": lastFrameArtifactID,
+			"role":  "last_frame",
+		}
+	} else {
+		lastFrameValue, source, preflight, uploaded, err := resolveVideoFrameGatewaySource(cmd, lastFrame, "last_frame")
+		if err != nil {
+			return err
+		}
+		payload["last_frame_image_url"] = lastFrameValue
+		payload["end_frame_image_url"] = lastFrameValue
+		preview["last_frame_source"] = source
+		if preflight != nil {
+			preview["last_frame_preflight"] = preflight
+		}
+		if uploaded != nil {
+			preview["uploaded_last_frame_artifact"] = uploaded
+		}
+	}
+
+	if firstFrame := videoFirstFrameSubmissionValue(payload, preview); firstFrame != "" {
+		if lastFrameValue := videoLastFrameSubmissionValue(payload); lastFrameValue != "" {
+			payload["images"] = []string{firstFrame, lastFrameValue}
+		}
+	}
+	ensurePayloadMetadataAction(payload, "firstTailGenerate")
+	return nil
+}
+
+func resolveVideoFrameGatewaySource(cmd *cobra.Command, value, role string) (string, map[string]any, map[string]any, map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil, nil, nil, output.NewError("VALIDATION_ERROR", "首尾帧图片不能为空", map[string]any{
+			"role": role,
+		})
+	}
+	if looksLikeDataURL(value) {
+		return value, map[string]any{
+			"kind": "data_url",
+			"role": role,
+		}, nil, nil, nil
+	}
+	return resolveGatewayMediaURLSource(cmd, value, role)
+}
+
+func videoFirstFrameSubmissionValue(payload, preview map[string]any) string {
+	for _, key := range []string{"image_url", "reference_image_url"} {
+		if value := strings.TrimSpace(stringValue(payload[key])); value != "" {
+			return value
+		}
+	}
+	if uploadedSource, ok := preview["uploaded_source_artifact"].(map[string]any); ok {
+		if value := strings.TrimSpace(stringValue(uploadedSource["url"])); value != "" {
+			payload["image_url"] = value
+			payload["reference_image_url"] = value
+			return value
+		}
+	}
+	if stringValue(payload["source_artifact_id"]) == "(from artifacts.upload)" {
+		return "(from artifacts.upload.url)"
+	}
+	return ""
+}
+
+func videoLastFrameSubmissionValue(payload map[string]any) string {
+	for _, key := range []string{"last_frame_image_url", "end_frame_image_url", "last_frame_url"} {
+		if value := strings.TrimSpace(stringValue(payload[key])); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func ensurePayloadMetadataAction(payload map[string]any, action string) {
+	metadata, _ := payload["metadata"].(map[string]any)
+	if metadata == nil {
+		metadata = map[string]any{}
+		payload["metadata"] = metadata
+	}
+	if strings.TrimSpace(stringValue(metadata["action"])) == "" {
+		metadata["action"] = action
+	}
 }
 
 func parseJSONArrayFlag(flagName, value string) ([]any, error) {
@@ -1329,6 +1468,12 @@ func looksLikePureBase64Payload(value string) bool {
 		return true
 	}
 	return false
+}
+
+func hasVideoLastFrameInput(cmd *cobra.Command) bool {
+	lastFrame := strings.TrimSpace(flagString(cmd, "last-frame"))
+	lastFrameArtifactID := strings.TrimSpace(flagString(cmd, "last-frame-artifact-id"))
+	return lastFrame != "" || lastFrameArtifactID != ""
 }
 
 func hasImageSourceInput(cmd *cobra.Command) bool {
@@ -1806,10 +1951,14 @@ func resolveImageSourceInput(cmd *cobra.Command) (map[string]any, map[string]any
 		return payload, preview, nil
 	}
 
-	if looksLikeURL(image) {
+	if looksLikeURL(image) || looksLikeDataURL(image) {
+		sourceKind := "url"
+		if looksLikeDataURL(image) {
+			sourceKind = "data_url"
+		}
 		payload["image_url"] = image
 		preview["source"] = map[string]any{
-			"kind":  "url",
+			"kind":  sourceKind,
 			"value": image,
 		}
 		return payload, preview, nil

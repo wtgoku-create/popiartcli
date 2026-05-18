@@ -178,3 +178,56 @@ func TestRunOfficialImage2VideoUsesFallbackModelForUnsupportedPrimaryDuration(t 
 		t.Fatalf("expected direct fallback mode, got %#v", data["execution_mode"])
 	}
 }
+
+func TestRunOfficialImage2VideoFallbackNormalizesStartEndFrameAliases(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/skills/"+officialImage2VideoSkillID:
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"id":"` + officialImage2VideoSkillID + `","name":"` + officialImage2VideoSkillID + `","description":"Reserved image2video test skill. The runtime is not connected yet.","tags":["remote"],"version":"1.0.0","model_type":"video","input_schema":{},"output_schema":{}}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/models/infer":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode infer body: %v", err)
+			}
+			input, ok := body["input"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected infer input object, got %#v", body["input"])
+			}
+			images, ok := input["images"].([]any)
+			if !ok || len(images) != 2 || images[0] != "https://example.com/first.jpg" || images[1] != "https://example.com/last.jpg" {
+				t.Fatalf("unexpected images: %#v", input["images"])
+			}
+			metadata := input["metadata"].(map[string]any)
+			if metadata["action"] != "firstTailGenerate" {
+				t.Fatalf("unexpected metadata action: %#v", metadata)
+			}
+			if input["end_frame_image_url"] != "https://example.com/last.jpg" {
+				t.Fatalf("unexpected end frame alias: %#v", input["end_frame_image_url"])
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"job_id":"job_image2video_start_end_fallback","status":"pending"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"ok":false,"error":{"code":"NOT_FOUND","message":"not found"}}`))
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"run", officialImage2VideoSkillID,
+		"--input", `{"image_url":"https://example.com/first.jpg","end_frame_image_url":"https://example.com/last.jpg","prompt":"transition naturally"}`,
+	})
+
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object, got %#v", resp["data"])
+	}
+	if data["job_id"] != "job_image2video_start_end_fallback" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}

@@ -50,6 +50,22 @@ popiart video generate \
   --non-interactive
 ```
 
+如果要提交首尾帧视频，首帧仍用 `--image` / `--from`，尾帧用 `--last-frame`：
+
+```sh
+popiart video generate \
+  --image ./first-frame.png \
+  --last-frame ./last-frame.png \
+  --prompt "从第一帧自然过渡到最后一帧，镜头平稳推进" \
+  --model MiniMax-Hailuo-02 \
+  --size 768P \
+  --duration 6 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
 如果你想直接识别一张图并返回可复用的描述性 prompt，可以执行：
 
 ```sh
@@ -106,6 +122,20 @@ popiart video seedance \
   --video https://example.com/ref.mp4 \
   --ratio 16:9 \
   --return-last-frame \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Seedance 首尾帧也可以用便捷参数：
+
+```sh
+popiart video seedance \
+  --image ./first-frame.png \
+  --last-frame ./last-frame.png \
+  --prompt "从第一帧自然过渡到最后一帧" \
+  --ratio 16:9 \
   --wait \
   --output json \
   --quiet \

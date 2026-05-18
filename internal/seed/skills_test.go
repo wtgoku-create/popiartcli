@@ -79,7 +79,7 @@ func TestImage2VideoSchemaIncludesArtifactAndTimingHints(t *testing.T) {
 		t.Fatalf("expected properties map, got %#v", schema.InputSchema["properties"])
 	}
 
-	for _, key := range []string{"source_artifact_id", "reference_image_url", "duration_s", "seconds", "camera_motion", "aspect_ratio"} {
+	for _, key := range []string{"source_artifact_id", "reference_image_url", "last_frame_image_url", "images", "duration_s", "seconds", "camera_motion", "size", "aspect_ratio"} {
 		if _, ok := properties[key]; !ok {
 			t.Fatalf("expected image2video schema to include %q", key)
 		}

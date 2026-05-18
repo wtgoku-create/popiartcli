@@ -194,6 +194,28 @@ func TestExportSchemaVideoSeedanceRequiresPromptOrVisualReference(t *testing.T) 
 	}
 }
 
+func TestExportSchemaVideoGenerateIncludesStartEndFrameFlags(t *testing.T) {
+	root := NewRootCmd("0.test")
+
+	stdout, stderr, err := executeRootRaw(root, []string{
+		"export-schema",
+		"--command", "video generate",
+		"--format", "generic",
+	})
+	if err != nil {
+		t.Fatalf("export-schema failed: %v stderr=%s", err, stderr)
+	}
+
+	var tools []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &tools); err != nil {
+		t.Fatalf("unmarshal export-schema output: %v output=%q", err, stdout)
+	}
+	properties := tools[0]["input_schema"].(map[string]any)["properties"].(map[string]any)
+	if properties["last_frame"] == nil || properties["last_frame_artifact_id"] == nil || properties["size"] == nil {
+		t.Fatalf("expected start-end-frame video flags, got %#v", properties)
+	}
+}
+
 func TestExportSchemaOpenAICompletionCommandUsesShellEnum(t *testing.T) {
 	root := NewRootCmd("0.test")
 

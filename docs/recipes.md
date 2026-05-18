@@ -150,6 +150,22 @@ popiart video img2video \
   --non-interactive
 ```
 
+首尾帧视频用 `--image` 提供首帧，用 `--last-frame` 提供尾帧；显式 `--model` 时会直接走 `models infer`，并提交网关兼容的 `images[0]` / `images[1]` 与 `metadata.action=firstTailGenerate`：
+
+```sh
+popiart video generate \
+  --image ./first-frame.png \
+  --last-frame ./last-frame.png \
+  --prompt "从第一帧自然过渡到最后一帧，镜头平稳推进" \
+  --model MiniMax-Hailuo-02 \
+  --size 768P \
+  --duration 6 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
 如果你只想预览，不想真的提交：
 
 ```sh
@@ -222,6 +238,20 @@ popiart video seedance \
 ```
 
 参考图、首尾帧、参考图和参考视频模式下 `--prompt` 可选；只传 `--audio` 不合法，参考音频必须同时搭配图片或视频。
+
+首尾帧：
+
+```sh
+popiart video seedance \
+  --image ./first-frame.png \
+  --last-frame ./last-frame.png \
+  --prompt "从第一帧自然过渡到最后一帧" \
+  --ratio 16:9 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
 
 参考视频：
 
