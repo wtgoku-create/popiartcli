@@ -598,10 +598,8 @@ func executeSeedanceVideoCommand(cmd *cobra.Command, payload map[string]any, act
 	if err := validateJobExecutionFlags(cmd); err != nil {
 		return err
 	}
-	modelID := strings.TrimSpace(flagString(cmd, "model"))
-	if modelID == "" {
-		modelID = defaultSeedanceVideoModelID
-	}
+	requestedModelID := strings.TrimSpace(flagString(cmd, "model"))
+	modelID, modelResolution := resolveSeedanceVideoModelID(context.Background(), requestedModelID, !dryRunMode(cmd))
 	if modelID == "" {
 		return output.NewError("VALIDATION_ERROR", "缺少可用 Seedance 模型", map[string]any{
 			"flag": "model",
@@ -620,6 +618,7 @@ func executeSeedanceVideoCommand(cmd *cobra.Command, payload map[string]any, act
 				"body":   body,
 			},
 		}
+		addSeedanceModelResolution(preview, modelResolution)
 		for key, value := range extras {
 			preview[key] = value
 		}
@@ -633,6 +632,7 @@ func executeSeedanceVideoCommand(cmd *cobra.Command, payload map[string]any, act
 	task = normalizeSeedanceVideoResponse(task)
 	task["model_id"] = modelID
 	task["execution_mode"] = directModelExecutionMode(modelID, defaultSeedanceVideoModelID)
+	addSeedanceModelResolution(task, modelResolution)
 	for key, value := range extras {
 		task[key] = value
 	}
@@ -643,6 +643,206 @@ func buildSeedanceVideoGenerationBody(modelID string, payload map[string]any) ma
 	body := cloneMapAny(payload)
 	body["model"] = modelID
 	return body
+}
+
+type seedanceModelResolution struct {
+	Requested string
+	Resolved  string
+	Mode      string
+}
+
+type seedanceModelList struct {
+	Items []seedanceModelListItem `json:"items"`
+}
+
+type seedanceModelListItem struct {
+	ID string `json:"id"`
+}
+
+func resolveSeedanceVideoModelID(ctx context.Context, requested string, discoverSupported bool) (string, seedanceModelResolution) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		requested = defaultSeedanceVideoModelID
+	}
+
+	resolved := normalizeSeedanceVideoModelID(requested)
+	resolution := seedanceModelResolution{
+		Requested: requested,
+		Resolved:  resolved,
+	}
+	if resolved != requested {
+		resolution.Mode = "alias"
+	}
+
+	if discoverSupported && shouldDiscoverSeedanceSupportedModel(requested, resolved) {
+		supported, err := fetchSupportedSeedanceVideoModelIDs(ctx)
+		if err == nil && len(supported) > 0 {
+			if containsString(supported, resolved) {
+				return resolved, resolution
+			}
+			if fallback := chooseSupportedSeedanceVideoModelID(requested, resolved, supported); fallback != "" {
+				resolution.Resolved = fallback
+				if fallback != resolved {
+					resolution.Mode = "supported-model-fallback"
+				}
+				return fallback, resolution
+			}
+		}
+	}
+
+	return resolved, resolution
+}
+
+func normalizeSeedanceVideoModelID(modelID string) string {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return ""
+	}
+
+	normalized := seedanceModelToken(modelID)
+	switch normalized {
+	case "seedance2-0", "seedance-2-0":
+		return defaultSeedanceVideoModelID
+	case "seedance2-0-fast", "seedance-2-0-fast":
+		return "doubao-seedance-2-0-fast-260128"
+	case "seedance1-5", "seedance-1-5", "seedance1-5-pro", "seedance-1-5-pro":
+		return "doubao-seedance-1-5-pro-251215"
+	case "seedance1-0-pro", "seedance-1-0-pro":
+		return "doubao-seedance-1-0-pro-250528"
+	case "seedance1-0-lite-t2v", "seedance-1-0-lite-t2v":
+		return "doubao-seedance-1-0-lite-t2v"
+	case "seedance1-0-lite-i2v", "seedance-1-0-lite-i2v":
+		return "doubao-seedance-1-0-lite-i2v"
+	}
+
+	if strings.HasPrefix(normalized, "seedance2-0") {
+		return "doubao-" + strings.Replace(normalized, "seedance2-0", "seedance-2-0", 1)
+	}
+	if strings.HasPrefix(normalized, "seedance1-5") {
+		return "doubao-" + strings.Replace(normalized, "seedance1-5", "seedance-1-5", 1)
+	}
+	if strings.HasPrefix(normalized, "seedance1-0") {
+		return "doubao-" + strings.Replace(normalized, "seedance1-0", "seedance-1-0", 1)
+	}
+	if strings.HasPrefix(normalized, "seedance-") {
+		return "doubao-" + normalized
+	}
+	return modelID
+}
+
+func seedanceModelToken(modelID string) string {
+	normalized := strings.ToLower(strings.NewReplacer("_", "-", ".", "-").Replace(strings.TrimSpace(modelID)))
+	return strings.Join(strings.Fields(normalized), "")
+}
+
+func shouldDiscoverSeedanceSupportedModel(requested, resolved string) bool {
+	if strings.TrimSpace(requested) == strings.TrimSpace(resolved) {
+		return false
+	}
+	return strings.Contains(seedanceModelToken(requested), "seedance")
+}
+
+func fetchSupportedSeedanceVideoModelIDs(ctx context.Context) ([]string, error) {
+	var models seedanceModelList
+	if err := currentClient().GetJSON(ctx, "/models", map[string]string{
+		"type":       "video",
+		"provider":   "volcengine",
+		"capability": "image2video",
+	}, &models); err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(models.Items))
+	seen := map[string]struct{}{}
+	for _, item := range models.Items {
+		id := strings.TrimSpace(item.ID)
+		if id == "" || !strings.Contains(strings.ToLower(id), "seedance") {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func chooseSupportedSeedanceVideoModelID(requested, preferred string, supported []string) string {
+	if containsString(supported, preferred) {
+		return preferred
+	}
+
+	token := seedanceModelToken(requested)
+	switch {
+	case strings.Contains(token, "2-0-fast"):
+		if modelID := firstSupportedSeedanceModel(supported, "seedance-2-0-fast", ""); modelID != "" {
+			return modelID
+		}
+	case strings.Contains(token, "2-0"):
+		if modelID := firstSupportedSeedanceModel(supported, "seedance-2-0-", "fast"); modelID != "" {
+			return modelID
+		}
+		if modelID := firstSupportedSeedanceModel(supported, "seedance-2-0-fast", ""); modelID != "" {
+			return modelID
+		}
+	case strings.Contains(token, "1-5"):
+		if modelID := firstSupportedSeedanceModel(supported, "seedance-1-5", ""); modelID != "" {
+			return modelID
+		}
+	case strings.Contains(token, "1-0-lite-t2v"):
+		if modelID := firstSupportedSeedanceModel(supported, "seedance-1-0-lite-t2v", ""); modelID != "" {
+			return modelID
+		}
+	case strings.Contains(token, "1-0-lite-i2v"):
+		if modelID := firstSupportedSeedanceModel(supported, "seedance-1-0-lite-i2v", ""); modelID != "" {
+			return modelID
+		}
+	case strings.Contains(token, "1-0"):
+		if modelID := firstSupportedSeedanceModel(supported, "seedance-1-0-pro", ""); modelID != "" {
+			return modelID
+		}
+	}
+
+	if containsString(supported, defaultSeedanceVideoModelID) {
+		return defaultSeedanceVideoModelID
+	}
+	if len(supported) > 0 {
+		return supported[0]
+	}
+	return ""
+}
+
+func firstSupportedSeedanceModel(supported []string, mustContain, mustNotContain string) string {
+	for _, modelID := range supported {
+		lowerID := strings.ToLower(modelID)
+		if mustContain != "" && !strings.Contains(lowerID, mustContain) {
+			continue
+		}
+		if mustNotContain != "" && strings.Contains(lowerID, mustNotContain) {
+			continue
+		}
+		return modelID
+	}
+	return ""
+}
+
+func addSeedanceModelResolution(target map[string]any, resolution seedanceModelResolution) {
+	if resolution.Mode == "" {
+		return
+	}
+	target["requested_model_id"] = resolution.Requested
+	target["resolved_model_id"] = resolution.Resolved
+	target["model_resolution"] = resolution.Mode
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func writeSeedanceVideoResultOrWait(cmd *cobra.Command, task map[string]any) error {
