@@ -1177,6 +1177,127 @@ func TestVideoSeedanceTextOnlyDryRunUsesDefaultModelAndMetadata(t *testing.T) {
 	}
 }
 
+func TestVideoSeedanceDryRunNormalizesFriendlyModelAlias(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"--dry-run",
+		"video", "seedance",
+		"--model", "seedance2.0",
+		"--prompt", "a cat chasing a butterfly",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["model_id"] != defaultSeedanceVideoModelID {
+		t.Fatalf("unexpected model_id: %#v", data["model_id"])
+	}
+	if data["requested_model_id"] != "seedance2.0" {
+		t.Fatalf("expected requested model to be surfaced, got %#v", data["requested_model_id"])
+	}
+	request := data["request"].(map[string]any)
+	body := request["body"].(map[string]any)
+	if body["model"] != defaultSeedanceVideoModelID {
+		t.Fatalf("expected canonical model in dry-run body, got %#v", body["model"])
+	}
+}
+
+func TestVideoSeedanceChecksSupportedModelsBeforeSubmittingAlias(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	seenModels := false
+	seenSubmit := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/models":
+			seenModels = true
+			if got := r.URL.Query().Get("type"); got != "video" {
+				t.Fatalf("unexpected type query: %q", got)
+			}
+			if got := r.URL.Query().Get("provider"); got != "volcengine" {
+				t.Fatalf("unexpected provider query: %q", got)
+			}
+			if got := r.URL.Query().Get("capability"); got != "image2video" {
+				t.Fatalf("unexpected capability query: %q", got)
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"items":[{"id":"doubao-seedance-2-0-260128","type":"video","provider":"volcengine","capabilities":["text2video","image2video"]}]}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/video/generations":
+			seenSubmit = true
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["model"] != defaultSeedanceVideoModelID {
+				t.Fatalf("expected canonical model, got %#v", body["model"])
+			}
+			fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task_seedance_alias_1","status":"PENDING"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--model", "seedance2.0",
+		"--prompt", "a cat chasing a butterfly",
+	})
+
+	if !seenModels || !seenSubmit {
+		t.Fatalf("expected model discovery and submit, seenModels=%v seenSubmit=%v", seenModels, seenSubmit)
+	}
+	data := resp["data"].(map[string]any)
+	if data["model_id"] != defaultSeedanceVideoModelID {
+		t.Fatalf("unexpected model_id: %#v", data["model_id"])
+	}
+	if data["requested_model_id"] != "seedance2.0" {
+		t.Fatalf("expected requested model to be surfaced, got %#v", data["requested_model_id"])
+	}
+}
+
+func TestVideoSeedanceFallsBackToSupportedModelForAlias(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	const supportedModel = "doubao-seedance-2-0-fast-260128"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/models":
+			fmt.Fprintf(w, `{"ok":true,"data":{"items":[{"id":%q,"type":"video","provider":"volcengine","capabilities":["text2video","image2video"]}]}}`, supportedModel)
+		case r.Method == http.MethodPost && r.URL.Path == "/video/generations":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["model"] != supportedModel {
+				t.Fatalf("expected supported fallback model, got %#v", body["model"])
+			}
+			fmt.Fprint(w, `{"code":"success","message":"","data":{"task_id":"task_seedance_supported_1","status":"PENDING"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--model", "seedance2.0",
+		"--prompt", "a cat chasing a butterfly",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["model_id"] != supportedModel {
+		t.Fatalf("unexpected model_id: %#v", data["model_id"])
+	}
+	if data["model_resolution"] != "supported-model-fallback" {
+		t.Fatalf("expected supported-model-fallback, got %#v", data["model_resolution"])
+	}
+}
+
 func TestVideoSeedanceStartEndFramesKeepsImageDataURLs(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
