@@ -1,7 +1,7 @@
 {
   "name": "popiart",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Workspace metadata for the Go-based PopiArt CLI repository",
   "scripts": {
     "dev": "go run ./cmd/popiart",
