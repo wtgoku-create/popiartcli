@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 
 	"github.com/wtgoku-create/popiartcli/internal/config"
@@ -26,11 +24,10 @@ func newProjectCmd() *cobra.Command {
 					"hint":    "使用以下命令设置: popiart project use <project-id>",
 				})
 			}
-			var project any
-			if err := currentClient().GetJSON(context.Background(), "/projects/"+projectID, nil, &project); err != nil {
-				return err
-			}
-			return writeOutput(cmd, project)
+			return output.NewError("UNSUPPORTED_IN_POPI_ART_MODE", "当前模式不支持通过 CLI 读取主站项目详情", map[string]any{
+				"project_id": projectID,
+				"hint":       "当前活动项目仅保留本地配置语义；请在网站中查看项目详情，或等待主站 project API 迁移完成",
+			})
 		},
 	}
 
@@ -39,16 +36,12 @@ func newProjectCmd() *cobra.Command {
 		Short: "设置活动项目（存储在配置中）",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var project map[string]any
-			if err := currentClient().GetJSON(context.Background(), "/projects/"+args[0], nil, &project); err != nil {
-				return err
-			}
 			if _, err := config.SavePatch(config.Patch{Project: &args[0]}); err != nil {
 				return output.NewError("CLI_ERROR", "保存项目失败", map[string]any{"details": err.Error()})
 			}
 			return writeOutput(cmd, map[string]any{
 				"project_set": args[0],
-				"name":        project["name"],
+				"hint":        "当前模式仅保存本地 project_id，不会校验远端项目是否存在",
 			})
 		},
 	}
@@ -57,13 +50,9 @@ func newProjectCmd() *cobra.Command {
 		Use:   "list",
 		Short: "列出可访问的项目",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var projects any
-			if err := currentClient().GetJSON(context.Background(), "/projects", map[string]string{
-				"limit": flagString(cmd, "limit"),
-			}, &projects); err != nil {
-				return err
-			}
-			return writeOutput(cmd, projects)
+			return output.NewError("UNSUPPORTED_IN_POPI_ART_MODE", "当前模式不支持通过 CLI 列出主站项目", map[string]any{
+				"hint": "请在网站中查看项目列表，或等待主站 project API 迁移完成",
+			})
 		},
 	}
 	listCmd.Flags().String("limit", "20", "最大结果数量")
@@ -77,12 +66,10 @@ func newProjectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-
-			var project any
-			if err := currentClient().GetJSON(context.Background(), "/projects/"+projectID, nil, &project); err != nil {
-				return err
-			}
-			return writeOutput(cmd, project)
+			return output.NewError("UNSUPPORTED_IN_POPI_ART_MODE", "当前模式不支持通过 CLI 获取主站项目详情", map[string]any{
+				"project_id": projectID,
+				"hint":       "请在网站中查看项目详情，或等待主站 project API 迁移完成",
+			})
 		},
 	}
 
@@ -98,12 +85,10 @@ func newProjectCmd() *cobra.Command {
 					return err
 				}
 			}
-
-			var ctx any
-			if err := currentClient().GetJSON(context.Background(), "/projects/"+projectID+"/context", nil, &ctx); err != nil {
-				return err
-			}
-			return writeOutput(cmd, ctx)
+			return output.NewError("UNSUPPORTED_IN_POPI_ART_MODE", "当前模式不支持通过 CLI 获取主站项目上下文", map[string]any{
+				"project_id": projectID,
+				"hint":       "请在网站中查看项目上下文，或等待主站 project API 迁移完成",
+			})
 		},
 	}
 	contextCmd.Flags().String("project", "", "覆盖活动项目")

@@ -2,113 +2,182 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-func TestRunPassesImageParametersThroughUnchanged(t *testing.T) {
-	configDir := t.TempDir()
-	t.Setenv("POPIART_CONFIG_DIR", configDir)
+func TestRunBridgeText2ImageRoutesToTaskCreate(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/jobs" {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"ok":false,"error":{"code":"NOT_FOUND","message":"not found"}}`))
-			return
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":101,"code":"Nano-banana-pro","resolution":["2K"],"ratio":["16:9"],"categories":[{"taskSubType":103}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["chatPrompt"] != "a cinematic tea shop at sunset" {
+				t.Fatalf("unexpected prompt: %#v", body["chatPrompt"])
+			}
+			if body["subType"] != float64(103) {
+				t.Fatalf("unexpected subtype: %#v", body["subType"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_run_text2image_1","status":0,"type":1,"subType":103}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("decode job body: %v", err)
-		}
-
-		input, ok := body["input"].(map[string]any)
-		if !ok {
-			t.Fatalf("expected input object, got %#v", body["input"])
-		}
-		if input["aspect_ratio"] != "9:16" {
-			t.Fatalf("expected aspect_ratio to pass through, got %#v", input["aspect_ratio"])
-		}
-		if input["resolution"] != "1024x1820" {
-			t.Fatalf("expected resolution to pass through, got %#v", input["resolution"])
-		}
-		if input["image_url"] != "https://example.com/reference.png" {
-			t.Fatalf("expected image_url to pass through, got %#v", input["image_url"])
-		}
-		if input["reference_image_url"] != "https://example.com/reference-alias.png" {
-			t.Fatalf("expected reference_image_url to pass through, got %#v", input["reference_image_url"])
-		}
-		refs, ok := input["reference_artifact_ids"].([]any)
-		if !ok || len(refs) != 2 || refs[0] != "art_ref_1" || refs[1] != "art_ref_2" {
-			t.Fatalf("expected reference_artifact_ids to pass through, got %#v", input["reference_artifact_ids"])
-		}
-		if _, exists := input["size"]; exists {
-			t.Fatalf("expected no injected size, got %#v", input["size"])
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"data":{"job_id":"job_passthrough","status":"pending"}}`))
 	}))
 	defer server.Close()
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"run", "popiskill-image-img2img-basic-v1",
-		"--input", `{"prompt":"keep subject","aspect_ratio":"9:16","resolution":"1024x1820","image_url":"https://example.com/reference.png","reference_image_url":"https://example.com/reference-alias.png","reference_artifact_ids":["art_ref_1","art_ref_2"]}`,
+		"run", officialText2ImageSkillID,
+		"--input", `{"prompt":"a cinematic tea shop at sunset","aspect_ratio":"16:9"}`,
 	})
 
-	data, ok := resp["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected run data object, got %#v", resp["data"])
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_run_text2image_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
-	if data["job_id"] != "job_passthrough" {
-		t.Fatalf("unexpected job id: %#v", data["job_id"])
+	if data["requested_skill_id"] != officialText2ImageSkillID {
+		t.Fatalf("unexpected requested_skill_id: %#v", data["requested_skill_id"])
 	}
 }
 
-func TestRunNormalizesAspectRatioWhenPresent(t *testing.T) {
-	configDir := t.TempDir()
-	t.Setenv("POPIART_CONFIG_DIR", configDir)
+func TestRunBridgeImg2ImgResolvesArtifactAndImageSources(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/jobs" {
-			w.WriteHeader(http.StatusNotFound)
-			_, _ = w.Write([]byte(`{"ok":false,"error":{"code":"NOT_FOUND","message":"not found"}}`))
-			return
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":101,"code":"Nano-banana-pro","resolution":["2K"],"ratio":["9:16"],"isSupportImages":true,"categories":[{"taskSubType":103}]}]}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/media/detail":
+			if got := r.URL.Query().Get("id"); got != "art_ref_1" {
+				t.Fatalf("unexpected artifact id lookup: %q", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"art_ref_1","url":"https://media.example.com/art_ref_1.png"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			images := body["images"].([]any)
+			if len(images) != 2 {
+				t.Fatalf("unexpected images payload: %#v", body["images"])
+			}
+			if images[0] != "https://media.example.com/art_ref_1.png" || images[1] != "https://example.com/reference.png" {
+				t.Fatalf("unexpected images order: %#v", images)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_run_img2img_1","status":0,"type":1,"subType":103}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("decode job body: %v", err)
-		}
-
-		input, ok := body["input"].(map[string]any)
-		if !ok {
-			t.Fatalf("expected input object, got %#v", body["input"])
-		}
-		if input["aspect_ratio"] != "4:5" {
-			t.Fatalf("expected normalized aspect_ratio, got %#v", input["aspect_ratio"])
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"data":{"job_id":"job_passthrough_ratio","status":"pending"}}`))
 	}))
 	defer server.Close()
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"run", "popiskill-image-img2img-basic-v1",
-		"--input", `{"prompt":"keep subject","aspect_ratio":"2048x2560"}`,
+		"run", officialImage2ImageSkillID,
+		"--input", `{"prompt":"keep subject","aspect_ratio":"9:16","image_url":"https://example.com/reference.png","reference_artifact_ids":["art_ref_1"]}`,
 	})
 
-	data, ok := resp["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected run data object, got %#v", resp["data"])
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_run_img2img_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
-	if data["job_id"] != "job_passthrough_ratio" {
-		t.Fatalf("unexpected job id: %#v", data["job_id"])
+}
+
+func TestRunBridgeImage2VideoMapsLegacyInputToTaskCreate(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":15,"code":"viduq2-pro","resolution":["720P"],"duration":[5],"isSupportImages":true,"categories":[{"taskSubType":202}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["chatPrompt"] != "make it cinematic" {
+				t.Fatalf("unexpected prompt: %#v", body["chatPrompt"])
+			}
+			if body["duration"] != float64(5) {
+				t.Fatalf("unexpected duration: %#v", body["duration"])
+			}
+			images := body["images"].([]any)
+			if len(images) != 1 || images[0] != "https://example.com/source.png" {
+				t.Fatalf("unexpected images payload: %#v", body["images"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_run_image2video_1","status":0,"type":2,"subType":202}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"run", officialImage2VideoSkillID,
+		"--input", `{"reference_image_url":"https://example.com/source.png","seconds":6,"prompt":"make it cinematic"}`,
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_run_image2video_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestRunBridgeTTSMapsToAudioTask(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":301,"code":"speech-2.8-hd","categories":[{"taskSubType":301}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["chatPrompt"] != "Hello from skill bridge" {
+				t.Fatalf("unexpected text: %#v", body["chatPrompt"])
+			}
+			if body["voiceId"] != "female_01" {
+				t.Fatalf("unexpected voiceId: %#v", body["voiceId"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_run_tts_1","status":0,"type":3,"subType":301}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"run", officialTTSMultimodelSkillID,
+		"--input", `{"text":"Hello from skill bridge","voice":"female_01","format":"mp3"}`,
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_run_tts_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
 }

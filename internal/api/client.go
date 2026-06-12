@@ -42,9 +42,11 @@ type UploadFileOptions struct {
 }
 
 type envelope struct {
-	OK    *bool           `json:"ok,omitempty"`
-	Data  json.RawMessage `json:"data,omitempty"`
-	Error json.RawMessage `json:"error,omitempty"`
+	OK      *bool           `json:"ok,omitempty"`
+	Status  string          `json:"status,omitempty"`
+	Message string          `json:"message,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`
+	Error   json.RawMessage `json:"error,omitempty"`
 }
 
 func NewClient(baseURL, token string) *Client {
@@ -327,6 +329,23 @@ func decodeJSONBody(bodyReader io.Reader, dst any) error {
 				return output.NewError(code, message, details)
 			}
 		}
+	}
+
+	// 兼容主站使用 status/message/data 的成功包裹格式。
+	if err := json.Unmarshal(body, &env); err == nil && len(env.Data) > 0 && strings.TrimSpace(env.Status) == "0000" {
+		return json.Unmarshal(env.Data, dst)
+	}
+
+	// 兼容主站使用 status/message 的失败包裹格式。
+	if err := json.Unmarshal(body, &env); err == nil && strings.TrimSpace(env.Status) != "" && strings.TrimSpace(env.Status) != "0000" {
+		code := "CLI_ERROR"
+		message := strings.TrimSpace(env.Message)
+		if message == "" {
+			message = "Request failed"
+		}
+		return output.NewError(code, message, map[string]any{
+			"status": env.Status,
+		})
 	}
 
 	return json.Unmarshal(body, dst)

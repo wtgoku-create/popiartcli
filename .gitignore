@@ -5,6 +5,8 @@ dist/
 .omx/
 .work/
 tmp/
+.gocache/
+.gomodcache
 
 # Generated local media scratch files do not belong at the repository root.
 /*.png

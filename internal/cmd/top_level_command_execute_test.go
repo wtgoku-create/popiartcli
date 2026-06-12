@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,28 +20,17 @@ func TestAuthCommandFlow(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("POPIART_CONFIG_DIR", configDir)
 
-	var loginBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/auth/login":
-			if r.Method != http.MethodPost {
-				t.Fatalf("expected POST /auth/login, got %s", r.Method)
+		case "/api_client/users/user/info":
+			if r.Method != http.MethodGet {
+				t.Fatalf("expected GET /api_client/users/user/info, got %s", r.Method)
 			}
-			if err := json.NewDecoder(r.Body).Decode(&loginBody); err != nil {
-				t.Fatalf("decode login body: %v", err)
+			if got := r.Header.Get("Authorization"); got != "Bearer pk-demo" && got != "Bearer sess_demo_auth_123456" {
+				t.Fatalf("unexpected auth header for user info: %q", got)
 			}
-			fmt.Fprint(w, `{"ok":true,"data":{"token":"sess_demo_auth_123456","user":{"id":"user_1","email":"demo@popi.art","name":"Demo"}}}`)
-		case "/auth/me":
-			if got := r.Header.Get("Authorization"); got != "Bearer sess_demo_auth_123456" {
-				t.Fatalf("unexpected auth header for whoami: %q", got)
-			}
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"user_1","email":"demo@popi.art","name":"Demo","scopes":["creator"]}}`)
-		case "/auth/logout":
-			if got := r.Header.Get("Authorization"); got != "Bearer sess_demo_auth_123456" {
-				t.Fatalf("unexpected auth header for logout: %q", got)
-			}
-			fmt.Fprint(w, `{"ok":true,"data":{"logged_out":true}}`)
+			fmt.Fprint(w, `{"data":{"user":{"id":10561,"email":"demo@popi.art","name":"Demo"}},"message":"ok","status":"0000"}`)
 		default:
 			t.Fatalf("unexpected auth path: %s", r.URL.Path)
 		}
@@ -55,8 +43,9 @@ func TestAuthCommandFlow(t *testing.T) {
 	if loginData["key_saved"] != true {
 		t.Fatalf("expected key_saved=true, got %#v", loginData["key_saved"])
 	}
-	if loginBody["key"] != "pk-demo" {
-		t.Fatalf("unexpected login key payload: %#v", loginBody["key"])
+	userData := loginData["user"].(map[string]any)
+	if userData["email"] != "demo@popi.art" {
+		t.Fatalf("unexpected login user payload: %#v", loginData["user"])
 	}
 
 	showResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"auth", "key", "show"})
@@ -78,6 +67,18 @@ func TestAuthCommandFlow(t *testing.T) {
 	logoutData := logoutResp["data"].(map[string]any)
 	if logoutData["logged_out"] != true {
 		t.Fatalf("expected logged_out=true, got %#v", logoutData["logged_out"])
+	}
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{"auth", "key", "rotate"})
+	if err == nil {
+		t.Fatal("expected auth key rotate to fail")
+	}
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != "UNSUPPORTED_IN_POPI_ART_MODE" {
+		t.Fatalf("unexpected rotate error code: %q", cliErr.Code)
 	}
 }
 
@@ -176,36 +177,19 @@ func TestBudgetCommands(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-budget")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/budget":
-			fmt.Fprint(w, `{"ok":true,"data":{"remaining":42,"currency":"credits"}}`)
-		case "/budget/usage":
-			fmt.Fprint(w, `{"ok":true,"data":{"items":[{"skill_id":"popiskill-image-text2image-basic-v1","total":8}]}}`)
-		case "/budget/limits":
-			fmt.Fprint(w, `{"ok":true,"data":{"daily_limit":100,"burst":10}}`)
-		default:
-			t.Fatalf("unexpected budget path: %s", r.URL.Path)
+	for _, args := range [][]string{
+		{"budget", "status"},
+		{"budget", "usage", "--group-by", "skill"},
+		{"budget", "limits"},
+	} {
+		_, _, err := executeRootRaw(NewRootCmd("0.test"), args)
+		if err == nil {
+			t.Fatalf("expected %v to be unsupported", args)
 		}
-	}))
-	defer server.Close()
-	t.Setenv("POPIART_ENDPOINT", server.URL)
-
-	statusResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"budget", "status"})
-	if statusResp["data"].(map[string]any)["remaining"] != float64(42) {
-		t.Fatalf("unexpected budget status payload: %#v", statusResp["data"])
-	}
-
-	usageResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"budget", "usage", "--group-by", "skill"})
-	items := usageResp["data"].(map[string]any)["items"].([]any)
-	if len(items) != 1 {
-		t.Fatalf("unexpected budget usage items: %#v", items)
-	}
-
-	limitsResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"budget", "limits"})
-	if limitsResp["data"].(map[string]any)["daily_limit"] != float64(100) {
-		t.Fatalf("unexpected budget limits payload: %#v", limitsResp["data"])
+		cliErr, ok := err.(*output.CLIError)
+		if !ok || cliErr.Code != "UNSUPPORTED_IN_POPI_ART_MODE" {
+			t.Fatalf("unexpected budget command error for %v: %#v", args, err)
+		}
 	}
 }
 
@@ -215,21 +199,15 @@ func TestJobsCommands(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.URL.Path == "/jobs/job_123" && r.Method == http.MethodGet:
+		case r.URL.Path == "/api_client/anime/task/detail" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_123","status":"done","artifact_ids":["art_1"]}}`)
-		case r.URL.Path == "/jobs" && r.Method == http.MethodGet:
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"job_123","status":2,"type":1,"subType":102,"aiModelCode":"seedream-4-5-251128"}}`)
+		case r.URL.Path == "/api_client/anime/task/downloadUrls" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"items":[{"job_id":"job_123","status":"done"}],"total":1,"limit":20,"offset":0}}`)
-		case r.URL.Path == "/jobs/job_123/cancel" && r.Method == http.MethodPost:
+			fmt.Fprint(w, `{"ok":true,"data":{"downloadUrls":["https://cdn.example.com/result.png"]}}`)
+		case r.URL.Path == "/api_client/anime/task/list" && r.Method == http.MethodGet:
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"job_id":"job_123","cancelled":true}}`)
-		case r.URL.Path == "/jobs/job_123/logs" && r.Method == http.MethodGet && strings.Contains(r.Header.Get("Accept"), "text/event-stream"):
-			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprint(w, "event: log\ndata: streaming\n\n")
-		case r.URL.Path == "/jobs/job_123/logs" && r.Method == http.MethodGet:
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"ts":"2026-04-10T10:00:00Z","level":"info","message":"hello"}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":{"items":[{"id":"job_123","status":2,"type":1,"subType":102,"aiModelCode":"seedream-4-5-251128"},{"id":"job_124","status":0,"type":2,"subType":203,"aiModelCode":"viduq2-pro-fast"}],"total":2,"limit":20,"offset":0}}`)
 		default:
 			t.Fatalf("unexpected jobs path: %s %s", r.Method, r.URL.Path)
 		}
@@ -238,7 +216,7 @@ func TestJobsCommands(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	getResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"jobs", "get", "job_123"})
-	if getResp["data"].(map[string]any)["status"] != "done" {
+	if getResp["data"].(map[string]any)["status"] != float64(2) {
 		t.Fatalf("unexpected jobs get payload: %#v", getResp["data"])
 	}
 
@@ -248,26 +226,31 @@ func TestJobsCommands(t *testing.T) {
 	}
 
 	listResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"jobs", "list", "--status", "done"})
-	if listResp["data"].(map[string]any)["total"] != float64(1) {
-		t.Fatalf("unexpected jobs list payload: %#v", listResp["data"])
+	listData := listResp["data"].(map[string]any)
+	if listData["total"] != float64(2) {
+		t.Fatalf("unexpected jobs list payload: %#v", listData)
+	}
+	items := listData["items"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("unexpected jobs list items: %#v", items)
 	}
 
-	cancelResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"jobs", "cancel", "job_123"})
-	if cancelResp["data"].(map[string]any)["cancelled"] != true {
-		t.Fatalf("unexpected jobs cancel payload: %#v", cancelResp["data"])
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{"jobs", "cancel", "job_123"})
+	if err == nil {
+		t.Fatal("expected jobs cancel to be unsupported")
+	}
+	cliErr, ok := err.(*output.CLIError)
+	if !ok || cliErr.Code != "UNSUPPORTED_IN_POPI_ART_MODE" {
+		t.Fatalf("unexpected jobs cancel error: %#v", err)
 	}
 
-	logsResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"jobs", "logs", "job_123"})
-	if len(logsResp["data"].([]any)) != 1 {
-		t.Fatalf("unexpected jobs logs payload: %#v", logsResp["data"])
+	_, _, err = executeRootRaw(NewRootCmd("0.test"), []string{"jobs", "logs", "job_123"})
+	if err == nil {
+		t.Fatal("expected jobs logs to be unsupported")
 	}
-
-	stdout, _, err := executeRootRaw(NewRootCmd("0.test"), []string{"jobs", "logs", "job_123", "--follow"})
-	if err != nil {
-		t.Fatalf("jobs logs --follow failed: %v", err)
-	}
-	if !strings.Contains(stdout, "streaming") {
-		t.Fatalf("expected streamed logs output, got %q", stdout)
+	cliErr, ok = err.(*output.CLIError)
+	if !ok || cliErr.Code != "UNSUPPORTED_IN_POPI_ART_MODE" {
+		t.Fatalf("unexpected jobs logs error: %#v", err)
 	}
 }
 
@@ -275,22 +258,6 @@ func TestProjectCommands(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("POPIART_CONFIG_DIR", configDir)
 	t.Setenv("POPIART_KEY", "pk-project")
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.URL.Path == "/projects" && r.Method == http.MethodGet:
-			fmt.Fprint(w, `{"ok":true,"data":{"items":[{"id":"proj_1","name":"Project One"}],"total":1}}`)
-		case r.URL.Path == "/projects/proj_1" && r.Method == http.MethodGet:
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"proj_1","name":"Project One"}}`)
-		case r.URL.Path == "/projects/proj_1/context" && r.Method == http.MethodGet:
-			fmt.Fprint(w, `{"ok":true,"data":{"project_id":"proj_1","runtime":"ready"}}`)
-		default:
-			t.Fatalf("unexpected project path: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer server.Close()
-	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	currentResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"project", "current"})
 	currentData := currentResp["data"].(map[string]any)
@@ -303,29 +270,21 @@ func TestProjectCommands(t *testing.T) {
 		t.Fatalf("unexpected project use payload: %#v", useResp["data"])
 	}
 
-	currentResp = executeRootJSON(t, NewRootCmd("0.test"), []string{"project", "current"})
-	if currentResp["data"].(map[string]any)["id"] != "proj_1" {
-		t.Fatalf("unexpected project current payload: %#v", currentResp["data"])
-	}
-
-	listResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"project", "list"})
-	if listResp["data"].(map[string]any)["total"] != float64(1) {
-		t.Fatalf("unexpected project list payload: %#v", listResp["data"])
-	}
-
-	getResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"project", "get", "proj_1"})
-	if getResp["data"].(map[string]any)["name"] != "Project One" {
-		t.Fatalf("unexpected project get payload: %#v", getResp["data"])
-	}
-
-	getCurrentResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"project", "get"})
-	if getCurrentResp["data"].(map[string]any)["id"] != "proj_1" {
-		t.Fatalf("unexpected project get current payload: %#v", getCurrentResp["data"])
-	}
-
-	contextResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"project", "context"})
-	if contextResp["data"].(map[string]any)["runtime"] != "ready" {
-		t.Fatalf("unexpected project context payload: %#v", contextResp["data"])
+	for _, args := range [][]string{
+		{"project", "current"},
+		{"project", "list"},
+		{"project", "get", "proj_1"},
+		{"project", "get"},
+		{"project", "context"},
+	} {
+		_, _, err := executeRootRaw(NewRootCmd("0.test"), args)
+		if err == nil {
+			t.Fatalf("expected %v to be unsupported", args)
+		}
+		cliErr, ok := err.(*output.CLIError)
+		if !ok || cliErr.Code != "UNSUPPORTED_IN_POPI_ART_MODE" {
+			t.Fatalf("unexpected project command error for %v: %#v", args, err)
+		}
 	}
 }
 
@@ -367,8 +326,8 @@ func TestMCPCommands(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.URL.Path == "/auth/me":
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"user_1","email":"mcp@popi.art","name":"MCP"}}`)
+		case r.URL.Path == "/api_client/users/user/info":
+			fmt.Fprint(w, `{"data":{"user":{"id":10561,"email":"mcp@popi.art","name":"MCP"}},"message":"ok","status":"0000"}`)
 		case r.URL.Path == "/skills":
 			fmt.Fprint(w, `{"ok":true,"data":{"items":[{"id":"popiskill-image-text2image-basic-v1","name":"Basic Text2Image"}],"total":1,"limit":1,"offset":0}}`)
 		case strings.HasPrefix(r.URL.Path, "/skills/"):

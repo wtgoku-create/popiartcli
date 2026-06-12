@@ -221,8 +221,8 @@ popiart music generate --prompt "..." --lyrics "..."
 - `popiskill-image-img2img-basic-v1`
 - `popiskill-video-image2video-basic-v1`
 - `popiskill-video-image2video-basic-v1`
-- `speech-2.8-hd` (MiniMax direct infer by default)
-- `music-2.6-free` (MiniMax direct infer by default)
+- `speech-2.8-hd` (default speech task model)
+- `music-2.6` (default music task model)
 
 底层平台面仍然保留：
 
@@ -302,13 +302,13 @@ popiart image img2img \
 如果你需要更底层、更可组合的控制，下面这些命令面仍然是 `popiart` 的核心平台接口：
 
 - `popiart skills ...`
-  用来发现、查看和理解 skill 契约。常用的是 `skills list`、`skills get`、`skills schema`。
+  用来发现、查看和理解 skill 契约。常用的是 `skills list`、`skills get`、`skills schema`；当前会合并远程 runtime skills、已安装本地 skills、CLI 内置 official runtime baseline 和 bundled seed skills。
 - `popiart run ...`
-  直接按 `skill_id` 提交 runtime job，适合 agent 先拿 schema 再自行构造 `--input` 的场景。
+  兼容保留的 `run <skill-id>` 入口。当前官方 baseline skill 会桥接到主站 `model/list -> task/create` 链路；已安装本地 skill 只有在映射到这些已桥接官方 skill 时，才保证可执行。
 - `popiart jobs ...`
-  查询、等待、取消和跟踪 job。常用的是 `jobs get`、`jobs wait`、`jobs logs`。
+  查询和等待主站 task。常用的是 `jobs get`、`jobs wait`。
 - `popiart artifacts ...`
-  上传本地文件成为可复用 artifact，或者把 job 产物拉回本地。常用的是 `artifacts upload`、`artifacts pull`、`artifacts pull-all`。
+  上传本地文件成为可复用 artifact 外观，或者把 task 结果拉回本地。常用的是 `artifacts upload`、`artifacts list`、`artifacts pull-all`。
 - `popiart media ...`
   把本地文件变成稳定媒体 URL，适合后续 `img2img` / `img2video` 直接消费稳定地址。
 - `popiart export-schema ...`
@@ -338,12 +338,12 @@ popiart run popiskill-image-img2img-basic-v1 \
   --quiet \
   --non-interactive
 
-popiart jobs wait <job-id> \
+popiart jobs wait <task-id> \
   --output json \
   --quiet \
   --non-interactive
 
-popiart artifacts pull-all <job-id> \
+popiart artifacts pull-all <task-id> \
   --output json \
   --quiet \
   --non-interactive
@@ -393,11 +393,8 @@ popiart export-schema --command "models route-override set" --format generic
   - 已在测试服 `http://101.42.99.35:18080/v1` 验证 5 秒动作迁移预览可完成并返回 MP4 artifact
 - Seedance / Doubao 视频
   - `popiart video seedance` 默认使用 `doubao-seedance-2-0-260128`
-  - CLI 直接提交到统一网关 `POST /v1/video/generations`，请求体使用网关字段 `model`、`prompt`、`size`、`duration`、`images[]`、`videos[]`、`audios[]`
-  - 只有文生视频强制要求 `--prompt`；参考图、首尾帧、参考视频可不传 prompt；参考音频必须同时搭配图片或视频
-  - 支持 `--image`、`--video`、`--audio` 多模态输入，映射到统一网关 `images[]`、`videos[]`、`audios[]`
-  - `--ratio`、`--return-last-frame`、`--generate-audio`、`--frames`、`--tools-json` 等会写入 `metadata`
-  - `--wait` 会查询 `GET /v1/video/generations/{task_id}`；成功结果会透出 `result_url`，如果网关返回 `metadata.last_frame_url` 也会透出 `last_frame_url`
+  - 现在也统一走主站 `model/list -> task/create` 任务链路
+  - 支持 `--image`、`--video`、`--audio` 多模态输入，并按模型能力自动补齐任务参数
 
 ```sh
 popiart music generate \
@@ -418,11 +415,11 @@ popiart speech synthesize \
 
 约定：
 
-- `music` 默认模型：`music-2.6-free`
+- `music` 默认模型：`music-2.6`
 - `speech` / `audio tts` 默认模型：`speech-2.8-hd`
-- 显式传 `--model` 时，会改为本次请求 direct model override
+- 显式传 `--model` 时，会按该模型能力自动重算任务参数
 - `music --instrumental` 会映射为网关 `is_instrumental`；`--output-format` 映射为 `output_format`；`--format`、`--sample-rate-hz`、`--bitrate` 会写入 `audio_setting`
-- 这两条命令当前走 `models infer`，不是远程 `skills schema`
+- 这两条命令当前属于主站 task 语义，不依赖旧 runtime skill
 
 MiniMax 图片 / 视频更推荐显式指定模型：
 

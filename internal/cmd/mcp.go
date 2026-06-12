@@ -10,6 +10,7 @@ import (
 
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
@@ -122,8 +123,8 @@ func newMCPCmd() *cobra.Command {
 
 			client := currentClient()
 			checks = append(checks, runDoctorAPICheck(client, cfg.Token != "", "auth_me", "验证当前登录会话", func(ctx context.Context) error {
-				var resp any
-				return client.GetJSON(ctx, "/auth/me", nil, &resp)
+				_, err := popiart.FetchCurrentUser(ctx, client)
+				return err
 			}))
 			checks = append(checks, runDoctorAPICheck(client, true, "skills_api", "技能列表 API 可访问", func(ctx context.Context) error {
 				var resp any

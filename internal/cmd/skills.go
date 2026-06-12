@@ -40,8 +40,6 @@ func newSkillsCmd() *cobra.Command {
 			"  popiart skills list --tag image\n" +
 			"  popiart skills list --search alice --limit 20 --offset 0",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tag, _ := cmd.Flags().GetString("tag")
-			search, _ := cmd.Flags().GetString("search")
 			limit, err := parseSkillsPaginationFlag(cmd, "limit", 50)
 			if err != nil {
 				return err
@@ -50,48 +48,27 @@ func newSkillsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			tag := strings.TrimSpace(flagString(cmd, "tag"))
+			search := strings.TrimSpace(flagString(cmd, "search"))
 
-			localState, err := loadInstalledSkillState()
+			installedState, err := loadInstalledSkillState()
 			if err != nil {
 				return err
 			}
 
-			officialItems := matchingOfficialRuntimeSkillSummaries(tag, search)
-			localItems := seed.MatchingBundledSkillSummaries(tag, search)
-			installedItems := installedSkillSummaries(localState, tag, search)
-
-			var resp types.SkillListResponse
-			remoteAvailable := true
-			err = currentClient().GetJSON(context.Background(), "/skills", map[string]string{
-				"tag":    tag,
-				"search": search,
-				"limit":  strconv.Itoa(remotePageSize(limit, offset)),
-				"offset": "0",
-			}, &resp)
-			if err != nil {
-				if cliErr, ok := err.(*output.CLIError); !ok || cliErr.Code != "NETWORK_ERROR" {
-					return err
-				}
-				remoteAvailable = false
-			}
-			resp.Items = annotateRemoteSkillSummaries(resp.Items, localState)
-
-			if remoteAvailable {
-				localItems, err = bundledSkillSummariesMissingOnRemote(context.Background(), localItems)
-				if err != nil {
-					return err
-				}
-				installedItems, err = installedSkillSummariesMissingOnRemote(context.Background(), installedItems)
-				if err != nil {
-					return err
-				}
-			}
-			merged := mergeSkillSummaries(resp.Items, installedItems, officialItems, localItems)
-			resp.Items = paginateSkillSummaries(merged, limit, offset)
-			resp.Total += len(installedItems) + len(localItems) + countMissingSkillSummaries(resp.Items, installedItems, localItems, officialItems)
-			resp.Limit = limit
-			resp.Offset = offset
-			return writeOutput(cmd, resp)
+			items := mergeSkillSummaries(
+				installedSkillSummaries(installedState, tag, search),
+				matchingOfficialRuntimeSkillSummaries(tag, search),
+				seed.MatchingBundledSkillSummaries(tag, search),
+			)
+			total := len(items)
+			items = paginateSkillSummaries(items, limit, offset)
+			return writeOutput(cmd, types.SkillListResponse{
+				Items:  items,
+				Total:  total,
+				Limit:  limit,
+				Offset: offset,
+			})
 		},
 	}
 	listCmd.Flags().StringP("tag", "t", "", "按标签过滤")
@@ -113,31 +90,10 @@ func newSkillsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			localState, err := loadInstalledSkillState()
+			skill, err := resolveLocalSkillDetail(skillID)
 			if err != nil {
 				return err
 			}
-			if skill, ok := activeInstalledSkill(localState, skillID); ok {
-				return writeOutput(cmd, skill.Skill(true))
-			}
-
-			var skill types.Skill
-			if err := currentClient().GetJSON(context.Background(), "/skills/"+skillID, nil, &skill); err != nil {
-				if cliErr, ok := err.(*output.CLIError); ok && (cliErr.Code == "NOT_FOUND" || cliErr.Code == "NETWORK_ERROR") {
-					if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
-						return writeOutput(cmd, installed.Skill(localState.isActive(installed.Manifest.Slug)))
-					}
-					if skill, ok := officialRuntimeSkillForID(skillID); ok {
-						return writeOutput(cmd, skill)
-					}
-					if skill, ok := seed.FindBundledSkill(skillID); ok {
-						return writeOutput(cmd, skill)
-					}
-				}
-				return err
-			}
-			skill = applyOfficialRuntimeSkillOverlay(skill)
-			skill = annotateRemoteSkill(skill, localState)
 			return writeOutput(cmd, skill)
 		},
 	}
@@ -155,30 +111,10 @@ func newSkillsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			localState, err := loadInstalledSkillState()
+			schema, err := resolveLocalSkillSchema(skillID)
 			if err != nil {
 				return err
 			}
-			if skill, ok := activeInstalledSkill(localState, skillID); ok {
-				return writeOutput(cmd, skill.Schema())
-			}
-
-			var schema types.SkillSchemaResponse
-			if err := currentClient().GetJSON(context.Background(), "/skills/"+skillID+"/schema", nil, &schema); err != nil {
-				if cliErr, ok := err.(*output.CLIError); ok && (cliErr.Code == "NOT_FOUND" || cliErr.Code == "NETWORK_ERROR") {
-					if installed, ok := localState.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
-						return writeOutput(cmd, installed.Schema())
-					}
-					if schema, ok := officialRuntimeSkillSchemaForID(skillID); ok {
-						return writeOutput(cmd, schema)
-					}
-					if schema, ok := seed.FindBundledSkillSchema(skillID); ok {
-						return writeOutput(cmd, schema)
-					}
-				}
-				return err
-			}
-			schema = applyOfficialRuntimeSchemaOverlay(skillID, schema)
 			return writeOutput(cmd, schema)
 		},
 	}
@@ -444,4 +380,76 @@ func localskillsEffectiveRuntimeSkillID(skill localskills.InstalledSkill) string
 		return strings.TrimSpace(skill.Manifest.Execution.RuntimeSkillID)
 	}
 	return skill.Manifest.Slug
+}
+
+func shouldFallbackSkillLookup(err error) bool {
+	if err == nil {
+		return false
+	}
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		return true
+	}
+	return cliErr.Code == "NOT_FOUND" || cliErr.Code == "NETWORK_ERROR"
+}
+
+func resolveLocalSkillDetail(skillID string) (types.Skill, error) {
+	state, err := loadInstalledSkillState()
+	if err != nil {
+		return types.Skill{}, err
+	}
+	if skill, ok := activeInstalledSkill(state, skillID); ok {
+		return skill.Skill(true), nil
+	}
+
+	var remoteSkill types.Skill
+	if err := currentClient().GetJSON(context.Background(), "/skills/"+skillID, nil, &remoteSkill); err == nil {
+		remoteSkill = applyOfficialRuntimeSkillOverlay(remoteSkill)
+		return annotateRemoteSkill(remoteSkill, state), nil
+	} else if !shouldFallbackSkillLookup(err) {
+		return types.Skill{}, err
+	}
+
+	if installed, ok := state.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
+		return installed.Skill(state.isActive(installed.Manifest.Slug)), nil
+	}
+	if skill, ok := officialRuntimeSkillForID(skillID); ok {
+		return skill, nil
+	}
+	if skill, ok := seed.FindBundledSkill(skillID); ok {
+		return skill, nil
+	}
+	return types.Skill{}, output.NewError("NOT_FOUND", "未找到对应 skill", map[string]any{
+		"skill_id": skillID,
+	})
+}
+
+func resolveLocalSkillSchema(skillID string) (types.SkillSchemaResponse, error) {
+	state, err := loadInstalledSkillState()
+	if err != nil {
+		return types.SkillSchemaResponse{}, err
+	}
+	if skill, ok := activeInstalledSkill(state, skillID); ok {
+		return skill.Schema(), nil
+	}
+
+	var remoteSchema types.SkillSchemaResponse
+	if err := currentClient().GetJSON(context.Background(), "/skills/"+skillID+"/schema", nil, &remoteSchema); err == nil {
+		return applyOfficialRuntimeSchemaOverlay(skillID, remoteSchema), nil
+	} else if !shouldFallbackSkillLookup(err) {
+		return types.SkillSchemaResponse{}, err
+	}
+
+	if installed, ok := state.byID[strings.ToLower(strings.TrimSpace(skillID))]; ok {
+		return installed.Schema(), nil
+	}
+	if schema, ok := officialRuntimeSkillSchemaForID(skillID); ok {
+		return schema, nil
+	}
+	if schema, ok := seed.FindBundledSkillSchema(skillID); ok {
+		return schema, nil
+	}
+	return types.SkillSchemaResponse{}, output.NewError("NOT_FOUND", "未找到对应 skill schema", map[string]any{
+		"skill_id": skillID,
+	})
 }

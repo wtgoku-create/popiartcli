@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -9,6 +10,7 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/input"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 )
 
 func newModelsCmd() *cobra.Command {
@@ -20,17 +22,27 @@ func newModelsCmd() *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "列出已注册的可用模型库存",
-		Long:  "列出后端当前注册的模型库存。该命令显示的是可用模型清单，不等同于当前项目真正生效的路由结果。",
+		Long:  "列出主站当前可见的模型能力清单。该命令显示的是模型能力源，不等同于最终命令执行时的默认模型选择结果。",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var models any
-			if err := currentClient().GetJSON(context.Background(), "/models", map[string]string{
-				"type":       flagString(cmd, "type"),
-				"provider":   flagString(cmd, "provider"),
-				"capability": flagString(cmd, "capability"),
-			}, &models); err != nil {
+			models, err := popiart.FetchModels(context.Background(), currentClient())
+			if err != nil {
 				return err
 			}
-			return writeOutput(cmd, models)
+			filtered := filterModelsForList(models, flagString(cmd, "capability"))
+			if len(strings.TrimSpace(flagString(cmd, "type"))) > 0 {
+				filtered = filterModelsForList(filtered, flagString(cmd, "type"))
+			}
+			if len(strings.TrimSpace(flagString(cmd, "provider"))) > 0 {
+				filtered = filterModelsForList(filtered, flagString(cmd, "provider"))
+			}
+			if err := writeOutput(cmd, map[string]any{
+				"items":  summarizeModels(filtered),
+				"total":  len(filtered),
+				"source": "/api_client/anime/ai/model/list",
+			}); err != nil {
+				return err
+			}
+			return nil
 		},
 	}
 	listCmd.Flags().String("type", "", "按模型类型过滤")
@@ -39,21 +51,24 @@ func newModelsCmd() *cobra.Command {
 
 	routesCmd := &cobra.Command{
 		Use:   "routes",
-		Short: "查看当前生效的 route key 路由表",
-		Long:  "显示当前项目真正生效的 route_key -> model_id 路由结果。它和 models list 的模型库存不是一回事。",
+		Short: "查看当前默认模型选择结果",
+		Long:  "显示 CLI 当前命令入口对应的默认 aiModelCode，以及基于主站模型列表解析出的 aiModelId 和支持子类型。",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var routes any
-			if err := currentClient().GetJSON(context.Background(), "/models/routes", map[string]string{
-				"project_id": flagString(cmd, "project"),
-				"route_key":  routeKeyFlagValue(cmd),
-				"skill_type": legacyRouteKeyFlagValue(cmd),
-			}, &routes); err != nil {
+			models, err := popiart.FetchModels(context.Background(), currentClient())
+			if err != nil {
 				return err
 			}
-			return writeOutput(cmd, routes)
+			items, err := resolveRouteSummaries(models, routeKeyFlagValue(cmd), legacyRouteKeyFlagValue(cmd))
+			if err != nil {
+				return err
+			}
+			return writeOutput(cmd, map[string]any{
+				"items":  items,
+				"total":  len(items),
+				"source": "/api_client/anime/ai/model/list",
+			})
 		},
 	}
-	routesCmd.Flags().String("project", "", "按项目查看路由覆盖")
 	addRouteKeyFlags(routesCmd)
 
 	inferCmd := &cobra.Command{
@@ -222,4 +237,165 @@ func requiredRouteKey(cmd *cobra.Command) (string, error) {
 	default:
 		return legacy, nil
 	}
+}
+
+type routeModelView struct {
+	Command            string   `json:"command"`
+	DefaultAIModelCode string   `json:"default_ai_model_code"`
+	ResolvedAIModelID  string   `json:"resolved_ai_model_id,omitempty"`
+	SupportedSubTypes  []int    `json:"supported_sub_types,omitempty"`
+	SelectedBy         string   `json:"selected_by"`
+	Aliases            []string `json:"aliases,omitempty"`
+}
+
+type defaultRouteMapping struct {
+	RouteKey string
+	Command  string
+}
+
+// filterModelsForList 先满足迁移期最常见的 capability 过滤需求，其余过滤词走宽松匹配。
+func filterModelsForList(models []popiart.Model, filter string) []popiart.Model {
+	filter = strings.TrimSpace(filter)
+	if filter == "" {
+		return append([]popiart.Model(nil), models...)
+	}
+
+	filtered := make([]popiart.Model, 0, len(models))
+	for _, model := range models {
+		if modelMatchesFilter(model, filter) {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered
+}
+
+// summarizeModels 把主站模型对象压缩成更适合 CLI 输出的摘要结构。
+func summarizeModels(models []popiart.Model) []map[string]any {
+	items := make([]map[string]any, 0, len(models))
+	for _, model := range models {
+		item := map[string]any{
+			"id":                  model.ID,
+			"code":                model.Code,
+			"name":                model.Name,
+			"ai_model_code_alias": []string(model.AIModelCodeAlias),
+			"supported_sub_types": modelSubTypes(model),
+			"is_support_images":   model.IsSupportImages,
+			"is_support_videos":   model.IsSupportVideos,
+			"is_support_audios":   model.IsSupportAudios,
+		}
+		if len(model.Ratio) > 0 {
+			item["ratio"] = []string(model.Ratio)
+		}
+		if len(model.VideoRatio) > 0 {
+			item["video_ratio"] = []string(model.VideoRatio)
+		}
+		if len(model.Resolution) > 0 {
+			item["resolution"] = []string(model.Resolution)
+		}
+		if len(model.Duration) > 0 {
+			item["duration"] = []int(model.Duration)
+		}
+		if model.UploadImageLimit != nil {
+			item["upload_image_limit"] = *model.UploadImageLimit
+		}
+		if model.UploadVideoLimit != nil {
+			item["upload_video_limit"] = *model.UploadVideoLimit
+		}
+		if model.UploadAudioLimit != nil {
+			item["upload_audio_limit"] = *model.UploadAudioLimit
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+// resolveRouteSummaries 输出迁移文档要求的“默认模型选择结果”视图。
+func resolveRouteSummaries(models []popiart.Model, routeKey, legacyRouteKey string) ([]routeModelView, error) {
+	requested := strings.TrimSpace(routeKey)
+	if requested == "" {
+		requested = strings.TrimSpace(legacyRouteKey)
+	}
+
+	mappings := defaultRouteMappings()
+	items := make([]routeModelView, 0, len(mappings))
+	for _, mapping := range mappings {
+		if requested != "" && mapping.RouteKey != requested {
+			continue
+		}
+
+		candidates := popiart.DefaultModelCodes(mapping.Command)
+		item := routeModelView{
+			Command:    mapping.RouteKey,
+			SelectedBy: "default",
+		}
+		if len(candidates) > 0 {
+			item.DefaultAIModelCode = candidates[0]
+			item.Aliases = append([]string(nil), candidates...)
+		}
+		if len(candidates) > 0 {
+			if model, ok := popiart.ResolveModelByCode(models, candidates[0]); ok {
+				item.ResolvedAIModelID = strconv.FormatInt(model.ID, 10)
+				item.SupportedSubTypes = modelSubTypes(model)
+			}
+		}
+		items = append(items, item)
+	}
+
+	if requested != "" && len(items) == 0 {
+		return nil, output.NewError("NOT_FOUND", "未找到对应 route 的默认模型映射", map[string]any{
+			"route": requested,
+		})
+	}
+	return items, nil
+}
+
+func defaultRouteMappings() []defaultRouteMapping {
+	return []defaultRouteMapping{
+		{RouteKey: "video.seedance", Command: "video.seedance"},
+		{RouteKey: "video.action-transfer", Command: "video.action-transfer"},
+		{RouteKey: "audio.tts", Command: "audio.tts"},
+		{RouteKey: "speech.synthesize", Command: "speech.synthesize"},
+		{RouteKey: "music.generate", Command: "music.generate"},
+	}
+}
+
+func modelMatchesFilter(model popiart.Model, filter string) bool {
+	switch strings.ToLower(filter) {
+	case "text2image":
+		return hasSubType(model, 103)
+	case "img2img":
+		return hasSubType(model, 103)
+	case "image2video":
+		return hasSubType(model, 202) || hasSubType(model, 203) || hasSubType(model, 204) || hasSubType(model, 205)
+	case "tts", "text2speech":
+		return hasSubType(model, 301)
+	case "multimodal", "image-describe":
+		return hasSubType(model, 501)
+	}
+
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if strings.Contains(strings.ToLower(model.Code), filter) || strings.Contains(strings.ToLower(model.Name), filter) {
+		return true
+	}
+	for _, alias := range model.AIModelCodeAlias {
+		if strings.Contains(strings.ToLower(alias), filter) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSubType(model popiart.Model, subType int) bool {
+	return popiart.SupportsSubType(model, subType)
+}
+
+func modelSubTypes(model popiart.Model) []int {
+	values := make([]int, 0, len(model.Categories))
+	for _, category := range model.Categories {
+		if category.TaskSubType == 0 {
+			continue
+		}
+		values = append(values, category.TaskSubType)
+	}
+	return values
 }

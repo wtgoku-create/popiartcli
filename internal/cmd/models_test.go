@@ -96,15 +96,15 @@ func TestModelsListFiltersByCapability(t *testing.T) {
 	t.Setenv("POPIART_KEY", "pk-demo")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/models" {
+		if r.Method != http.MethodGet || r.URL.Path != "/api_client/anime/ai/model/list" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-		if got := r.URL.Query().Get("capability"); got != "text2image" {
-			t.Fatalf("unexpected capability query: %q", got)
+		if got := r.URL.Query().Get("origin"); got != "web" {
+			t.Fatalf("expected origin=web, got %q", got)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"data":{"items":[{"id":"gemini-3-pro-image-preview","capabilities":["text2image","img2img"]}]}}`))
+		_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":101,"code":"image-main","name":"Image Main","categories":[{"taskSubType":103}],"isSupportImages":true}]}`))
 	}))
 	defer server.Close()
 
@@ -122,5 +122,99 @@ func TestModelsListFiltersByCapability(t *testing.T) {
 	items, ok := data["items"].([]any)
 	if !ok || len(items) != 1 {
 		t.Fatalf("unexpected items payload: %#v", data["items"])
+	}
+	item := items[0].(map[string]any)
+	if item["code"] != "image-main" {
+		t.Fatalf("unexpected item payload: %#v", item)
+	}
+}
+
+func TestModelsListIncludesUploadLimits(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api_client/anime/ai/model/list" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("origin"); got != "web" {
+			t.Fatalf("expected origin=web, got %q", got)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":101,"code":"video-main","name":"Video Main","categories":[{"taskSubType":202}],"isSupportImages":true,"uploadImageLimit":0,"uploadVideoLimit":2,"uploadAudioLimit":1}]}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"models", "list",
+		"--capability", "image2video",
+	})
+
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object, got %#v", resp["data"])
+	}
+	items, ok := data["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("unexpected items payload: %#v", data["items"])
+	}
+	item := items[0].(map[string]any)
+	if item["upload_image_limit"] != float64(0) {
+		t.Fatalf("unexpected upload_image_limit: %#v", item["upload_image_limit"])
+	}
+	if item["upload_video_limit"] != float64(2) {
+		t.Fatalf("unexpected upload_video_limit: %#v", item["upload_video_limit"])
+	}
+	if item["upload_audio_limit"] != float64(1) {
+		t.Fatalf("unexpected upload_audio_limit: %#v", item["upload_audio_limit"])
+	}
+}
+
+func TestModelsRoutesReturnsDefaultModelSelection(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api_client/anime/ai/model/list" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("origin"); got != "web" {
+			t.Fatalf("expected origin=web, got %q", got)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":301,"code":"speech-2.8-hd","categories":[{"taskSubType":301}]},{"id":401,"code":"music-2.6-free","categories":[{"taskSubType":301}]},{"id":501,"code":"doubao-seedance-2-0-260128","categories":[{"taskSubType":203},{"taskSubType":204}]},{"id":601,"code":"jimeng_dreamactor_m20_gen_video","categories":[{"taskSubType":205}]}]}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"models", "routes",
+		"--route", "video.seedance",
+	})
+
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object, got %#v", resp["data"])
+	}
+	items, ok := data["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("unexpected items payload: %#v", data["items"])
+	}
+	item := items[0].(map[string]any)
+	if item["command"] != "video.seedance" {
+		t.Fatalf("unexpected route summary: %#v", item)
+	}
+	if item["default_ai_model_code"] != "doubao-seedance-2-0-260128" {
+		t.Fatalf("unexpected default model code: %#v", item)
+	}
+	if item["resolved_ai_model_id"] != "501" {
+		t.Fatalf("unexpected resolved model id: %#v", item)
 	}
 }

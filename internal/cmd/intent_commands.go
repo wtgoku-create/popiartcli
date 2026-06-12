@@ -18,11 +18,12 @@ import (
 
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
 const (
-	defaultMiniMaxMusicModelID         = "music-2.6-free"
+	defaultMiniMaxMusicModelID         = "music-2.6"
 	defaultMiniMaxSpeechModelID        = "speech-2.8-hd"
 	defaultJimengActionTransferModelID = "jimeng_dreamactor_m20_gen_video"
 	defaultSeedanceVideoModelID        = "doubao-seedance-2-0-260128"
@@ -41,7 +42,7 @@ func newImageCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeSkillRun(cmd, officialText2ImageSkillID, payload, "image", nil)
+			return executeTaskCommand(cmd, "image", payload, popiart.BuildTextToImageTaskRequest, nil)
 		},
 	}
 	addText2ImageFlags(imageCmd)
@@ -55,7 +56,7 @@ func newImageCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeSkillRun(cmd, officialText2ImageSkillID, payload, "image.generate", nil)
+			return executeTaskCommand(cmd, "image.generate", payload, popiart.BuildTextToImageTaskRequest, nil)
 		},
 	}
 	addText2ImageFlags(generateCmd)
@@ -70,7 +71,7 @@ func newImageCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeSkillRun(cmd, officialImage2ImageSkillID, payload, "image.img2img", preview)
+			return executeTaskCommand(cmd, "image.img2img", payload, popiart.BuildImageTransformTaskRequest, preview)
 		},
 	}
 	addCommonExecutionFlags(img2imgCmd)
@@ -85,7 +86,7 @@ func newImageCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeSkillRun(cmd, officialImage2ImageSkillID, payload, "image.transform", preview)
+			return executeTaskCommand(cmd, "image.transform", payload, popiart.BuildImageTransformTaskRequest, preview)
 		},
 	}
 	addCommonExecutionFlags(transformCmd)
@@ -171,7 +172,7 @@ func newVideoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeDirectModelCommand(cmd, defaultJimengActionTransferModelID, payload, "video.action-transfer", preview)
+			return executeTaskCommand(cmd, "video.action-transfer", payload, popiart.BuildVideoActionTransferTaskRequest, preview)
 		},
 	}
 	addCommonExecutionFlags(actionTransferCmd)
@@ -181,13 +182,13 @@ func newVideoCmd() *cobra.Command {
 		Use:     "seedance",
 		Aliases: []string{"doubao", "doubao-seedance"},
 		Short:   "通过 Seedance / 豆包视频模型生成视频",
-		Long:    "提交文生、图生、参考视频或参考音频请求到 Seedance / Doubao 视频模型。默认模型为 doubao-seedance-2-0-260128，走统一网关 video/generations JSON 接口。",
+		Long:    "提交文生、图生、参考视频或参考音频请求到 Seedance / Doubao 视频模型。默认模型为 doubao-seedance-2-0-260128，按 action 和输入形态映射到主站视频 task。",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload, preview, err := resolveSeedanceVideoInput(cmd)
 			if err != nil {
 				return err
 			}
-			return executeSeedanceVideoCommand(cmd, payload, "video.seedance", preview)
+			return executeTaskCommand(cmd, "video.seedance", payload, popiart.BuildVideoGenerateTaskRequest, preview)
 		},
 	}
 	addCommonExecutionFlags(seedanceCmd)
@@ -232,7 +233,7 @@ func newAudioCmd() *cobra.Command {
 			putBool(payload, "subtitles", flagBool(cmd, "subtitles"))
 			putStringSlice(payload, "pronunciation", flagStringArray(cmd, "pronunciation"))
 
-			return executeDirectModelCommand(cmd, defaultMiniMaxSpeechModelID, payload, "audio.tts", nil)
+			return executeTaskCommand(cmd, "audio.tts", payload, popiart.BuildTextToSpeechTaskRequest, nil)
 		},
 	}
 	addCommonExecutionFlags(ttsCmd)
@@ -277,7 +278,7 @@ func newSpeechCmd() *cobra.Command {
 			putBool(payload, "subtitles", flagBool(cmd, "subtitles"))
 			putStringSlice(payload, "pronunciation", flagStringArray(cmd, "pronunciation"))
 
-			return executeDirectModelCommand(cmd, defaultMiniMaxSpeechModelID, payload, "speech.synthesize", nil)
+			return executeTaskCommand(cmd, "speech.synthesize", payload, popiart.BuildTextToSpeechTaskRequest, nil)
 		},
 	}
 	addCommonExecutionFlags(synthesizeCmd)
@@ -300,7 +301,7 @@ func newMusicCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return executeDirectModelCommand(cmd, defaultMiniMaxMusicModelID, payload, "music", nil)
+			return executeTaskCommand(cmd, "music", payload, popiart.BuildMusicTaskRequest, nil)
 		},
 	}
 	addCommonExecutionFlags(musicCmd)
@@ -309,13 +310,13 @@ func newMusicCmd() *cobra.Command {
 	generateCmd := &cobra.Command{
 		Use:   "generate",
 		Short: "通过 MiniMax music 模型生成音乐",
-		Long:  "当前 `music generate` 直接走 MiniMax music 模型，默认使用 music-2.6-free。命令面参考 MiniMax CLI 的 music generate 设计。",
+		Long:  "当前 `music generate` 直接走 MiniMax music 模型，默认使用 music-2.6。命令面参考 MiniMax CLI 的 music generate 设计。",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload, err := resolveMusicGenerateInput(cmd, nil)
 			if err != nil {
 				return err
 			}
-			return executeDirectModelCommand(cmd, defaultMiniMaxMusicModelID, payload, "music.generate", nil)
+			return executeTaskCommand(cmd, "music.generate", payload, popiart.BuildMusicTaskRequest, nil)
 		},
 	}
 	addCommonExecutionFlags(generateCmd)
@@ -333,7 +334,7 @@ func addCommonExecutionFlags(cmd *cobra.Command) {
 }
 
 func addText2ImageFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", "", "显式指定本次请求使用的模型；传入后会直接走 models infer")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的模型")
 	cmd.Flags().String("prompt", "", "图片提示词")
 	cmd.Flags().String("negative-prompt", "", "排除项或不希望出现的元素")
 	cmd.Flags().String("style", "", "风格提示，例如 anime、product render、cinematic realism")
@@ -344,7 +345,7 @@ func addText2ImageFlags(cmd *cobra.Command) {
 }
 
 func addImageTransformFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", "", "显式指定本次请求使用的模型；传入后会直接走 models infer")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的模型")
 	cmd.Flags().String("image", "", "源图 URL 或本地文件路径")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
 	cmd.Flags().StringArray("identity-reference-image", nil, "主体一致性参考图 URL 或本地文件路径，可重复传入")
@@ -365,13 +366,14 @@ func addImageTransformFlags(cmd *cobra.Command) {
 }
 
 func addVideoGenerateFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", "", "显式指定本次请求使用的模型；传入后会直接走 models infer")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的模型")
 	cmd.Flags().String("prompt-enhancer-model", "", "显式指定前置图像理解/提示词增强模型；传入后会先生成增强后的图生视频 prompt 再提交视频任务")
 	cmd.Flags().String("from", "", "源图路径或 URL（等同于 --image）")
 	cmd.Flags().String("image", "", "源图 URL 或本地文件路径")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
 	cmd.Flags().String("prompt", "", "动作或镜头提示词")
 	cmd.Flags().String("negative-prompt", "", "排除项或不希望出现的运动/风格")
+	cmd.Flags().String("size", "", "分辨率，例如 720P、1080P、1K、2K、4K")
 	cmd.Flags().Float64("duration", 0, "视频时长（秒）")
 	cmd.Flags().Float64("fps", 0, "帧率提示")
 	cmd.Flags().String("camera-motion", "", "镜头运动提示")
@@ -437,7 +439,7 @@ func addSpeechSynthesizeFlags(cmd *cobra.Command) {
 }
 
 func addMusicGenerateFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", defaultMiniMaxMusicModelID, "显式指定本次请求使用的音乐模型；默认使用 MiniMax music-2.6-free")
+	cmd.Flags().String("model", defaultMiniMaxMusicModelID, "显式指定本次请求使用的音乐模型；默认使用 MiniMax music-2.6")
 	cmd.Flags().String("prompt", "", "音乐风格或生成提示词")
 	cmd.Flags().String("lyrics", "", "歌词文本")
 	cmd.Flags().String("lyrics-file", "", "从文件读取歌词；传 - 表示标准输入")
@@ -547,6 +549,72 @@ func executeSkillRun(cmd *cobra.Command, skillID string, payload map[string]any,
 	return writeTypedJobResultOrWait(cmd, job)
 }
 
+// executeTaskCommand 把已解析好的命令 payload 交给主站 task API 执行。
+func executeTaskCommand(cmd *cobra.Command, action string, payload map[string]any, mapper func(map[string]any, popiart.Model) popiart.TaskRequest, extras map[string]any) error {
+	requestedModelCode := ""
+	if cmd.Flags().Changed("model") {
+		requestedModelCode = strings.TrimSpace(flagString(cmd, "model"))
+	}
+	spec := taskValidationSpecForAction(action, payload)
+	models, err := popiart.FetchModels(context.Background(), currentClient())
+	if err != nil {
+		return err
+	}
+	model, err := popiart.ResolveCandidateModel(models, requestedModelCode, popiart.DefaultModelCodes(action), spec.SubType)
+	if err != nil {
+		return err
+	}
+	payload = popiart.NormalizePayloadForModel(payload, model, taskTypeForAction(action), isVideoTaskAction(action))
+	if err := popiart.ValidateModelSupport(model, taskValidationSpecForAction(action, payload)); err != nil {
+		return err
+	}
+
+	req := mapper(payload, model)
+	if dryRunMode(cmd) {
+		preview := map[string]any{
+			"model_id":       model.Code,
+			"execution_mode": taskExecutionMode(requestedModelCode),
+			"request": map[string]any{
+				"method": "POST",
+				"path":   "/api_client/anime/task/create",
+				"body":   req,
+			},
+		}
+		for key, value := range extras {
+			preview[key] = value
+		}
+		return writeDryRunPreview(cmd, action, preview)
+	}
+
+	task, err := popiart.CreateTask(context.Background(), currentClient(), req)
+	if err != nil {
+		return err
+	}
+	return writeTaskResultOrWait(cmd, task, model, extras, taskExecutionMode(requestedModelCode))
+}
+
+func taskTypeForAction(action string) int {
+	switch strings.TrimSpace(action) {
+	case "image", "image.generate", "image.img2img", "image.transform":
+		return 1
+	case "video", "video.generate", "video.img2video", "video.from-image", "video.action-transfer", "video.seedance":
+		return 2
+	case "audio.tts", "speech.synthesize", "music", "music.generate":
+		return 3
+	default:
+		return 0
+	}
+}
+
+func isVideoTaskAction(action string) bool {
+	switch strings.TrimSpace(action) {
+	case "video", "video.generate", "video.img2video", "video.from-image", "video.action-transfer", "video.seedance":
+		return true
+	default:
+		return false
+	}
+}
+
 func executeDirectModelCommand(cmd *cobra.Command, defaultModelID string, payload map[string]any, action string, extras map[string]any) error {
 	if err := validateJobExecutionFlags(cmd); err != nil {
 		return err
@@ -590,173 +658,92 @@ func executeDirectModelCommand(cmd *cobra.Command, defaultModelID string, payloa
 	return writeJobResultOrWait(cmd, job)
 }
 
-func executeSeedanceVideoCommand(cmd *cobra.Command, payload map[string]any, action string, extras map[string]any) error {
-	if err := validateJobExecutionFlags(cmd); err != nil {
-		return err
-	}
-	modelID := strings.TrimSpace(flagString(cmd, "model"))
-	if modelID == "" {
-		modelID = defaultSeedanceVideoModelID
-	}
-	if modelID == "" {
-		return output.NewError("VALIDATION_ERROR", "缺少可用 Seedance 模型", map[string]any{
-			"flag": "model",
-			"hint": "请显式传入 --model，或使用默认 doubao-seedance-2-0-260128",
-		})
-	}
-
-	body := buildSeedanceVideoGenerationBody(modelID, payload)
-	if dryRunMode(cmd) {
-		preview := map[string]any{
-			"model_id":       modelID,
-			"execution_mode": directModelExecutionMode(modelID, defaultSeedanceVideoModelID),
-			"request": map[string]any{
-				"method": "POST",
-				"path":   "/video/generations",
-				"body":   body,
-			},
-		}
-		for key, value := range extras {
-			preview[key] = value
-		}
-		return writeDryRunPreview(cmd, action, preview)
-	}
-
-	var task map[string]any
-	if err := currentClient().PostJSON(context.Background(), "/video/generations", body, &task); err != nil {
-		return err
-	}
-	task = normalizeSeedanceVideoResponse(task)
-	task["model_id"] = modelID
-	task["execution_mode"] = directModelExecutionMode(modelID, defaultSeedanceVideoModelID)
-	for key, value := range extras {
-		task[key] = value
-	}
-	return writeSeedanceVideoResultOrWait(cmd, task)
-}
-
-func buildSeedanceVideoGenerationBody(modelID string, payload map[string]any) map[string]any {
-	body := cloneMapAny(payload)
-	body["model"] = modelID
-	return body
-}
-
-func writeSeedanceVideoResultOrWait(cmd *cobra.Command, task map[string]any) error {
-	wait, err := shouldWaitForJob(cmd)
-	if err != nil {
-		return err
-	}
-	if !wait {
-		return writeOutput(cmd, task)
-	}
-
-	taskID := seedanceTaskID(task)
-	if taskID == "" {
-		return output.NewError("CLI_ERROR", "Seedance 响应中缺少 task_id", nil)
-	}
-
-	interval, err := intervalDuration(cmd, "interval")
-	if err != nil {
-		return err
-	}
-	done, err := waitForSeedanceVideoTask(context.Background(), taskID, interval, 300)
-	if err != nil {
-		return err
-	}
-	done = normalizeSeedanceVideoResponse(done)
-	if _, ok := done["model_id"]; !ok {
-		done["model_id"] = task["model_id"]
-	}
-	if _, ok := done["execution_mode"]; !ok {
-		done["execution_mode"] = task["execution_mode"]
-	}
-	return writeOutput(cmd, done)
-}
-
-func waitForSeedanceVideoTask(ctx context.Context, taskID string, interval time.Duration, maxPolls int) (map[string]any, error) {
-	for pollIndex := 0; pollIndex < maxPolls; pollIndex++ {
-		var task map[string]any
-		if err := currentClient().GetJSON(ctx, "/video/generations/"+taskID, nil, &task); err != nil {
-			return nil, err
-		}
-		task = normalizeSeedanceVideoResponse(task)
-
-		status := strings.ToUpper(strings.TrimSpace(stringValue(task["status"])))
-		switch status {
-		case "SUCCESS", "SUCCEEDED", "DONE", "COMPLETED":
-			return task, nil
-		case "FAILED", "FAILURE", "CANCELLED", "CANCELED":
-			return nil, output.NewError("JOB_FAILED", seedanceTaskFailureMessage(task), map[string]any{
-				"task_id": taskID,
-				"status":  status,
-				"error":   task["error"],
-			})
-		}
-
-		fmt.Fprintf(os.Stderr, "\r⏳ %s - %s (%ds)   ", taskID, status, int(interval.Seconds())*pollIndex)
-		time.Sleep(interval)
-	}
-
-	return nil, output.NewError("POLL_TIMEOUT", fmt.Sprintf("Seedance task %s did not complete within the timeout", taskID), map[string]any{
-		"task_id":         taskID,
-		"timeout_seconds": int(interval.Seconds()) * maxPolls,
-	})
-}
-
-func normalizeSeedanceVideoResponse(task map[string]any) map[string]any {
-	if task == nil {
-		return map[string]any{}
-	}
-	if data, ok := task["data"].(map[string]any); ok {
-		task = cloneMapAny(data)
-	}
-	if taskID := seedanceTaskID(task); taskID != "" {
-		task["task_id"] = taskID
-	}
-	if metadata, ok := task["metadata"].(map[string]any); ok {
-		if stringValue(task["result_url"]) == "" {
-			if url := strings.TrimSpace(stringValue(metadata["url"])); url != "" {
-				task["result_url"] = url
-			}
-		}
-		if stringValue(task["last_frame_url"]) == "" {
-			if lastFrameURL := strings.TrimSpace(stringValue(metadata["last_frame_url"])); lastFrameURL != "" {
-				task["last_frame_url"] = lastFrameURL
-			}
-		}
-	}
-	return task
-}
-
-func seedanceTaskID(task map[string]any) string {
-	if task == nil {
-		return ""
-	}
-	for _, key := range []string{"task_id", "id", "job_id"} {
-		if value := strings.TrimSpace(stringValue(task[key])); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func seedanceTaskFailureMessage(task map[string]any) string {
-	if message := strings.TrimSpace(stringValue(task["message"])); message != "" {
-		return message
-	}
-	if errMap, ok := task["error"].(map[string]any); ok {
-		if message := strings.TrimSpace(stringValue(errMap["message"])); message != "" {
-			return message
-		}
-	}
-	return "Seedance video task failed"
-}
-
 func directModelExecutionMode(modelID, defaultModelID string) string {
 	if strings.TrimSpace(modelID) != "" && strings.TrimSpace(defaultModelID) != "" && strings.TrimSpace(modelID) == strings.TrimSpace(defaultModelID) {
 		return "direct-model-default"
 	}
 	return "direct-model-override"
+}
+
+// writeTaskResultOrWait 负责把主站 task 结果转换成 CLI 兼容输出。
+func writeTaskResultOrWait(cmd *cobra.Command, task popiart.TaskDetail, model popiart.Model, extras map[string]any, executionMode string) error {
+	wait, err := shouldWaitForJob(cmd)
+	if err != nil {
+		return err
+	}
+	if wait {
+		taskID := task.Identifier()
+		if taskID == "" {
+			return output.NewError("CLI_ERROR", "任务响应中缺少 task_id", nil)
+		}
+		interval, err := intervalDuration(cmd, "interval")
+		if err != nil {
+			return err
+		}
+		task, err = popiart.WaitForTask(context.Background(), currentClient(), taskID, interval, 300)
+		if err != nil {
+			return err
+		}
+	}
+
+	outputData := popiart.TaskOutput(task, model, extras)
+	outputData["execution_mode"] = executionMode
+	return writeOutput(cmd, outputData)
+}
+
+// taskExecutionMode 标记这次 task 执行是否使用了显式模型覆盖。
+func taskExecutionMode(explicitModel string) string {
+	if strings.TrimSpace(explicitModel) != "" {
+		return "task-model-override"
+	}
+	return "task-model-default"
+}
+
+// taskValidationSpecForAction 为当前命令生成最小必要的模型能力校验条件。
+func taskValidationSpecForAction(action string, payload map[string]any) popiart.ModelValidationSpec {
+	spec := popiart.ModelValidationSpec{}
+	switch strings.TrimSpace(action) {
+	case "image", "image.generate":
+		spec.SubType = 103
+		spec.Ratio = stringValue(payload["aspect_ratio"])
+		spec.Resolution = stringValue(payload["size"])
+	case "image.img2img", "image.transform":
+		spec.SubType = 103
+		spec.RequiresImages = true
+		spec.ImageCount = len(stringSliceValue(payload["images"]))
+		spec.Ratio = stringValue(payload["aspect_ratio"])
+		spec.Resolution = stringValue(payload["size"])
+	case "video", "video.generate", "video.img2video", "video.from-image":
+		spec.AllowedSubTypes = []int{202, 203, 204}
+		spec.ImageCount = len(stringSliceValue(payload["images"]))
+		spec.VideoCount = len(stringSliceValue(payload["videos"]))
+		spec.AudioCount = len(stringSliceValue(payload["audios"]))
+		spec.RequiresImages = spec.ImageCount > 0
+		spec.VideoRatio = stringValue(payload["aspect_ratio"])
+		spec.Duration = int(numericValue(payload["duration"]))
+	case "video.action-transfer":
+		spec.SubType = 205
+		spec.RequiresImages = true
+		spec.RequiresVideos = true
+		spec.ImageCount = len(stringSliceValue(payload["images"]))
+		spec.VideoCount = len(stringSliceValue(payload["videos"]))
+	case "video.seedance":
+		spec.SubType = int(numericValue(payload["sub_type"]))
+		spec.RequiresImages = len(stringSliceValue(payload["images"])) > 0
+		spec.RequiresVideos = len(stringSliceValue(payload["videos"])) > 0
+		spec.RequiresAudios = len(stringSliceValue(payload["audios"])) > 0
+		spec.ImageCount = len(stringSliceValue(payload["images"]))
+		spec.VideoCount = len(stringSliceValue(payload["videos"]))
+		spec.AudioCount = len(stringSliceValue(payload["audios"]))
+		spec.VideoRatio = stringValue(payload["aspect_ratio"])
+		spec.Resolution = stringValue(payload["size"])
+		spec.Duration = int(numericValue(payload["duration"]))
+	case "audio.tts", "speech.synthesize":
+		spec.SubType = 301
+	case "music", "music.generate":
+		spec.AllowedSubTypes = []int{304, 305}
+	}
+	return spec
 }
 
 func directModelTypeForAction(action string) string {
@@ -955,40 +942,23 @@ func musicPromptAddendum(cmd *cobra.Command) string {
 	return strings.Join(parts, "\n")
 }
 
+// resolveVideoGenerateInput 统一解析普通图生视频与纯提示词视频两类输入。
 func resolveVideoGenerateInput(cmd *cobra.Command, args []string) (map[string]any, map[string]any, error) {
 	prompt := strings.TrimSpace(flagString(cmd, "prompt"))
 	if prompt == "" && len(args) > 0 {
 		prompt = strings.TrimSpace(args[0])
 	}
-	modelOverride := strings.TrimSpace(flagString(cmd, "model"))
-
 	if !hasImageSourceInput(cmd) {
 		if prompt == "" {
 			return nil, nil, invalidFlagValueError("--prompt", "", "请传入视频提示词，或通过 --image / --from / --source-artifact-id 提供源图")
 		}
-		if modelOverride != "" {
-			payload := map[string]any{}
-			putString(payload, "prompt", prompt)
-			putString(payload, "negative_prompt", flagString(cmd, "negative-prompt"))
-			putString(payload, "camera_motion", flagString(cmd, "camera-motion"))
-			putString(payload, "motion_intensity", flagString(cmd, "motion-intensity"))
-			putString(payload, "style", flagString(cmd, "style"))
-			putString(payload, "aspect_ratio", normalizePortableAspectRatio(flagString(cmd, "aspect-ratio")))
-			putString(payload, "notes", flagString(cmd, "notes"))
-			putFloat(payload, "duration_s", flagFloat64(cmd, "duration"))
-			putFloat(payload, "fps", flagFloat64(cmd, "fps"))
-			putFloat(payload, "seed", flagFloat64(cmd, "seed"))
-			return payload, map[string]any{
-				"mode": "prompt-only",
-			}, nil
-		}
-		return nil, nil, output.NewError("CAPABILITY_UNAVAILABLE", "当前 video.generate 还未开放 text2video runtime", map[string]any{
-			"command": "video generate",
-			"hint":    "先通过 --image / --from / --source-artifact-id 走 image2video；等 runtime baseline ready 后再开放纯 prompt 视频生成",
+		return nil, nil, output.NewError("CAPABILITY_UNAVAILABLE", "当前普通 video 命令暂不支持纯 prompt 视频任务", map[string]any{
+			"command": "video.generate",
+			"hint":    "请先传入 --image / --from / --source-artifact-id，或使用支持明确 text-to-video 映射的后续命令",
 		})
 	}
 
-	payload, preview, err := resolveImageSourceInput(cmd)
+	payload, preview, err := resolveTaskVideoGenerateInput(cmd)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -997,8 +967,10 @@ func resolveVideoGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 	putString(payload, "camera_motion", flagString(cmd, "camera-motion"))
 	putString(payload, "motion_intensity", flagString(cmd, "motion-intensity"))
 	putString(payload, "style", flagString(cmd, "style"))
+	putString(payload, "size", flagString(cmd, "size"))
 	putString(payload, "aspect_ratio", normalizePortableAspectRatio(flagString(cmd, "aspect-ratio")))
 	putString(payload, "notes", flagString(cmd, "notes"))
+	putFloat(payload, "duration", flagFloat64(cmd, "duration"))
 	putFloat(payload, "duration_s", flagFloat64(cmd, "duration"))
 	putFloat(payload, "fps", flagFloat64(cmd, "fps"))
 	putFloat(payload, "seed", flagFloat64(cmd, "seed"))
@@ -1016,11 +988,11 @@ func resolveVideoActionTransferInput(cmd *cobra.Command) (map[string]any, map[st
 		return nil, nil, invalidFlagValueError("--video", "", "动作迁移需要一个动作参考视频")
 	}
 
-	imageValue, imageSource, imagePreflight, uploadedImage, err := resolveJimengImageGatewaySource(cmd, image)
+	imageValue, imageSource, imagePreflight, uploadedImage, err := resolveTaskActionTransferImage(cmd, image)
 	if err != nil {
 		return nil, nil, err
 	}
-	videoValue, videoSource, videoPreflight, uploadedVideo, err := resolveGatewayMediaURLSource(cmd, video, "source_video")
+	videoValue, videoSource, videoPreflight, uploadedVideo, err := resolveTaskMediaURL(cmd, video, "source_video")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1068,18 +1040,38 @@ func resolveVideoActionTransferInput(cmd *cobra.Command) (map[string]any, map[st
 	return payload, preview, nil
 }
 
+// resolveTaskActionTransferImage 兼容动作迁移身份图使用 URL、本地文件和 data URL 三种输入。
+func resolveTaskActionTransferImage(cmd *cobra.Command, value string) (string, map[string]any, map[string]any, map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if looksLikeDataURL(value) {
+		filename, contentType, body, err := decodeImageDataURL(value)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+		mediaURL, preflight, uploaded, err := uploadBytesAsTaskMedia(cmd, body, filename, contentType, "source_image")
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+		return mediaURL, map[string]any{
+			"kind": "data_url",
+			"role": "source_image",
+		}, preflight, uploaded, nil
+	}
+	return resolveTaskMediaURL(cmd, value, "source_image")
+}
+
 func resolveSeedanceVideoInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
 	prompt := strings.TrimSpace(flagString(cmd, "prompt"))
 
-	images, imagePreview, err := resolvePortableMediaInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "image")), "reference_image", true)
+	images, imagePreview, err := resolveTaskMediaURLs(cmd, cleanedStringSlice(flagStringArray(cmd, "image")), "reference_image", true)
 	if err != nil {
 		return nil, nil, err
 	}
-	videos, videoPreview, err := resolvePortableMediaInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "video")), "reference_video", false)
+	videos, videoPreview, err := resolveTaskMediaURLs(cmd, cleanedStringSlice(flagStringArray(cmd, "video")), "reference_video", false)
 	if err != nil {
 		return nil, nil, err
 	}
-	audios, audioPreview, err := resolvePortableMediaInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "audio")), "reference_audio", false)
+	audios, audioPreview, err := resolveTaskMediaURLs(cmd, cleanedStringSlice(flagStringArray(cmd, "audio")), "reference_audio", false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1093,6 +1085,10 @@ func resolveSeedanceVideoInput(cmd *cobra.Command) (map[string]any, map[string]a
 			"hint":  "请同时传入 --image 或 --video，或移除 --audio",
 		})
 	}
+	subType, err := resolveSeedanceTaskSubType(cmd, prompt, images, videos, audios)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	payload := map[string]any{}
 	putString(payload, "prompt", prompt)
@@ -1102,10 +1098,11 @@ func resolveSeedanceVideoInput(cmd *cobra.Command) (map[string]any, map[string]a
 	putString(payload, "size", flagString(cmd, "size"))
 	putString(payload, "notes", flagString(cmd, "notes"))
 	putFloat(payload, "duration", flagFloat64(cmd, "duration"))
+	putString(payload, "aspect_ratio", normalizePortableAspectRatio(flagString(cmd, "ratio")))
+	payload["sub_type"] = subType
 
 	metadata := map[string]any{}
 	putString(metadata, "action", flagString(cmd, "action"))
-	putString(metadata, "ratio", normalizePortableAspectRatio(flagString(cmd, "ratio")))
 	putString(metadata, "service_tier", flagString(cmd, "service-tier"))
 	putInt(metadata, "frames", flagInt(cmd, "frames"))
 	putInt(metadata, "seed", flagInt(cmd, "seed"))
@@ -1130,6 +1127,61 @@ func resolveSeedanceVideoInput(cmd *cobra.Command) (map[string]any, map[string]a
 	mergeStringAnyMaps(preview, videoPreview)
 	mergeStringAnyMaps(preview, audioPreview)
 	return payload, preview, nil
+}
+
+// resolveSeedanceTaskSubType 按 action 与输入形态推导 Seedance 任务子类型。
+func resolveSeedanceTaskSubType(cmd *cobra.Command, prompt string, images, videos, audios []string) (int, error) {
+	action := strings.TrimSpace(flagString(cmd, "action"))
+	switch action {
+	case "firstTailGenerate":
+		if len(images) != 2 {
+			return 0, output.NewError("VALIDATION_ERROR", "firstTailGenerate 需要恰好 2 张图片", map[string]any{
+				"flag":        "action",
+				"image_count": len(images),
+			})
+		}
+		return 204, nil
+	case "referenceGenerate":
+		if len(images) == 0 {
+			return 0, output.NewError("VALIDATION_ERROR", "referenceGenerate 至少需要 1 张参考图", map[string]any{
+				"flag": "image",
+			})
+		}
+		return 203, nil
+	case "generate":
+		if len(images) < 2 {
+			return 0, output.NewError("VALIDATION_ERROR", "generate 模式需要至少 2 张图片", map[string]any{
+				"flag":        "image",
+				"image_count": len(images),
+			})
+		}
+		return 202, nil
+	case "textGenerate":
+		return 0, output.NewError("CAPABILITY_UNAVAILABLE", "当前 Seedance 还未开放稳定的 textGenerate task 映射", map[string]any{
+			"command": "video seedance",
+			"action":  "textGenerate",
+			"hint":    "请先通过参考图、参考视频或首尾帧模式提交视频任务",
+		})
+	case "":
+	default:
+		return 0, invalidFlagValueError("--action", action, "请传入 generate、referenceGenerate 或 firstTailGenerate")
+	}
+
+	switch {
+	case len(videos) > 0 || len(audios) > 0:
+		return 203, nil
+	case len(images) >= 2:
+		return 202, nil
+	case len(images) == 1:
+		return 203, nil
+	case strings.TrimSpace(prompt) != "":
+		return 0, output.NewError("CAPABILITY_UNAVAILABLE", "当前 Seedance 还未开放纯 prompt 视频任务", map[string]any{
+			"command": "video seedance",
+			"hint":    "请至少传入 --image、--video 或 --audio 中的一种参考输入",
+		})
+	default:
+		return 0, invalidFlagValueError("--prompt", "", "请传入 Seedance 视频提示词或参考输入")
+	}
 }
 
 func parseJSONArrayFlag(flagName, value string) ([]any, error) {
@@ -1287,6 +1339,187 @@ func resolvePortableMediaInputs(cmd *cobra.Command, values []string, role string
 	return out, preview, nil
 }
 
+// resolveTaskMediaURLs 为 task/create 解析媒体输入并在需要时上传到主站 media。
+func resolveTaskMediaURLs(cmd *cobra.Command, values []string, role string, allowDataURL bool) ([]string, map[string]any, error) {
+	out := make([]string, 0, len(values))
+	sources := []map[string]any{}
+	preflights := []map[string]any{}
+	uploads := []map[string]any{}
+
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+
+		switch {
+		case looksLikeURL(value):
+			out = append(out, value)
+			sources = append(sources, map[string]any{"kind": "url", "value": value, "role": role})
+		case allowDataURL && looksLikeDataURL(value):
+			filename, contentType, body, err := decodeImageDataURL(value)
+			if err != nil {
+				return nil, nil, err
+			}
+			mediaURL, preflight, uploaded, err := uploadBytesAsTaskMedia(cmd, body, filename, contentType, role)
+			if err != nil {
+				return nil, nil, err
+			}
+			out = append(out, mediaURL)
+			sources = append(sources, map[string]any{"kind": "data_url", "role": role})
+			if preflight != nil {
+				preflights = append(preflights, preflight)
+			}
+			if uploaded != nil {
+				uploads = append(uploads, uploaded)
+			}
+		default:
+			mediaURL, source, preflight, uploaded, err := resolveTaskMediaURL(cmd, value, role)
+			if err != nil {
+				return nil, nil, err
+			}
+			out = append(out, mediaURL)
+			sources = append(sources, source)
+			if preflight != nil {
+				preflights = append(preflights, preflight)
+			}
+			if uploaded != nil {
+				uploads = append(uploads, uploaded)
+			}
+		}
+	}
+
+	preview := map[string]any{}
+	if len(sources) > 0 {
+		preview[role+"_sources"] = sources
+	}
+	if len(preflights) > 0 {
+		preview[role+"_preflight_uploads"] = preflights
+	}
+	if len(uploads) > 0 {
+		preview[role+"_uploaded_media"] = uploads
+	}
+	return out, preview, nil
+}
+
+// resolveTaskMediaURL 把单个媒体输入转换为可直接提交给 task/create 的稳定 URL。
+func resolveTaskMediaURL(cmd *cobra.Command, value, role string) (string, map[string]any, map[string]any, map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil, nil, nil, output.NewError("VALIDATION_ERROR", "媒体输入不能为空", map[string]any{
+			"role": role,
+		})
+	}
+	if looksLikeURL(value) {
+		return value, map[string]any{
+			"kind":  "url",
+			"value": value,
+			"role":  role,
+		}, nil, nil, nil
+	}
+	if _, err := os.Stat(value); err != nil {
+		return "", nil, nil, nil, output.NewError("CLI_ERROR", "读取媒体输入失败", map[string]any{
+			"path":    value,
+			"role":    role,
+			"details": err.Error(),
+		})
+	}
+	if dryRunMode(cmd) {
+		placeholder := "(from api_client/media/upload.url)"
+		return placeholder, map[string]any{
+				"kind":  "upload_url",
+				"value": placeholder,
+				"from":  value,
+				"role":  role,
+			}, map[string]any{
+				"method": "POST",
+				"path":   "/api_client/media/upload",
+				"body": map[string]any{
+					"path":       value,
+					"visibility": "unlisted",
+				},
+			}, nil, nil
+	}
+
+	uploaded, err := uploadMedia(context.Background(), value, mediaUploadOptions{
+		Visibility: "unlisted",
+	})
+	if err != nil {
+		return "", nil, nil, nil, err
+	}
+	mediaURL := stringValue(uploaded["url"])
+	if mediaURL == "" {
+		return "", nil, nil, nil, output.NewError("CLI_ERROR", "上传媒体后缺少可提交给任务的 URL", map[string]any{
+			"path": value,
+			"role": role,
+		})
+	}
+	return mediaURL, map[string]any{
+		"kind":  "upload_url",
+		"value": mediaURL,
+		"from":  value,
+		"role":  role,
+	}, nil, uploaded, nil
+}
+
+// uploadBytesAsTaskMedia 把内存中的媒体字节写入临时文件后复用主站媒体上传流程。
+func uploadBytesAsTaskMedia(cmd *cobra.Command, body []byte, filename, contentType, role string) (string, map[string]any, map[string]any, error) {
+	if dryRunMode(cmd) {
+		placeholder := "(from api_client/media/upload.url)"
+		return placeholder, map[string]any{
+			"method": "POST",
+			"path":   "/api_client/media/upload",
+			"body": map[string]any{
+				"filename":     filename,
+				"content_type": contentType,
+				"role":         role,
+				"source":       "in-memory",
+			},
+		}, nil, nil
+	}
+
+	tempFile, err := os.CreateTemp("", "popiart-task-media-*")
+	if err != nil {
+		return "", nil, nil, output.NewError("CLI_ERROR", "创建临时媒体文件失败", map[string]any{
+			"details": err.Error(),
+			"role":    role,
+		})
+	}
+	tempPath := tempFile.Name()
+	if _, err := tempFile.Write(body); err != nil {
+		tempFile.Close()
+		_ = os.Remove(tempPath)
+		return "", nil, nil, output.NewError("CLI_ERROR", "写入临时媒体文件失败", map[string]any{
+			"details": err.Error(),
+			"role":    role,
+		})
+	}
+	if err := tempFile.Close(); err != nil {
+		_ = os.Remove(tempPath)
+		return "", nil, nil, output.NewError("CLI_ERROR", "关闭临时媒体文件失败", map[string]any{
+			"details": err.Error(),
+			"role":    role,
+		})
+	}
+	defer os.Remove(tempPath)
+
+	uploaded, err := uploadMedia(context.Background(), tempPath, mediaUploadOptions{
+		Filename:    filename,
+		ContentType: contentType,
+		Visibility:  "unlisted",
+	})
+	if err != nil {
+		return "", nil, nil, err
+	}
+	mediaURL := stringValue(uploaded["url"])
+	if mediaURL == "" {
+		return "", nil, nil, output.NewError("CLI_ERROR", "上传内存媒体后缺少稳定 URL", map[string]any{
+			"role": role,
+		})
+	}
+	return mediaURL, nil, uploaded, nil
+}
+
 func stripImageDataURLPrefix(value string) (string, bool, error) {
 	if !looksLikeDataURL(value) {
 		return "", false, nil
@@ -1331,6 +1564,20 @@ func looksLikePureBase64Payload(value string) bool {
 	return false
 }
 
+func decodeBase64Payload(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if body, err := base64.StdEncoding.DecodeString(value); err == nil {
+		return body, nil
+	}
+	if body, err := base64.RawStdEncoding.DecodeString(value); err == nil {
+		return body, nil
+	}
+	if body, err := base64.URLEncoding.DecodeString(value); err == nil {
+		return body, nil
+	}
+	return base64.RawURLEncoding.DecodeString(value)
+}
+
 func hasImageSourceInput(cmd *cobra.Command) bool {
 	image := strings.TrimSpace(flagString(cmd, "image"))
 	from := strings.TrimSpace(flagString(cmd, "from"))
@@ -1338,21 +1585,12 @@ func hasImageSourceInput(cmd *cobra.Command) bool {
 	return image != "" || from != "" || sourceArtifactID != ""
 }
 
+// resolveImageTransformInput 把图生图输入统一规整为主站 task/create 可消费的图片 URL 列表。
 func resolveImageTransformInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
-	requiresArtifactSource := img2imgHasReferenceInputs(cmd)
-
-	payload, preview, err := resolveImageTransformSourceInput(cmd, requiresArtifactSource)
+	payload, preview, err := resolveTaskImageTransformInput(cmd)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	referencePayload, referencePreview, err := resolveImageTransformReferenceInput(cmd)
-	if err != nil {
-		return nil, nil, err
-	}
-	mergeStringAnyMaps(payload, referencePayload)
-	mergeStringAnyMaps(preview, referencePreview)
-
 	prompt := strings.TrimSpace(flagString(cmd, "prompt"))
 	if prompt == "" {
 		return nil, nil, invalidFlagValueError("--prompt", "", "请传入 img2img 转换提示词")
@@ -1367,6 +1605,165 @@ func resolveImageTransformInput(cmd *cobra.Command) (map[string]any, map[string]
 	putFloat(payload, "seed", flagFloat64(cmd, "seed"))
 	putBool(payload, "preserve_composition", flagBool(cmd, "preserve-composition"))
 	return payload, preview, nil
+}
+
+// resolveTaskImageTransformInput 把源图和参考图统一转换成 task/create 的 images[] 载荷。
+func resolveTaskImageTransformInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
+	sourceURLs, sourcePreview, err := resolveTaskPrimaryImageInput(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	identityURLs, identityPreview, err := resolveTaskMixedImageInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "identity-reference-image")), cleanedStringSlice(flagStringArray(cmd, "identity-reference-artifact-id")), "identity_reference")
+	if err != nil {
+		return nil, nil, err
+	}
+	styleURLs, stylePreview, err := resolveTaskMixedImageInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "style-reference-image")), cleanedStringSlice(flagStringArray(cmd, "style-reference-artifact-id")), "style_reference")
+	if err != nil {
+		return nil, nil, err
+	}
+	referenceURLs, referencePreview, err := resolveTaskMixedImageInputs(cmd, cleanedStringSlice(flagStringArray(cmd, "reference-image")), cleanedStringSlice(flagStringArray(cmd, "reference-artifact-id")), "reference")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	images := make([]string, 0, len(sourceURLs)+len(identityURLs)+len(styleURLs)+len(referenceURLs))
+	images = append(images, sourceURLs...)
+	images = append(images, identityURLs...)
+	images = append(images, styleURLs...)
+	images = append(images, referenceURLs...)
+
+	payload := map[string]any{
+		"images": images,
+	}
+	preview := map[string]any{}
+	mergeStringAnyMaps(preview, sourcePreview)
+	mergeStringAnyMaps(preview, identityPreview)
+	mergeStringAnyMaps(preview, stylePreview)
+	mergeStringAnyMaps(preview, referencePreview)
+	return payload, preview, nil
+}
+
+// resolveTaskVideoGenerateInput 把视频源图解析成主站 task/create 需要的 images[]。
+func resolveTaskVideoGenerateInput(cmd *cobra.Command) (map[string]any, map[string]any, error) {
+	imageURLs, preview, err := resolveTaskPrimaryImageInput(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	return map[string]any{
+		"images": imageURLs,
+	}, preview, nil
+}
+
+// resolveTaskPrimaryImageInput 兼容主图使用 URL、本地文件或历史 artifact_id 的输入方式。
+func resolveTaskPrimaryImageInput(cmd *cobra.Command) ([]string, map[string]any, error) {
+	sourceArtifactID := strings.TrimSpace(flagString(cmd, "source-artifact-id"))
+	image := strings.TrimSpace(flagString(cmd, "image"))
+	from := strings.TrimSpace(flagString(cmd, "from"))
+	if image == "" && from != "" {
+		image = from
+	}
+
+	switch {
+	case sourceArtifactID == "" && image == "":
+		return nil, nil, invalidFlagValueError("--image", "", "请传入 --image / --from 或 --source-artifact-id")
+	case sourceArtifactID != "" && image != "":
+		return nil, nil, conflictingAgentFlagsError("image", "source-artifact-id")
+	case sourceArtifactID != "":
+		urls, preview, err := resolveTaskArtifactURLs(cmd, []string{sourceArtifactID}, "source")
+		if err != nil {
+			return nil, nil, err
+		}
+		return urls, preview, nil
+	default:
+		urls, preview, err := resolveTaskMediaURLs(cmd, []string{image}, "source", true)
+		if err != nil {
+			return nil, nil, err
+		}
+		return urls, preview, nil
+	}
+}
+
+// resolveTaskMixedImageInputs 兼容混合使用图片输入与历史 artifact_id 参考图。
+func resolveTaskMixedImageInputs(cmd *cobra.Command, images, artifactIDs []string, role string) ([]string, map[string]any, error) {
+	urls := make([]string, 0, len(images)+len(artifactIDs))
+	preview := map[string]any{}
+
+	if len(artifactIDs) > 0 {
+		artifactURLs, artifactPreview, err := resolveTaskArtifactURLs(cmd, artifactIDs, role)
+		if err != nil {
+			return nil, nil, err
+		}
+		urls = append(urls, artifactURLs...)
+		mergeStringAnyMaps(preview, artifactPreview)
+	}
+	if len(images) > 0 {
+		imageURLs, imagePreview, err := resolveTaskMediaURLs(cmd, images, role, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		urls = append(urls, imageURLs...)
+		mergeStringAnyMaps(preview, imagePreview)
+	}
+	return urls, preview, nil
+}
+
+// resolveTaskArtifactURLs 把历史 artifact_id 兼容解释为 media.id，并解析成主站任务可复用的稳定 URL。
+func resolveTaskArtifactURLs(cmd *cobra.Command, artifactIDs []string, role string) ([]string, map[string]any, error) {
+	urls := make([]string, 0, len(artifactIDs))
+	sources := make([]map[string]any, 0, len(artifactIDs))
+
+	for _, artifactID := range artifactIDs {
+		artifactID = strings.TrimSpace(artifactID)
+		if artifactID == "" {
+			continue
+		}
+		if dryRunMode(cmd) {
+			placeholder := fmt.Sprintf("(from /api_client/media/detail?id=%s.url)", artifactID)
+			urls = append(urls, placeholder)
+			sources = append(sources, map[string]any{
+				"kind":        "artifact_url",
+				"artifact_id": artifactID,
+				"value":       placeholder,
+				"role":        role,
+			})
+			continue
+		}
+
+		mediaURL, err := lookupArtifactStableURL(context.Background(), artifactID, role)
+		if err != nil {
+			return nil, nil, err
+		}
+		urls = append(urls, mediaURL)
+		sources = append(sources, map[string]any{
+			"kind":        "artifact_url",
+			"artifact_id": artifactID,
+			"value":       mediaURL,
+			"role":        role,
+		})
+	}
+
+	if len(sources) == 0 {
+		return urls, nil, nil
+	}
+	return urls, map[string]any{
+		role + "_sources": sources,
+	}, nil
+}
+
+// lookupArtifactStableURL 读取 media/detail 元数据，并把兼容 artifact_id 解析成稳定 URL。
+func lookupArtifactStableURL(ctx context.Context, artifactID, role string) (string, error) {
+	var media map[string]any
+	if err := currentClient().GetJSON(ctx, "/api_client/media/detail", map[string]string{"id": artifactID}, &media); err != nil {
+		return "", err
+	}
+	mediaURL := strings.TrimSpace(stringValue(media["url"]))
+	if mediaURL == "" {
+		return "", output.NewError("CLI_ERROR", "media 详情缺少稳定 URL，无法迁移到 task 输入", map[string]any{
+			"artifact_id": artifactID,
+			"role":        role,
+		})
+	}
+	return mediaURL, nil
 }
 
 func resolveImageTransformSourceInput(cmd *cobra.Command, forceArtifactSource bool) (map[string]any, map[string]any, error) {
@@ -1777,6 +2174,30 @@ func mergeStringAnyMaps(dst, src map[string]any) {
 	}
 	for key, value := range src {
 		dst[key] = value
+	}
+}
+
+func stringSliceValue(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				out = append(out, item)
+			}
+		}
+		return out
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text := strings.TrimSpace(stringValue(item)); text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return nil
 	}
 }
 

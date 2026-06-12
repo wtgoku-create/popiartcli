@@ -138,7 +138,9 @@ Add:
 Extend:
 
 - `popiart artifacts upload <path>`
-  - now surfaces `url` and `media_id` when the server returns them
+  - keeps an artifact-shaped compatibility surface for callers
+  - is backed by media upload underneath during the main-site migration
+  - returns compatibility-facing `artifact_id`, while the underlying storage identifier is `media.id`
 
 ### MCP
 
@@ -150,6 +152,7 @@ Add:
 Extend:
 
 - `upload_artifact`
+  - keep the artifact-shaped compatibility tool name
   - include `media_id` and `url` when available
 
 ## Runtime Dispatch Rules
@@ -200,11 +203,10 @@ If a provider requires multipart upload or base64:
 
 ## Acceptance Criteria
 
-- `popiart artifacts upload` returns a stable URL when the server supports it.
+- `popiart artifacts upload` keeps artifact-shaped compatibility while being backed by media upload.
 - `popiart media upload` returns a stable URL.
 - `img2img` and `image2video` can reuse prior outputs without local download and re-upload.
-- `GET /artifacts/:id` returns stable URL metadata.
-- old `artifacts pull` flows continue to work.
+- input-side `artifact_id` can be resolved into stable media URLs.
 
 ## Risks
 

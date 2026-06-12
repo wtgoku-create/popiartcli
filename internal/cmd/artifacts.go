@@ -3,18 +3,20 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/wtgoku-create/popiartcli/internal/api"
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
-	"github.com/wtgoku-create/popiartcli/internal/types"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 )
 
 type artifactUploadOptions struct {
@@ -40,15 +42,28 @@ func newArtifactsCmd() *cobra.Command {
 			if len(args) == 0 || args[0] == "" {
 				return output.NewError("VALIDATION_ERROR", "缺少作业 ID", map[string]any{
 					"argument": "job-id",
-					"hint":     "请使用: popiart artifacts list <job-id>。如果你要查看单个工件，请使用: popiart artifacts get <artifact-id> 或 popiart artifacts pull <artifact-id>",
+					"hint":     "请使用: popiart artifacts list <task-id>。当前模式下单个 artifact 对象不再作为主查询入口。",
 				})
 			}
 
-			var artifacts types.ArtifactListResponse
-			if err := currentClient().GetJSON(context.Background(), "/jobs/"+args[0]+"/artifacts", nil, &artifacts); err != nil {
+			urls, err := popiart.GetTaskDownloadURLs(context.Background(), currentClient(), args[0])
+			if err != nil {
 				return err
 			}
-			return writeOutput(cmd, artifacts)
+			items := make([]map[string]any, 0, len(urls))
+			for index, item := range urls {
+				items = append(items, map[string]any{
+					"id":       fmt.Sprintf("%s#%d", args[0], index+1),
+					"url":      item,
+					"filename": filenameFromDownloadURL(item, index+1),
+				})
+			}
+			return writeOutput(cmd, map[string]any{
+				"job_id":  args[0],
+				"task_id": args[0],
+				"items":   items,
+				"total":   len(items),
+			})
 		},
 	}
 
@@ -57,11 +72,24 @@ func newArtifactsCmd() *cobra.Command {
 		Short: "获取工件元数据",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var artifact types.Artifact
-			if err := currentClient().GetJSON(context.Background(), "/artifacts/"+args[0], nil, &artifact); err != nil {
+			media, err := popiart.FetchMediaDetail(context.Background(), currentClient(), args[0])
+			if err != nil {
 				return err
 			}
-			return writeOutput(cmd, artifact)
+			result := map[string]any{
+				"id":           media.ID,
+				"artifact_id":  media.ID,
+				"media_id":     media.ID,
+				"project_id":   media.ProjectID,
+				"filename":     media.Filename,
+				"content_type": media.ContentType,
+				"size_bytes":   media.SizeBytes,
+				"created_at":   media.CreatedAt,
+				"visibility":   media.Visibility,
+				"sha256":       media.SHA256,
+			}
+			addStableURLFields(result, media.URL)
+			return writeOutput(cmd, result)
 		},
 	}
 
@@ -70,51 +98,8 @@ func newArtifactsCmd() *cobra.Command {
 		Short: "将工件下载到磁盘",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var meta types.Artifact
-			if err := currentClient().GetJSON(context.Background(), "/artifacts/"+args[0], nil, &meta); err != nil {
-				return err
-			}
-
-			res, err := currentClient().Stream(context.Background(), "GET", "/artifacts/"+args[0]+"/content", apiOpts("", "application/octet-stream"))
-			if err != nil {
-				return err
-			}
-			defer res.Body.Close()
-
-			if flagBool(cmd, "stdout") {
-				_, err = io.Copy(cmd.OutOrStdout(), res.Body)
-				return err
-			}
-
-			outPath := flagString(cmd, "out")
-			if outPath == "" {
-				filename := meta.Filename
-				if filename == "" {
-					filename = "artifact-" + args[0]
-				}
-				outPath = filepath.Join(".", filename)
-			}
-
-			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-				return output.NewError("CLI_ERROR", "创建输出目录失败", map[string]any{"details": err.Error()})
-			}
-
-			file, err := os.Create(outPath)
-			if err != nil {
-				return output.NewError("CLI_ERROR", "创建输出文件失败", map[string]any{"details": err.Error()})
-			}
-			defer file.Close()
-
-			n, err := io.Copy(file, res.Body)
-			if err != nil {
-				return output.NewError("NETWORK_ERROR", "写入工件失败", map[string]any{"details": err.Error()})
-			}
-
-			return writeOutput(cmd, map[string]any{
-				"artifact_id":  args[0],
-				"saved_to":     outPath,
-				"bytes":        n,
-				"content_type": meta.ContentType,
+			return output.NewError("UNSUPPORTED_IN_POPI_ART_MODE", "当前模式不支持按 artifact_id 下载单个任务结果", map[string]any{
+				"hint": "请改用 `popiart artifacts pull-all <task-id>` 下载任务结果中的全部文件",
 			})
 		},
 	}
@@ -122,18 +107,19 @@ func newArtifactsCmd() *cobra.Command {
 	pullCmd.Flags().Bool("stdout", false, "将内容写入 stdout 而不是文件")
 
 	pullAllCmd := &cobra.Command{
-		Use:   "pull-all <job-id>",
-		Short: "将作业中的所有工件下载到一个目录中",
+		Use:   "pull-all <task-id>",
+		Short: "将任务中的所有结果文件下载到一个目录中",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var list types.ArtifactListResponse
-			if err := currentClient().GetJSON(context.Background(), "/jobs/"+args[0]+"/artifacts", nil, &list); err != nil {
+			urls, err := popiart.GetTaskDownloadURLs(context.Background(), currentClient(), args[0])
+			if err != nil {
 				return err
 			}
 
-			if len(list.Items) == 0 {
+			if len(urls) == 0 {
 				return writeOutput(cmd, map[string]any{
 					"job_id":               args[0],
+					"task_id":              args[0],
 					"artifacts_downloaded": 0,
 				})
 			}
@@ -146,20 +132,24 @@ func newArtifactsCmd() *cobra.Command {
 				return output.NewError("CLI_ERROR", "创建输出目录失败", map[string]any{"details": err.Error()})
 			}
 
-			files := make([]map[string]any, 0, len(list.Items))
-			for _, item := range list.Items {
-				artifactID := item.ID
-				filename := item.Filename
-				if filename == "" {
-					filename = "artifact-" + artifactID
-				}
-
-				res, err := currentClient().Stream(context.Background(), "GET", "/artifacts/"+artifactID+"/content", apiOpts("", "application/octet-stream"))
+			files := make([]map[string]any, 0, len(urls))
+			for index, item := range urls {
+				res, err := http.Get(item)
 				if err != nil {
-					return err
+					return output.NewError("NETWORK_ERROR", "下载任务结果失败", map[string]any{
+						"url":     item,
+						"details": err.Error(),
+					})
+				}
+				if res.StatusCode < 200 || res.StatusCode >= 300 {
+					res.Body.Close()
+					return output.NewError("NETWORK_ERROR", "下载任务结果失败", map[string]any{
+						"url":    item,
+						"status": res.StatusCode,
+					})
 				}
 
-				outPath := filepath.Join(dir, filename)
+				outPath := filepath.Join(dir, filenameFromDownloadURL(item, index+1))
 				file, err := os.Create(outPath)
 				if err != nil {
 					res.Body.Close()
@@ -174,20 +164,21 @@ func newArtifactsCmd() *cobra.Command {
 				}
 
 				files = append(files, map[string]any{
-					"artifact_id": artifactID,
-					"saved_to":    outPath,
-					"bytes":       n,
+					"url":      item,
+					"saved_to": outPath,
+					"bytes":    n,
 				})
 			}
 
 			return writeOutput(cmd, map[string]any{
 				"job_id":               args[0],
+				"task_id":              args[0],
 				"artifacts_downloaded": len(files),
 				"files":                files,
 			})
 		},
 	}
-	pullAllCmd.Flags().StringP("dir", "d", "", "输出目录（默认：./<job-id>）")
+	pullAllCmd.Flags().StringP("dir", "d", "", "输出目录（默认：./<task-id>）")
 
 	uploadCmd := &cobra.Command{
 		Use:   "upload <path>",
@@ -199,7 +190,7 @@ func newArtifactsCmd() *cobra.Command {
 					"path": args[0],
 					"request": map[string]any{
 						"method": "POST",
-						"path":   "/artifacts/upload",
+						"path":   "/api_client/media/upload",
 						"body": map[string]any{
 							"path":          args[0],
 							"filename":      flagString(cmd, "filename"),
@@ -234,6 +225,19 @@ func newArtifactsCmd() *cobra.Command {
 	return artifactsCmd
 }
 
+// filenameFromDownloadURL 为 task 下载地址生成稳定文件名。
+func filenameFromDownloadURL(raw string, index int) string {
+	parsed, err := neturl.Parse(strings.TrimSpace(raw))
+	if err == nil {
+		base := filepath.Base(parsed.Path)
+		base = strings.TrimSpace(base)
+		if base != "" && base != "." && base != "/" {
+			return base
+		}
+	}
+	return fmt.Sprintf("artifact-%d", index)
+}
+
 func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions) (map[string]any, error) {
 	if err := validateUploadInput(path, opts.MetadataJSON); err != nil {
 		return nil, err
@@ -246,45 +250,40 @@ func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions
 	fields := map[string]string{
 		"filename":      filename,
 		"content_type":  contentType,
-		"role":          opts.Role,
 		"metadata_json": opts.MetadataJSON,
 		"project_id":    projectID,
 		"visibility":    opts.Visibility,
 	}
+	if opts.Role != "" {
+		fields["role"] = opts.Role
+	}
 
-	var artifact types.Artifact
-	if err := currentClient().UploadFile(ctx, "/artifacts/upload", path, api.UploadFileOptions{
+	// 复用主站 media 上传归一化逻辑，兼容 numeric id / name / createTime 等真实返回结构。
+	media, err := popiart.UploadMedia(ctx, currentClient(), path, popiart.UploadOptions{
 		Filename:    filename,
 		ContentType: contentType,
 		Fields:      fields,
-	}, &artifact); err != nil {
+		MaxRetries:  3,
+	})
+	if err != nil {
 		return nil, err
 	}
 
 	result := map[string]any{
-		"artifact_id":   artifact.ID,
-		"filename":      artifact.Filename,
-		"content_type":  artifact.ContentType,
-		"size_bytes":    artifact.SizeBytes,
-		"created_at":    artifact.CreatedAt,
-		"expires_at":    artifact.ExpiresAt,
+		"artifact_id":   media.ID,
+		"media_id":      media.ID,
+		"filename":      firstNonEmptyString(media.Filename, filename),
+		"content_type":  firstNonEmptyString(media.ContentType, contentType),
+		"size_bytes":    media.SizeBytes,
+		"created_at":    media.CreatedAt,
 		"uploaded_from": path,
 	}
-	if artifact.JobID != "" {
-		result["job_id"] = artifact.JobID
+	addStableURLFields(result, media.URL)
+	if media.Visibility != "" {
+		result["visibility"] = media.Visibility
 	}
-	if artifact.MediaID != "" {
-		result["media_id"] = artifact.MediaID
-	}
-	addStableURLFields(result, artifact.URL)
-	if artifact.Visibility != "" {
-		result["visibility"] = artifact.Visibility
-	}
-	if artifact.SHA256 != "" {
-		result["sha256"] = artifact.SHA256
-	}
-	if artifact.StorageStatus != "" {
-		result["storage_status"] = artifact.StorageStatus
+	if media.SHA256 != "" {
+		result["sha256"] = media.SHA256
 	}
 	if opts.Role != "" {
 		result["role"] = opts.Role

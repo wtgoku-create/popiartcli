@@ -416,7 +416,7 @@ popiart skills install popiskill-audio-avatar-omnishuman-v1
 
 - skill 会进入 `popiart skills list`
 - `popiart skills get <slug>` / `schema <slug>` 会优先读取本地安装版本
-- 如果该 skill 的 `execution.mode=remote-runtime`，则可以通过 `popiart run <slug>` 触发它映射的远端 runtime skill
+- 如果该 skill 的 `execution.mode=remote-runtime`、`runner=popiart`，并且 `runtime_skill_id` 映射到当前已桥接官方 skill，则可以通过 `popiart run <slug>` 执行
 
 当本地安装 skill 与远端同名 skill 冲突时，显式切到本地优先：
 
@@ -472,10 +472,10 @@ popiart skills schema <skill-id>
 
 关系说明：
 
-- `popiart skills list/get/schema` 先看 `popiartServer` 暴露的远程 runtime skill 注册表，再合并本地 installed skill、CLI 内置 official runtime baseline 和 bundled seed。
-- 当前公开定义参考仓库是 `wtgoku-create/Popiart_skillhub`，但真正可执行的 skill 集合仍以服务端 `/skills` 返回为准。
-- `popiart bootstrap` 写出的 `default` skillset 只是远程发现查询 + seed 元数据，不代表这些 skill 都已经在服务端注册完成。
-- 返回里的 `source` 字段会标明当前结果来自 `remote`、`installed`、`official-runtime` 或 `bundled-seed`。
+- 当前 `popiart skills list/get/schema` 会按优先级合并：远程 runtime skills、已安装本地 skills、CLI 内置 official runtime baseline、bundled seed skills。
+- 在主站迁移模式下，旧 `/skills` 不再是唯一主来源；即使远端不可用，也会继续 fallback 到本地 installed / official-runtime / bundled-seed。
+- `popiart bootstrap` 写出的 `default` skillset` 代表本地可发现的契约集合，不等于所有 skill 都有独立远端 runtime。
+- 返回里的 `source` 字段可能是 `remote`、`installed`、`official-runtime` 或 `bundled-seed`。
 
 ### 6.4 运行技能
 
@@ -509,25 +509,24 @@ popiart run <skill-id> --input @params.json --wait
 popiart run <skill-id> --input @params.json --idempotency-key req-001
 ```
 
+当前 `run` 的执行边界：
+
+- 官方 baseline skill 中，图片、图生图、图生视频、TTS 等已桥接 skill 会自动转到主站任务链路
+- 已安装本地 skill 只有在映射到这些已桥接官方 skill 时，才保证可执行
+- 不是任意安装 skill 都能直接 `run`
+
 ### 6.5 查看 jobs 和拉取 artifacts
 
 ```sh
-popiart jobs get <job-id>
-popiart jobs wait <job-id>
-popiart jobs logs <job-id>
-popiart artifacts list <job-id>
+popiart jobs get <task-id>
+popiart jobs wait <task-id>
+popiart jobs logs <task-id>
+popiart artifacts list <task-id>
 popiart artifacts upload ./source.png --role source
-popiart artifacts pull <artifact-id>
-popiart artifacts pull-all <job-id>
+popiart artifacts pull-all <task-id>
 ```
 
-把单个 artifact 直接写到 stdout：
-
-```sh
-popiart artifacts pull <artifact-id> --stdout
-```
-
-本地图片要进入 `img2img` 时，优先先上传成 artifact：
+本地图片要进入 `img2img` 时，优先先走 artifact 兼容上传：
 
 ```sh
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
@@ -538,14 +537,14 @@ popiart run popiskill-image-img2img-basic-v1 --input "{
 }" --wait
 ```
 
-`popiskill-video-image2video-basic-v1` 现在按安装后自带的官方 skill 处理。它应该能直接出现在 `skills list/get/schema` 里；如果远端目录里的同名条目仍是占位符或尚未注册，CLI 会自动桥接到底层 `models infer`，先试 `viduq3-turbo`，失败再回落到 `viduq2-pro-fast`。
+`popiskill-video-image2video-basic-v1` 现在按仓库自带的官方 skill 契约处理。它会直接出现在 `skills list/get/schema` 里；执行时 CLI 会桥接到主站 `model/list -> task/create` 通用视频任务链路，而不是旧的独立 runtime job。
 
-本地图片要进入 `image2video` 时，也建议走同一条 artifact 链路：
+本地图片要进入 `image2video` 时，也建议走同一条 artifact 兼容链路：
 
 ```sh
 ART=$(popiart artifacts upload ./source.png --role source | jq -r '.data.artifact_id')
 
-popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --input "{
+popiart run popiskill-video-image2video-basic-v1 --input "{
   \"source_artifact_id\":\"$ART\",
   \"prompt\":\"让人物衣摆和发丝在微风中轻轻摆动，镜头缓慢推进，整体保持真实电影感。\",
   \"aspect_ratio\":\"16:9\",
@@ -566,10 +565,10 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 最重要的一条：
 
 ```text
-能在 `skills get/schema` 里看到，不代表一定能直接 `run`
+能在 `skills get/schema` 里看到，不代表它一定对应旧式独立远端 runtime
 ```
 
-例如 `popiskill-image-text2image-basic-v1` 能在本地 `skills get/schema` 里拿到官方契约，但如果服务端还没注册对应 runtime skill，真正的 `popiart run` 仍然会失败。当前只有 `popiskill-video-image2video-basic-v1` 在远端目录缺失或仍是占位符时，CLI 会自动桥接到底层 `models infer`。
+例如 `popiskill-image-text2image-basic-v1`、`popiskill-image-img2img-basic-v1`、`popiskill-video-image2video-basic-v1`、`popiskill-audio-tts-multimodel-v1` 这些官方 skill，现在会通过 CLI 兼容桥映射到主站生成命令链路，而不是要求旧 `/skills` runtime 完整可用。
 
 ### 7.2 聊天附件如何进入 img2img / image2video
 
@@ -581,6 +580,13 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 2. 调用 `popiart artifacts upload <path> --role source`。
 3. 读取返回的 `artifact_id`。
 4. 再调用 `popiart run popiskill-image-img2img-basic-v1` 或 `popiart run popiskill-video-image2video-basic-v1`，把它放进 `source_artifact_id`。
+
+说明：
+
+- 在当前主站迁移模式下，`popiart artifacts upload` 的命令外观仍然保留 artifact 语义，但底层实际走的是 `/api_client/media/upload`。
+- 返回的 `artifact_id` 在这条兼容链路里语义上等同于 `media.id`。
+- `source_artifact_id` 这类输入兼容字段会被 CLI 解释为“可还原为主站稳定媒体 URL 的素材 ID”。
+- 主执行链路会通过 `/api_client/media/detail?id=...` 解析它，再把返回的 `data.url` 写入 task 的 `images[] / videos[] / voices[]`。
 
 示例：
 
@@ -602,7 +608,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 }" --wait
 ```
 
-如果聊天附件本身已经有可访问 URL，也可以直接走 `reference_image_url` / `image_url`，不一定要先上传。对于 `popiskill-video-image2video-basic-v1`，CLI 会把 `reference_image_url` 自动归一化到 `image_url`，并把 `seconds` 归一化到 `duration_s` 后再提交。
+如果聊天附件本身已经有可访问 URL，也可以直接走 `reference_image_url` / `image_url`，不一定要先上传。对于 `popiskill-video-image2video-basic-v1`，CLI 会把 `reference_image_url` 自动归一化到任务 `images[]`，并把 `seconds` 映射为任务 `duration` 后再提交。
 
 ### 7.4 当前已验证的服务端 `img2img` / `image2video` 路由
 
@@ -617,9 +623,7 @@ popiart run popiskill-video-image2video-basic-v1 --project proj_local_dev --inpu
 
 - 这两条能力属于 `popiartServer` / `PopiNewAPI` 的服务端路由适配，不是 CLI 本身直接决定的
 - `seedream-4-5-251128` 对输出尺寸有最小像素限制。CLI 可以继续传递像 `1024x1536` 这样的安全预设，但服务端可能会把它抬升到满足模型要求的尺寸后再提交
-- 截至 `2026-04-08`，CLI 内置 `image2video` fallback 的模型顺序是 `viduq3-turbo -> viduq2-pro-fast`
-- 截至 `2026-03-28`，当前测试环境里已验证通过的服务端 `image2video` 路由是 `video.image2video -> viduq2-pro-fast`
-- 如果服务端将来补齐真正 runtime skill，CLI 会优先走服务端 skill；否则继续走内置 fallback
+- 当前 `image2video` 已经统一接入主站 `model/list -> task/create` 自动选模链路。
 
 ### 7.3 让 agent 获得稳定环境
 
@@ -794,13 +798,7 @@ popiart skills schema <skill-id>
 
 5. 余额预检要按“有站点、无 CLI 命令”的现实能力处理：
 
-- 当前 `popiartcli` 没有名为 `balance` / `credits` / `quota` 的独立命令，但已经提供：
-
-```sh
-popiart budget status
-popiart budget usage --group-by skill
-popiart budget limits
-```
+- 当前 `budget` 命令仍属于兼容保留命令面，在主站迁移模式下不会返回稳定可用的数据。
 
 - 如果要在提交前确认余额，或服务端已经返回积分不足，直接打开 `https://wwwskillhub.popi.art` 引导用户充值
 - 如果当前 agent 具备浏览器能力，应直接打开该站点；否则至少明确给出该链接
@@ -821,7 +819,7 @@ popiart run <skill-id> --input @params.json --idempotency-key req-001 --wait
 7. 如果不使用 `--wait`，就显式等待：
 
 ```sh
-popiart jobs wait <job-id>
+popiart jobs wait <task-id>
 ```
 
 8. 如果任务失败，至少回传这些信息给用户：
@@ -834,13 +832,13 @@ popiart jobs wait <job-id>
 必要时继续查看日志：
 
 ```sh
-popiart jobs logs <job-id>
+popiart jobs logs <task-id>
 ```
 
 9. 如果任务完成，拉取全部产物：
 
 ```sh
-popiart artifacts pull-all <job-id> --dir ./output/
+popiart artifacts pull-all <task-id> --dir ./output/
 ```
 
 10. 展示产物时补充当前已知限制：
@@ -915,13 +913,13 @@ Windows 常见位置：
 
 ### 9.3 能 `skills get`，但 `run` 提示不能执行
 
-这通常说明你看到的是 CLI bundled helper skill，而不是服务端注册的 runtime skill。先确认：
+这通常说明当前 skill 只有“可发现契约”，没有进入 CLI 已桥接的可执行链路。先确认：
 
 ```sh
 popiart skills get <skill-id>
 ```
 
-如果这是 authoring/helper 入口，请改为选择真正的远端 runtime skill。
+如果这是 bundled helper、未桥接官方 skill，或本地安装 skill 的 `runtime_skill_id` 没有映射到已桥接官方 skill，请改用对应的 `image` / `video` / `speech` / `music` 命令，或改成映射到已桥接官方 skill。
 
 ### 9.4 我想让结果更适合人看
 

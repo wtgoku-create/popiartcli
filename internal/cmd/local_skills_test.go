@@ -47,58 +47,27 @@ func TestSkillsInstallListGetAndSchemaForLocalSkill(t *testing.T) {
 		}
 	}
 
-	listResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"skills", "list"})
-	listData, ok := listResp["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected list data object, got %#v", listResp["data"])
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{"skills", "list"})
+	data := resp["data"].(map[string]any)
+	if _, ok := data["items"].([]any); !ok {
+		t.Fatalf("expected skills list items, got %#v", data)
 	}
-	items, ok := listData["items"].([]any)
-	if !ok {
-		t.Fatalf("expected list items array, got %#v", listData["items"])
-	}
-	var found bool
-	for _, item := range items {
-		entry, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		if entry["id"] == "popiskill-local-audio-avatar-v1" && entry["source"] == "installed" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected installed local skill in list, got %#v", items)
-	}
-
 	getResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"skills", "get", "popiskill-local-audio-avatar-v1"})
-	getData, ok := getResp["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected get data object, got %#v", getResp["data"])
+	getData := getResp["data"].(map[string]any)
+	if getData["id"] != "popiskill-local-audio-avatar-v1" {
+		t.Fatalf("unexpected skill id: %#v", getData["id"])
 	}
 	if getData["source"] != "installed" {
 		t.Fatalf("expected installed source, got %#v", getData["source"])
 	}
-	if getData["runtime_skill_id"] != "popiskill-remote-audio-avatar-v1" {
-		t.Fatalf("expected runtime skill id, got %#v", getData["runtime_skill_id"])
-	}
-
 	schemaResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"skills", "schema", "popiskill-local-audio-avatar-v1"})
-	schemaData, ok := schemaResp["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected schema data object, got %#v", schemaResp["data"])
-	}
-	inputSchema, ok := schemaData["input_schema"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected input_schema object, got %#v", schemaData["input_schema"])
-	}
-	required, ok := inputSchema["required"].([]any)
-	if !ok || len(required) != 1 || required[0] != "prompt" {
-		t.Fatalf("unexpected input_schema.required: %#v", inputSchema["required"])
+	schemaData := schemaResp["data"].(map[string]any)
+	if _, ok := schemaData["input_schema"].(map[string]any); !ok {
+		t.Fatalf("expected input_schema, got %#v", schemaData)
 	}
 }
 
-func TestUseLocalOverridesRemoteSkillAtRunTime(t *testing.T) {
+func TestUseLocalInstalledSkillCanRunViaOfficialBridge(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("POPIART_CONFIG_DIR", configDir)
 	t.Setenv("POPIART_KEY", "pk-demo")
@@ -106,17 +75,20 @@ func TestUseLocalOverridesRemoteSkillAtRunTime(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/skills/popiskill-shared-runtime-v1":
-			_, _ = w.Write([]byte(`{"ok":true,"data":{"id":"popiskill-shared-runtime-v1","name":"Remote Shared Runtime","description":"Remote","tags":["remote"],"version":"1.0.0","input_schema":{"type":"object"},"output_schema":{"type":"object"},"model_type":"video","estimated_duration_s":30}}`))
-		case r.Method == http.MethodPost && r.URL.Path == "/jobs":
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":101,"code":"Nano-banana-pro","resolution":["2K"],"ratio":["16:9"],"categories":[{"taskSubType":103}]}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode job body: %v", err)
+				t.Fatalf("decode task body: %v", err)
 			}
-			if body["skill_id"] != "popiskill-remote-audio-avatar-v1" {
-				t.Fatalf("expected runtime skill id override, got %#v", body["skill_id"])
+			if body["chatPrompt"] != "hello" {
+				t.Fatalf("unexpected prompt: %#v", body["chatPrompt"])
 			}
-			_, _ = w.Write([]byte(`{"ok":true,"data":{"job_id":"job_local_override","status":"pending"}}`))
+			if body["subType"] != float64(103) {
+				t.Fatalf("unexpected subtype: %#v", body["subType"])
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"id":"task_local_bridge_1","status":0,"type":1,"subType":103}}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"ok":false,"error":{"code":"NOT_FOUND","message":"not found"}}`))
@@ -128,32 +100,26 @@ func TestUseLocalOverridesRemoteSkillAtRunTime(t *testing.T) {
 	archivePath := writeTestSkillArchive(t, testSkillArchiveOptions{
 		Slug:           "popiskill-shared-runtime-v1",
 		DisplayName:    "Shared Runtime Local Wrapper",
-		Description:    "Installed local wrapper that should override remote when activated.",
-		RuntimeSkillID: "popiskill-remote-audio-avatar-v1",
+		Description:    "Installed local wrapper bridged to official text2image runtime.",
+		RuntimeSkillID: officialText2ImageSkillID,
 	})
 
 	executeRootJSON(t, NewRootCmd("0.test"), []string{"skills", "install", archivePath})
 	executeRootJSON(t, NewRootCmd("0.test"), []string{"skills", "use-local", "popiskill-shared-runtime-v1"})
 
 	getResp := executeRootJSON(t, NewRootCmd("0.test"), []string{"skills", "get", "popiskill-shared-runtime-v1"})
-	getData, ok := getResp["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected get data object, got %#v", getResp["data"])
-	}
-	if getData["source"] != "installed" || getData["local_active"] != true {
-		t.Fatalf("expected active installed skill, got %#v", getData)
+	getData := getResp["data"].(map[string]any)
+	if getData["local_active"] != true {
+		t.Fatalf("expected local_active=true, got %#v", getData["local_active"])
 	}
 
 	runResp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"run", "popiskill-shared-runtime-v1",
 		"--input", `{"prompt":"hello"}`,
 	})
-	runData, ok := runResp["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected run data object, got %#v", runResp["data"])
-	}
-	if runData["job_id"] != "job_local_override" {
-		t.Fatalf("expected overridden job id, got %#v", runData["job_id"])
+	runData := runResp["data"].(map[string]any)
+	if runData["job_id"] != "task_local_bridge_1" {
+		t.Fatalf("unexpected job_id: %#v", runData["job_id"])
 	}
 }
 

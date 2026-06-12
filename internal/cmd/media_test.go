@@ -26,7 +26,7 @@ func TestMediaUploadCommand(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("expected POST, got %s", r.Method)
 		}
-		if r.URL.Path != "/media/upload" {
+		if r.URL.Path != "/api_client/media/upload" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer pk-demo" {
@@ -112,25 +112,29 @@ func TestMediaGetCommandReturnsStablePublicURL(t *testing.T) {
 	configDir := t.TempDir()
 	t.Setenv("POPIART_CONFIG_DIR", configDir)
 	t.Setenv("POPIART_KEY", "pk-demo")
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/media/med_demo_1" {
+		if r.Method != http.MethodGet || r.URL.Path != "/api_client/media/detail" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
+		if got := r.URL.Query().Get("id"); got != "med_demo_1" {
+			t.Fatalf("unexpected media id: %q", got)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"ok":true,"data":{"id":"med_demo_1","filename":"poster.png","content_type":"image/png","size_bytes":8,"created_at":"2026-04-08T04:00:00Z","url":"http://localhost:18080/v1/media/med_demo_1/content","visibility":"unlisted"}}`)
+		fmt.Fprint(w, `{"data":{"id":"med_demo_1","project_id":"proj_media_demo","name":"poster.png","content_type":"image/png","size_bytes":8,"createTime":"2026-04-08T04:00:00Z","fileUrl":"http://127.0.0.1:18080/v1/media/med_demo_1/content","visibility":"public","sha256":"demo-sha256"},"message":"ok","status":"0000"}`)
 	}))
 	defer server.Close()
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{"media", "get", "med_demo_1"})
-
 	data, ok := resp["data"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected media data object, got %#v", resp["data"])
 	}
-	if data["id"] != "med_demo_1" || data["media_id"] != "med_demo_1" {
-		t.Fatalf("unexpected ids: %#v", data)
+	if data["media_id"] != "med_demo_1" {
+		t.Fatalf("unexpected media_id: %#v", data["media_id"])
+	}
+	if data["filename"] != "poster.png" {
+		t.Fatalf("unexpected filename: %#v", data["filename"])
 	}
 	if data["url"] != "https://server.popi.art/v1/media/med_demo_1/content" {
 		t.Fatalf("unexpected url: %#v", data["url"])
@@ -138,7 +142,7 @@ func TestMediaGetCommandReturnsStablePublicURL(t *testing.T) {
 	if data["stable_url"] != "https://server.popi.art/v1/media/med_demo_1/content" {
 		t.Fatalf("unexpected stable_url: %#v", data["stable_url"])
 	}
-	if data["original_url"] != "http://localhost:18080/v1/media/med_demo_1/content" {
+	if data["original_url"] != "http://127.0.0.1:18080/v1/media/med_demo_1/content" {
 		t.Fatalf("unexpected original_url: %#v", data["original_url"])
 	}
 }

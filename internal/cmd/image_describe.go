@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 )
 
 func newImageDescribeCmd() *cobra.Command {
@@ -82,33 +83,60 @@ func buildImageDescribeInstruction(instruction, notes string) string {
 }
 
 func executeImageDescribeCommand(cmd *cobra.Command, payload, preview map[string]any) error {
-	modelID := strings.TrimSpace(flagString(cmd, "model"))
-	if modelID == "" {
+	modelCode := strings.TrimSpace(flagString(cmd, "model"))
+	if modelCode == "" {
 		return invalidFlagValueError("--model", "", "请传入一个支持图片理解的多模态模型 ID")
 	}
 
 	input := hydratePromptEnhancerImageInput(context.Background(), payload)
+	model, err := popiart.ResolveModelForCommand(context.Background(), currentClient(), "image.describe", modelCode, popiart.ModelValidationSpec{
+		SubType:        501,
+		RequiresImages: true,
+		ImageCount:     imageCountForDescribeInput(input),
+		VideoCount:     0,
+		AudioCount:     0,
+	})
+	if err != nil {
+		return err
+	}
+	req := popiart.TaskRequest{
+		Type:        5,
+		SubType:     501,
+		AIModelCode: model.Code,
+		AIModelID:   model.ID,
+		ChatPrompt:  stringValue(input["prompt"]),
+		Metadata:    map[string]any{},
+	}
+	if imageURL := stringValue(input["image_url"]); imageURL != "" {
+		req.Images = []string{imageURL}
+	}
+	if notes := strings.TrimSpace(flagString(cmd, "notes")); notes != "" {
+		req.Metadata["notes"] = notes
+	}
+	if len(req.Metadata) == 0 {
+		req.Metadata = nil
+	}
 	if dryRunMode(cmd) {
 		return writeDryRunPreview(cmd, "image.describe", map[string]any{
-			"model_id": modelID,
+			"model_id": model.Code,
 			"source":   preview["source"],
 			"request": map[string]any{
 				"method": "POST",
-				"path":   "/models/infer",
-				"body":   buildModelInferBody(modelID, input, flagString(cmd, "priority"), flagString(cmd, "idempotency-key")),
+				"path":   "/api_client/anime/task/create",
+				"body":   req,
 			},
 		})
 	}
 
-	job, err := submitModelInferJob(context.Background(), modelID, input, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key"))
+	task, err := popiart.CreateTask(context.Background(), currentClient(), req)
 	if err != nil {
 		return err
 	}
 
-	jobID := stringValue(job["job_id"])
-	if jobID == "" {
-		return output.NewError("CLI_ERROR", "图片描述响应缺少 job_id", map[string]any{
-			"model_id": modelID,
+	taskID := task.Identifier()
+	if taskID == "" {
+		return output.NewError("CLI_ERROR", "图片描述响应缺少 task_id", map[string]any{
+			"model_id": model.Code,
 		})
 	}
 
@@ -116,22 +144,53 @@ func executeImageDescribeCommand(cmd *cobra.Command, payload, preview map[string
 	if err != nil {
 		return err
 	}
-	completedJob, err := waitForDynamicJob(context.Background(), jobID, interval, videoPromptEnhancerMaxPolls)
+	completedTask, err := popiart.WaitForTask(context.Background(), currentClient(), taskID, interval, 300)
 	if err != nil {
 		return err
 	}
-	descriptionPrompt, err := extractTextFromJob(context.Background(), completedJob, "图片描述结果")
-	if err != nil {
-		return err
+	descriptionPrompt := firstTaskResultURL(completedTask)
+	if descriptionPrompt == "" {
+		descriptionPrompt = firstTaskDownloadURL(completedTask)
+	}
+	if descriptionPrompt == "" {
+		descriptionPrompt = strings.TrimSpace(completedTask.OutputText)
+	}
+	if descriptionPrompt == "" {
+		descriptionPrompt = strings.TrimSpace(completedTask.Text)
 	}
 
 	result := map[string]any{
-		"job_id":             jobID,
-		"model_id":           modelID,
+		"job_id":             taskID,
+		"task_id":            taskID,
+		"model_id":           model.Code,
 		"description_prompt": descriptionPrompt,
 	}
 	if source := preview["source"]; source != nil {
 		result["source"] = source
 	}
 	return writeOutput(cmd, result)
+}
+
+// imageCountForDescribeInput 为图片理解任务生成最小图片数量约束。
+func imageCountForDescribeInput(input map[string]any) int {
+	if imageURL := stringValue(input["image_url"]); imageURL != "" {
+		return 1
+	}
+	return 0
+}
+
+// firstTaskResultURL 优先读取任务结果里的主结果地址。
+func firstTaskResultURL(task popiart.TaskDetail) string {
+	if len(task.ResultURLs) > 0 {
+		return strings.TrimSpace(task.ResultURLs[0])
+	}
+	return ""
+}
+
+// firstTaskDownloadURL 在结果地址为空时回退到下载地址。
+func firstTaskDownloadURL(task popiart.TaskDetail) string {
+	if len(task.DownloadURLs) > 0 {
+		return strings.TrimSpace(task.DownloadURLs[0])
+	}
+	return ""
 }

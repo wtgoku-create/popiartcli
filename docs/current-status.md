@@ -44,13 +44,15 @@ It is intentionally different from the design docs:
   - convenience flag that combines discoverability assets
   - now makes `PopiArt` immediately visible from the supported agents' native MCP and skill directories
 - `popiart artifacts upload`
-  - uploads a local file and creates a reusable artifact
-  - now surfaces stable-media-url metadata when the server returns it
+  - keeps the artifact-shaped command surface for compatibility
+  - now uploads through `/api_client/media/upload` underneath
+  - returns `artifact_id` as the compatibility-facing form of `media.id`
   - supports the common `agent chat attachment -> artifact -> img2img` path
 - `popiart media upload`
   - uploads a local file and requests a stable media URL from the server
+  - is the native media-facing upload surface in the current migration mode
 - `popiart media get`
-  - reads media metadata and stable URL fields
+  - is intentionally not supported yet in the current main-site migration mode
 - `popiart skills pull/install/use-local`
   - supports installed local skills without changing bundled seed skills
   - merges installed local skills into `skills list/get/schema`
@@ -89,11 +91,13 @@ The repository now treats these seven skill ids as the official runtime baseline
 
 The `img2img` and `image2video` execution contracts have been written in [docs/mcp-discoverability-v1.md](./mcp-discoverability-v1.md).
 
-As of `2026-04-08`, all seven runtime-baseline skills are also exposed as built-in official contracts in `popiartcli`, and `popiskill-video-image2video-basic-v1` additionally has direct runtime fallback:
+As of `2026-06-12`, all seven runtime-baseline skills are also exposed as built-in official contracts in `popiartcli`, and the bridged generation skills now execute through the main-site task pipeline:
 
 - `skills list/get/schema` exposes a local contract even when the remote catalog entry is missing or still a placeholder
-- `run popiskill-video-image2video-basic-v1` automatically bridges to direct `models infer`
-- the built-in fallback tries `viduq3-turbo` first and falls back to `viduq2-pro-fast`
+- `run popiskill-image-text2image-basic-v1` bridges to task-based image generation
+- `run popiskill-image-img2img-basic-v1` bridges to task-based image editing
+- `run popiskill-video-image2video-basic-v1` bridges to task-based image-to-video
+- `run popiskill-audio-tts-multimodel-v1` bridges to task-based TTS
 
 ## Verified
 
@@ -125,7 +129,7 @@ Tests currently cover:
 - native MCP config installation for Codex TOML and JSON-based agent configs
 - local skill install / use-local linking into native agent skill directories by default
 - installed local skill metadata parsing and activation
-- artifact upload client / command / MCP integration
+- artifact-compat upload client / command / MCP integration over media upload
 - media upload client / command / MCP integration
 
 ## Deployed Validation
@@ -134,7 +138,7 @@ Against the current test environment, the following end-to-end paths have been v
 
 - auth login / whoami
 - skill listing
-- artifact upload and artifact pull
+- artifact-compat upload over media upload
 - `img2img` using `source_artifact_id`
 - `image2video` using `source_artifact_id`
 

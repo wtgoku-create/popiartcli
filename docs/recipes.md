@@ -49,7 +49,8 @@ popiart image generate \
 
 ## Recipe: artifact -> run -> wait -> pull
 
-适合显式使用平台命令面时的标准 job 流程。
+适合显式使用平台命令面时的标准 task 流程。
+这里的 `artifacts upload` 仍保留 artifact 外观，但底层实际走的是主站 media 上传；返回的 `artifact_id` 在输入侧兼容语义上等同于 `media.id`。
 
 ```sh
 ARTIFACT_JSON=$(popiart artifacts upload ./source.png \
@@ -207,7 +208,7 @@ popiart artifacts pull <artifact-id> --out ./action-transfer-preview.mp4
 ## Recipe: Seedance video
 
 Seedance / 豆包视频建议使用专门命令面。默认模型是 `doubao-seedance-2-0-260128`。
-CLI 会直接提交到统一网关 `POST /v1/video/generations`，不会再包一层 `models/infer` 输入。
+CLI 现在会通过主站 `model/list -> task/create` 任务链路提交请求。
 
 文生视频需要 `--prompt`：
 
@@ -254,7 +255,7 @@ popiart video seedance \
   --non-interactive
 ```
 
-`--wait` 会查询 `GET /v1/video/generations/{task_id}`。如果网关返回 `metadata.url` / `metadata.last_frame_url`，CLI 会同时透出 `result_url` / `last_frame_url`。
+`--wait` 会轮询主站任务详情；如果任务结果里有可下载 URL，CLI 会通过 `jobs get/wait` 和 `artifacts pull-all` 透出或下载最终结果。
 
 本地文件也可以直接传入；CLI 会先上传成 stable media URL：
 

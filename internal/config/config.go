@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-const defaultEndpoint = "https://api.creatoragentos.io/v1"
+const defaultEndpoint = "https://wwwtest.popi.art"
 
 type Config struct {
 	Endpoint string `json:"endpoint,omitempty"`

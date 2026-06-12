@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/wtgoku-create/popiartcli/internal/api"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
@@ -28,11 +28,22 @@ func newMediaCmd() *cobra.Command {
 		Short: "获取媒体元数据和稳定 URL",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var media types.Media
-			if err := currentClient().GetJSON(context.Background(), "/media/"+args[0], nil, &media); err != nil {
+			media, err := popiart.FetchMediaDetail(context.Background(), currentClient(), args[0])
+			if err != nil {
 				return err
 			}
-			return writeOutput(cmd, mediaOutput(media))
+			return writeOutput(cmd, mediaOutput(types.Media{
+				ID:          media.ID,
+				ArtifactID:  media.ArtifactID,
+				ProjectID:   media.ProjectID,
+				Filename:    media.Filename,
+				ContentType: media.ContentType,
+				SizeBytes:   media.SizeBytes,
+				CreatedAt:   media.CreatedAt,
+				URL:         media.URL,
+				Visibility:  media.Visibility,
+				SHA256:      media.SHA256,
+			}))
 		},
 	}
 
@@ -46,7 +57,7 @@ func newMediaCmd() *cobra.Command {
 					"path": args[0],
 					"request": map[string]any{
 						"method": "POST",
-						"path":   "/media/upload",
+						"path":   "/api_client/media/upload",
 						"body": map[string]any{
 							"path":          args[0],
 							"filename":      flagString(cmd, "filename"),
@@ -98,19 +109,20 @@ func uploadMedia(ctx context.Context, path string, opts mediaUploadOptions) (map
 		"visibility":    opts.Visibility,
 	}
 
-	var media types.Media
-	if err := currentClient().UploadFile(ctx, "/media/upload", path, api.UploadFileOptions{
+	media, err := popiart.UploadMedia(ctx, currentClient(), path, popiart.UploadOptions{
 		Filename:    filename,
 		ContentType: contentType,
 		Fields:      fields,
-	}, &media); err != nil {
+		MaxRetries:  3,
+	})
+	if err != nil {
 		return nil, err
 	}
 
 	result := map[string]any{
 		"media_id":      media.ID,
-		"filename":      media.Filename,
-		"content_type":  media.ContentType,
+		"filename":      firstNonEmptyString(media.Filename, filename),
+		"content_type":  firstNonEmptyString(media.ContentType, contentType),
 		"size_bytes":    media.SizeBytes,
 		"created_at":    media.CreatedAt,
 		"uploaded_from": path,
@@ -131,6 +143,17 @@ func uploadMedia(ctx context.Context, path string, opts mediaUploadOptions) (map
 	return result, nil
 }
 
+// firstNonEmptyString 用于在服务端省略回显字段时回退到本地已知上传参数。
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+// mediaOutput 保留给仍在兼容旧 media 对象读取路径的调用方复用。
 func mediaOutput(media types.Media) map[string]any {
 	result := map[string]any{
 		"id":       media.ID,

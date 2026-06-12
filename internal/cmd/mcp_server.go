@@ -7,14 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 	"github.com/wtgoku-create/popiartcli/internal/seed"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
@@ -409,7 +408,7 @@ func mcpToolDefinitions() []mcpToolDefinition {
 		{
 			Name:        "upload_artifact",
 			Title:       "Upload Artifact",
-			Description: "Upload a local file and create a reusable PopiArt artifact with a stable media URL when the server supports it.",
+			Description: "Keep the artifact-shaped compatibility surface while uploading through PopiArt media storage underneath.",
 			InputSchema: objectSchemaWithRequired(map[string]any{
 				"path":          map[string]any{"type": "string"},
 				"filename":      map[string]any{"type": "string"},
@@ -629,11 +628,15 @@ func getJobTool(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	var job types.Job
-	if err := currentClient().GetJSON(ctx, "/jobs/"+jobID, nil, &job); err != nil {
+	task, err := popiart.GetTaskDetail(ctx, currentClient(), jobID)
+	if err != nil {
 		return nil, err
 	}
-	return job, nil
+	if urls, err := popiart.GetTaskDownloadURLs(ctx, currentClient(), jobID); err == nil && len(urls) > 0 {
+		task.DownloadURLs = append([]string(nil), urls...)
+		task.ResultURLs = append([]string(nil), urls...)
+	}
+	return taskDetailOutput(task), nil
 }
 
 func waitJobTool(ctx context.Context, args map[string]any) (any, error) {
@@ -650,11 +653,11 @@ func waitJobTool(ctx context.Context, args map[string]any) (any, error) {
 			"interval_millis": intervalMillis,
 		})
 	}
-	job, err := waitForJobQuiet(ctx, currentClient(), jobID, time.Duration(intervalMillis)*time.Millisecond, 300)
+	task, err := popiart.WaitForTask(ctx, currentClient(), jobID, time.Duration(intervalMillis)*time.Millisecond, 300)
 	if err != nil {
 		return nil, err
 	}
-	return job, nil
+	return taskDetailOutput(task), nil
 }
 
 func getJobLogsTool(ctx context.Context, args map[string]any) (any, error) {
@@ -662,14 +665,10 @@ func getJobLogsTool(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	var logs []types.LogEntry
-	if err := currentClient().GetJSON(ctx, "/jobs/"+jobID+"/logs", nil, &logs); err != nil {
-		return nil, err
-	}
-	return map[string]any{
+	return nil, output.NewError("UNSUPPORTED_IN_POPI_ART_MODE", "当前模式不支持主站任务日志流", map[string]any{
 		"job_id": jobID,
-		"logs":   logs,
-	}, nil
+		"hint":   "请改用 get_job 查看任务状态，或在网站任务详情页查看执行信息",
+	})
 }
 
 func listArtifactsTool(ctx context.Context, args map[string]any) (any, error) {
@@ -677,13 +676,23 @@ func listArtifactsTool(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	var artifacts types.ArtifactListResponse
-	if err := currentClient().GetJSON(ctx, "/jobs/"+jobID+"/artifacts", nil, &artifacts); err != nil {
+	urls, err := popiart.GetTaskDownloadURLs(ctx, currentClient(), jobID)
+	if err != nil {
 		return nil, err
 	}
+	items := make([]map[string]any, 0, len(urls))
+	for index, item := range urls {
+		items = append(items, map[string]any{
+			"id":       fmt.Sprintf("%s#%d", jobID, index+1),
+			"url":      item,
+			"filename": filenameFromDownloadURL(item, index+1),
+		})
+	}
 	return map[string]any{
-		"job_id": jobID,
-		"items":  artifacts.Items,
+		"job_id":  jobID,
+		"task_id": jobID,
+		"items":   items,
+		"total":   len(items),
 	}, nil
 }
 
@@ -692,46 +701,10 @@ func pullArtifactTool(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	var meta types.Artifact
-	if err := currentClient().GetJSON(ctx, "/artifacts/"+artifactID, nil, &meta); err != nil {
-		return nil, err
-	}
-
-	res, err := currentClient().Stream(ctx, "GET", "/artifacts/"+artifactID+"/content", apiOpts("", "application/octet-stream"))
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	outPath := optionalStringArg(args, "out")
-	if outPath == "" {
-		filename := meta.Filename
-		if filename == "" {
-			filename = "artifact-" + artifactID
-		}
-		outPath = filepath.Join(config.Dir(), "downloads", artifactID, filename)
-	}
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
-		return nil, output.NewError("CLI_ERROR", "创建输出目录失败", map[string]any{"details": err.Error()})
-	}
-	file, err := os.Create(outPath)
-	if err != nil {
-		return nil, output.NewError("CLI_ERROR", "创建输出文件失败", map[string]any{"details": err.Error()})
-	}
-	defer file.Close()
-
-	n, err := io.Copy(file, res.Body)
-	if err != nil {
-		return nil, output.NewError("NETWORK_ERROR", "写入工件失败", map[string]any{"details": err.Error()})
-	}
-
-	return map[string]any{
-		"artifact_id":  artifactID,
-		"saved_to":     outPath,
-		"bytes":        n,
-		"content_type": meta.ContentType,
-		"filename":     meta.Filename,
-	}, nil
+	return nil, output.NewError("UNSUPPORTED_IN_POPI_ART_MODE", "当前模式不支持按 artifact_id 下载单个任务结果", map[string]any{
+		"artifact_id": artifactID,
+		"hint":        "请改用 list_artifacts 获取任务结果列表，或使用 CLI 的 `artifacts pull-all <task-id>` 批量下载",
+	})
 }
 
 func uploadArtifactTool(ctx context.Context, args map[string]any) (any, error) {
@@ -776,19 +749,16 @@ func uploadMediaTool(ctx context.Context, args map[string]any) (any, error) {
 }
 
 func whoamiTool(ctx context.Context, args map[string]any) (any, error) {
-	var me types.AuthSession
-	if err := currentClient().GetJSON(ctx, "/auth/me", nil, &me); err != nil {
+	user, err := popiart.FetchCurrentUser(ctx, currentClient())
+	if err != nil {
 		return nil, err
 	}
-	if me.User == nil && me.ID != "" {
-		return types.User{
-			ID:     me.ID,
-			Email:  me.Email,
-			Name:   me.Name,
-			Scopes: me.Scopes,
-		}, nil
-	}
-	return me, nil
+	return types.User{
+		ID:     user.ID,
+		Email:  user.Email,
+		Name:   user.Name,
+		Scopes: user.Scopes,
+	}, nil
 }
 
 func currentProjectTool(ctx context.Context, args map[string]any) (any, error) {
@@ -1066,44 +1036,4 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func waitForJobQuiet(ctx context.Context, client interface {
-	GetJSON(context.Context, string, map[string]string, any) error
-}, jobID string, interval time.Duration, maxPolls int) (*types.Job, error) {
-	for pollIndex := 0; pollIndex < maxPolls; pollIndex++ {
-		var job types.Job
-		if err := client.GetJSON(ctx, "/jobs/"+jobID, nil, &job); err != nil {
-			return nil, err
-		}
-		if pollTerminalState(job.Status) {
-			if job.Status == "failed" {
-				return nil, output.NewError("JOB_FAILED", pollMessageFromJob(&job), map[string]any{
-					"job_id": jobID,
-					"status": job.Status,
-					"error":  job.Error,
-				})
-			}
-			return &job, nil
-		}
-		time.Sleep(interval)
-	}
-	return nil, output.NewError("POLL_TIMEOUT", fmt.Sprintf("Job %s did not complete within the timeout", jobID), map[string]any{
-		"job_id":          jobID,
-		"timeout_seconds": int(interval.Seconds()) * maxPolls,
-	})
-}
-
-func pollTerminalState(status string) bool {
-	return status == "done" || status == "failed" || status == "cancelled"
-}
-
-func pollMessageFromJob(job *types.Job) string {
-	if job == nil || job.Error == nil {
-		return "Job failed"
-	}
-	if job.Error.Message != "" {
-		return job.Error.Message
-	}
-	return "Job failed"
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/wtgoku-create/popiartcli/internal/api"
 	"github.com/wtgoku-create/popiartcli/internal/config"
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 	"github.com/wtgoku-create/popiartcli/internal/types"
 )
 
@@ -41,28 +42,23 @@ func newAuthCmd() *cobra.Command {
 				key = value
 			}
 
-			client := api.NewClient(cfg.Endpoint, "")
-			var resp types.LoginResponse
-			if err := client.PostJSON(ctx, "/auth/login", map[string]any{
-				"key": key,
-			}, &resp); err != nil {
+			client := api.NewClient(cfg.Endpoint, key)
+			user, err := popiart.FetchCurrentUser(ctx, client)
+			if err != nil {
 				return err
 			}
 
-			savedKey := resp.Token
-			if savedKey == "" {
-				savedKey = resp.Key
-			}
-			if savedKey == "" {
-				savedKey = key
-			}
-
-			if _, err := config.SavePatch(config.Patch{Token: &savedKey}); err != nil {
+			if _, err := config.SavePatch(config.Patch{Token: &key}); err != nil {
 				return output.NewError("CLI_ERROR", "保存 key 失败", map[string]any{"details": err.Error()})
 			}
 
 			return writeOutput(cmd, map[string]any{
-				"user":      resp.User,
+				"user": types.User{
+					ID:     user.ID,
+					Email:  user.Email,
+					Name:   user.Name,
+					Scopes: user.Scopes,
+				},
 				"key_saved": true,
 			})
 		},
@@ -83,8 +79,6 @@ func newAuthCmd() *cobra.Command {
 				})
 			}
 
-			client := currentClient()
-			_ = client.PostJSON(context.Background(), "/auth/logout", map[string]any{}, nil)
 			empty := ""
 			if _, err := config.SavePatch(config.Patch{Token: &empty}); err != nil {
 				return output.NewError("CLI_ERROR", "清除令牌失败", map[string]any{"details": err.Error()})
@@ -97,19 +91,16 @@ func newAuthCmd() *cobra.Command {
 		Use:   "whoami",
 		Short: "显示当前已验证的用户",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var me types.AuthSession
-			if err := currentClient().GetJSON(context.Background(), "/auth/me", nil, &me); err != nil {
+			user, err := popiart.FetchCurrentUser(context.Background(), currentClient())
+			if err != nil {
 				return err
 			}
-			if me.User == nil && me.ID != "" {
-				return writeOutput(cmd, types.User{
-					ID:     me.ID,
-					Email:  me.Email,
-					Name:   me.Name,
-					Scopes: me.Scopes,
-				})
-			}
-			return writeOutput(cmd, me)
+			return writeOutput(cmd, types.User{
+				ID:     user.ID,
+				Email:  user.Email,
+				Name:   user.Name,
+				Scopes: user.Scopes,
+			})
 		},
 	}
 
@@ -152,15 +143,9 @@ func newAuthCmd() *cobra.Command {
 		Use:   "rotate",
 		Short: "签发新 key 并撤销旧 key",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var resp types.LoginResponse
-			if err := currentClient().PostJSON(context.Background(), "/auth/token/rotate", map[string]any{}, &resp); err != nil {
-				return err
-			}
-			token := resp.Token
-			if _, err := config.SavePatch(config.Patch{Token: &token}); err != nil {
-				return output.NewError("CLI_ERROR", "保存新 key 失败", map[string]any{"details": err.Error()})
-			}
-			return writeOutput(cmd, map[string]any{"key_rotated": true})
+			return output.NewError("UNSUPPORTED_IN_POPI_ART_MODE", "当前模式不支持轮换 key", map[string]any{
+				"hint": "请改用 `popiart auth login --key <token>` 或 `popiart auth key set <token>`",
+			})
 		},
 	}
 
@@ -170,8 +155,11 @@ func newAuthCmd() *cobra.Command {
 }
 
 func maskToken(token string) string {
+	if len(token) <= 4 {
+		return "••••"
+	}
 	if len(token) <= 12 {
-		return token
+		return token[:2] + "••••"
 	}
 	return token[:8] + "••••" + token[len(token)-4:]
 }

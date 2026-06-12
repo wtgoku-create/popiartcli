@@ -60,13 +60,7 @@ var officialRuntimeContracts = map[string]officialRuntimeContract{
 	},
 	officialImage2VideoSkillID: {
 		Name:        "Basic Image2Video",
-		Description: "Built-in PopiArt image2video baseline. It accepts a source artifact or image URL and, when the remote catalog entry is still a placeholder, the CLI bridges execution to direct models infer with viduq3-turbo and falls back to viduq2-pro-fast.",
-		DirectInfer: &officialRuntimeDirectInfer{
-			ModelIDs: []string{
-				officialImage2VideoPrimaryModelID,
-				officialImage2VideoFallbackModelID,
-			},
-		},
+		Description: "Built-in PopiArt image2video baseline. It accepts a source artifact or image URL and bridges execution to the main-site task pipeline.",
 	},
 	officialAliceVideoShowcaseSkillID: {
 		Name: "Alice Video Showcase",
@@ -212,7 +206,7 @@ func isOfficialRuntimePlaceholderDescription(description string) bool {
 func officialRuntimePlaceholderHint(skillID string) string {
 	switch strings.TrimSpace(skillID) {
 	case officialImage2VideoSkillID:
-		return "当前 CLI 会对 image2video 自动桥接到 models infer，但服务端技能注册仍需补齐"
+		return "当前 CLI 会对 image2video 自动桥接到主站任务链路"
 	default:
 		return "当前 skill 需要由 popiartServer 完成正式注册与执行路由"
 	}

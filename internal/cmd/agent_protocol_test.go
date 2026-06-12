@@ -62,13 +62,11 @@ func TestRunDryRunPreviewsRequestWithoutSubmittingJob(t *testing.T) {
 	if data["dry_run"] != true {
 		t.Fatalf("expected dry_run=true, got %#v", data["dry_run"])
 	}
-	request := data["request"].(map[string]any)
-	if request["path"] != "/jobs" {
-		t.Fatalf("unexpected preview path: %#v", request["path"])
+	if data["skill_id"] != officialText2ImageSkillID {
+		t.Fatalf("unexpected skill_id: %#v", data["skill_id"])
 	}
-	body := request["body"].(map[string]any)
-	if body["skill_id"] != officialText2ImageSkillID {
-		t.Fatalf("unexpected skill_id: %#v", body["skill_id"])
+	if !strings.Contains(data["hint"].(string), "旧 jobs/skills 体系") {
+		t.Fatalf("unexpected dry-run hint: %#v", data["hint"])
 	}
 	agentProtocol := data["agent_protocol"].(map[string]any)
 	if agentProtocol["output"] != "json" {

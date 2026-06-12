@@ -2,27 +2,20 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/wtgoku-create/popiartcli/internal/output"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 )
 
-const (
-	videoPromptEnhancerPollInterval = 2 * time.Second
-	videoPromptEnhancerMaxPolls     = 300
-)
-
+// executeVideoGenerateCommand 让普通图生视频和提示词增强都走主站链路。
 func executeVideoGenerateCommand(cmd *cobra.Command, payload map[string]any, action string, preview map[string]any) error {
 	enhancerModelID := strings.TrimSpace(flagString(cmd, "prompt-enhancer-model"))
 	if enhancerModelID == "" {
-		return executeSkillRun(cmd, officialImage2VideoSkillID, payload, action, preview)
+		return executeTaskCommand(cmd, action, payload, popiart.BuildVideoGenerateTaskRequest, preview)
 	}
 
 	enhancementInput, err := buildVideoPromptEnhancerInput(cmd, payload, preview)
@@ -53,8 +46,8 @@ func executeVideoGenerateCommand(cmd *cobra.Command, payload map[string]any, act
 				"model_id": enhancerModelID,
 				"request": map[string]any{
 					"method": "POST",
-					"path":   "/models/infer",
-					"body":   buildModelInferBody(enhancerModelID, enhancementInput, flagString(cmd, "priority"), flagString(cmd, "idempotency-key")),
+					"path":   "/api_client/anime/task/llmChat",
+					"body":   buildVideoPromptEnhancerChatRequest(enhancerModelID, enhancementInput),
 				},
 			},
 			"video_generation": videoRequestBody,
@@ -69,33 +62,23 @@ func executeVideoGenerateCommand(cmd *cobra.Command, payload map[string]any, act
 	videoPayload["prompt"] = enhancedPrompt
 	extras["resolved_prompt"] = enhancedPrompt
 	extras["prompt_enhancement"] = enhancementMeta
-	return executeSkillRun(cmd, officialImage2VideoSkillID, videoPayload, action, mergeVideoExecutionPreview(preview, extras))
+	return executeTaskCommand(cmd, action, videoPayload, popiart.BuildVideoGenerateTaskRequest, mergeVideoExecutionPreview(preview, extras))
 }
 
+// buildVideoGenerateRequestBody 为提示词增强 dry-run 生成第二段视频任务请求预览。
 func buildVideoGenerateRequestBody(cmd *cobra.Command, payload map[string]any) (map[string]any, error) {
 	modelOverride := strings.TrimSpace(flagString(cmd, "model"))
-	if modelOverride != "" {
-		directInput, err := normalizeOfficialRuntimeDirectInput(officialImage2VideoSkillID, payload)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{
-			"model_id":       modelOverride,
-			"execution_mode": "direct-model-override",
-			"request": map[string]any{
-				"method": "POST",
-				"path":   "/models/infer",
-				"body":   buildModelInferBody(modelOverride, directInput, flagString(cmd, "priority"), flagString(cmd, "idempotency-key")),
-			},
-		}, nil
+	model, err := popiart.ResolveModelForCommand(context.Background(), currentClient(), "video.generate", modelOverride, taskValidationSpecForAction("video.generate", payload))
+	if err != nil {
+		return nil, err
 	}
-
 	return map[string]any{
-		"skill_id": officialImage2VideoSkillID,
+		"model_id":       model.Code,
+		"execution_mode": taskExecutionMode(modelOverride),
 		"request": map[string]any{
 			"method": "POST",
-			"path":   "/jobs",
-			"body":   buildSkillJobBody(officialImage2VideoSkillID, payload, flagString(cmd, "priority"), flagString(cmd, "idempotency-key")),
+			"path":   "/api_client/anime/task/create",
+			"body":   popiart.BuildVideoGenerateTaskRequest(payload, model),
 		},
 	}, nil
 }
@@ -105,6 +88,12 @@ func buildVideoPromptEnhancerInput(cmd *cobra.Command, payload, preview map[stri
 		"prompt": buildVideoPromptEnhancerInstruction(payload),
 	}
 
+	if images := stringSliceValue(payload["images"]); len(images) > 0 && strings.TrimSpace(images[0]) != "" {
+		sourceURL := strings.TrimSpace(images[0])
+		input["image_url"] = sourceURL
+		input["reference_image_url"] = sourceURL
+		return input, nil
+	}
 	if sourceURL := stringValue(payload["image_url"]); sourceURL != "" {
 		input["image_url"] = sourceURL
 		input["reference_image_url"] = sourceURL
@@ -126,6 +115,44 @@ func buildVideoPromptEnhancerInput(cmd *cobra.Command, payload, preview map[stri
 	}
 	input["source_artifact_id"] = sourceArtifactID
 	return input, nil
+}
+
+func buildVideoPromptEnhancerChatRequest(modelCode string, input map[string]any) popiart.LLMChatRequest {
+	request := popiart.LLMChatRequest{
+		Model:  strings.TrimSpace(modelCode),
+		Stream: false,
+		Messages: []popiart.LLMChatMessage{
+			{
+				Role: "system",
+				Content: []popiart.LLMChatContentPart{
+					{
+						Type: "text",
+						Text: "你是一个提示词增强助手，优化用户输入的prompt，只输出增强后的prompt，不要输出额外的任何东西",
+					},
+				},
+			},
+		},
+	}
+	if aiModelID, ok := input["ai_model_id"].(int64); ok && aiModelID > 0 {
+		request.AIModelID = aiModelID
+	}
+	userContent := []popiart.LLMChatContentPart{
+		{
+			Type: "text",
+			Text: stringValue(input["prompt"]),
+		},
+	}
+	if imageURL := strings.TrimSpace(firstNonEmptyString(stringValue(input["image_url"]), stringValue(input["reference_image_url"]))); imageURL != "" {
+		userContent = append(userContent, popiart.LLMChatContentPart{
+			Type:     "image_url",
+			ImageURL: imageURL,
+		})
+	}
+	request.Messages = append(request.Messages, popiart.LLMChatMessage{
+		Role:    "user",
+		Content: userContent,
+	})
+	return request
 }
 
 func buildVideoPromptEnhancerInstruction(payload map[string]any) string {
@@ -163,35 +190,46 @@ func appendPromptEnhancerField(dst *[]string, label, value string) {
 
 func runVideoPromptEnhancement(ctx context.Context, cmd *cobra.Command, modelID string, payload map[string]any) (string, map[string]any, error) {
 	payload = hydratePromptEnhancerImageInput(ctx, payload)
-
-	job, err := submitModelInferJob(ctx, modelID, payload, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key"))
+	model, err := popiart.ResolveModelForCommand(ctx, currentClient(), "image.describe", modelID, popiart.ModelValidationSpec{
+		SubType:        501,
+		RequiresImages: stringValue(payload["image_url"]) != "",
+		ImageCount:     promptEnhancerImageCount(payload),
+		VideoCount:     0,
+		AudioCount:     0,
+	})
 	if err != nil {
 		return "", nil, err
 	}
-
-	jobID := stringValue(job["job_id"])
-	if jobID == "" {
-		return "", nil, output.NewError("CLI_ERROR", "提示词增强响应缺少 job_id", map[string]any{
-			"model_id": modelID,
+	resp, err := popiart.EnhancePromptWithLLM(ctx, currentClient(), buildVideoPromptEnhancerChatRequest(model.Code, payloadWithResolvedModelID(payload, model.ID)))
+	if err != nil {
+		return "", nil, err
+	}
+	enhancedPrompt := ""
+	if len(resp.Choices) > 0 {
+		enhancedPrompt = strings.TrimSpace(resp.Choices[0].Message.Content)
+	}
+	if enhancedPrompt == "" {
+		return "", nil, output.NewError("TEXT_EXTRACTION_FAILED", "无法从主站 llmChat 响应中提取增强后的 prompt", map[string]any{
+			"model_id": model.Code,
+			"hint":     "预期读取 data.choices[0].message.content",
 		})
 	}
 
-	completedJob, err := waitForDynamicJob(ctx, jobID, videoPromptEnhancerPollInterval, videoPromptEnhancerMaxPolls)
-	if err != nil {
-		return "", nil, err
-	}
-
-	enhancedPrompt, err := extractTextFromJob(ctx, completedJob, "提示词增强结果")
-	if err != nil {
-		return "", nil, err
-	}
-
 	return enhancedPrompt, map[string]any{
-		"model_id":        modelID,
-		"job_id":          jobID,
-		"execution_mode":  "direct-model-override",
+		"model_id":        model.Code,
+		"ai_model_id":     model.ID,
+		"execution_mode":  "main-site-llm-chat",
 		"enhanced_prompt": enhancedPrompt,
 	}, nil
+}
+
+func payloadWithResolvedModelID(payload map[string]any, modelID int64) map[string]any {
+	out := cloneMapAny(payload)
+	if out == nil {
+		out = map[string]any{}
+	}
+	out["ai_model_id"] = modelID
+	return out
 }
 
 func hydratePromptEnhancerImageInput(ctx context.Context, payload map[string]any) map[string]any {
@@ -203,121 +241,15 @@ func hydratePromptEnhancerImageInput(ctx context.Context, payload map[string]any
 		return input
 	}
 
-	var artifact map[string]any
-	if err := currentClient().GetJSON(ctx, "/artifacts/"+stringValue(input["source_artifact_id"]), nil, &artifact); err != nil {
+	var media map[string]any
+	if err := currentClient().GetJSON(ctx, "/api_client/media/detail", map[string]string{"id": stringValue(input["source_artifact_id"])}, &media); err != nil {
 		return input
 	}
-	if artifactURL := stringValue(artifact["url"]); artifactURL != "" {
-		input["image_url"] = artifactURL
-		input["reference_image_url"] = artifactURL
+	if mediaURL := stringValue(media["url"]); mediaURL != "" {
+		input["image_url"] = mediaURL
+		input["reference_image_url"] = mediaURL
 	}
 	return input
-}
-
-func waitForDynamicJob(ctx context.Context, jobID string, interval time.Duration, maxPolls int) (map[string]any, error) {
-	for pollIndex := 0; pollIndex < maxPolls; pollIndex++ {
-		var job map[string]any
-		if err := currentClient().GetJSON(ctx, "/jobs/"+jobID, nil, &job); err != nil {
-			return nil, err
-		}
-
-		status := strings.TrimSpace(stringValue(job["status"]))
-		switch status {
-		case "done", "cancelled":
-			return job, nil
-		case "failed":
-			return nil, output.NewError("JOB_FAILED", dynamicJobMessage(job), map[string]any{
-				"job_id": jobID,
-				"status": status,
-				"error":  job["error"],
-			})
-		}
-
-		fmt.Fprintf(os.Stderr, "\r⏳ %s - %s (%ds)   ", jobID, status, int(interval.Seconds())*pollIndex)
-		time.Sleep(interval)
-	}
-
-	return nil, output.NewError("POLL_TIMEOUT", fmt.Sprintf("Job %s did not complete within the timeout", jobID), map[string]any{
-		"job_id":          jobID,
-		"timeout_seconds": int(interval.Seconds()) * maxPolls,
-	})
-}
-
-func dynamicJobMessage(job map[string]any) string {
-	if errMap, ok := job["error"].(map[string]any); ok {
-		if message := strings.TrimSpace(stringValue(errMap["message"])); message != "" {
-			return message
-		}
-	}
-	return "Job failed"
-}
-
-func extractTextFromJob(ctx context.Context, job map[string]any, sourceLabel string) (string, error) {
-	if text := extractTextValue(job); text != "" {
-		return text, nil
-	}
-
-	artifactIDs := extractStringSliceAny(job["artifact_ids"])
-	for _, artifactID := range artifactIDs {
-		text, ok, err := extractTextFromArtifact(ctx, artifactID)
-		if err != nil {
-			return "", err
-		}
-		if ok {
-			return text, nil
-		}
-	}
-
-	return "", output.NewError("TEXT_EXTRACTION_FAILED", "无法从"+strings.TrimSpace(sourceLabel)+"中提取文本结果", map[string]any{
-		"job_id":       stringValue(job["job_id"]),
-		"artifact_ids": artifactIDs,
-	})
-}
-
-func extractTextFromArtifact(ctx context.Context, artifactID string) (string, bool, error) {
-	var artifact map[string]any
-	if err := currentClient().GetJSON(ctx, "/artifacts/"+artifactID, nil, &artifact); err != nil {
-		return "", false, err
-	}
-
-	contentType := strings.ToLower(strings.TrimSpace(stringValue(artifact["content_type"])))
-	filename := strings.ToLower(strings.TrimSpace(stringValue(artifact["filename"])))
-	if !strings.Contains(contentType, "json") && !strings.Contains(contentType, "text") &&
-		!strings.HasSuffix(filename, ".json") && !strings.HasSuffix(filename, ".txt") && !strings.HasSuffix(filename, ".md") {
-		return "", false, nil
-	}
-
-	res, err := currentClient().Stream(ctx, "GET", "/artifacts/"+artifactID+"/content", apiOpts("", "application/octet-stream"))
-	if err != nil {
-		return "", false, err
-	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return "", false, output.NewError("NETWORK_ERROR", "读取文本工件失败", map[string]any{
-			"artifact_id": artifactID,
-			"details":     err.Error(),
-		})
-	}
-
-	if text := extractTextValue(parseTextArtifactJSON(body)); text != "" {
-		return text, true, nil
-	}
-
-	text := strings.TrimSpace(string(body))
-	if text == "" {
-		return "", false, nil
-	}
-	return text, true, nil
-}
-
-func parseTextArtifactJSON(body []byte) map[string]any {
-	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil
-	}
-	return payload
 }
 
 func extractTextValue(value any) string {
@@ -353,21 +285,11 @@ func extractTextValue(value any) string {
 	return ""
 }
 
-func extractStringSliceAny(value any) []string {
-	switch typed := value.(type) {
-	case []string:
-		return append([]string(nil), typed...)
-	case []any:
-		items := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if text := strings.TrimSpace(stringValue(item)); text != "" {
-				items = append(items, text)
-			}
-		}
-		return items
-	default:
-		return nil
+func promptEnhancerImageCount(payload map[string]any) int {
+	if strings.TrimSpace(stringValue(payload["image_url"])) != "" || strings.TrimSpace(stringValue(payload["reference_image_url"])) != "" {
+		return 1
 	}
+	return 0
 }
 
 func mergeVideoExecutionPreview(preview, extras map[string]any) map[string]any {

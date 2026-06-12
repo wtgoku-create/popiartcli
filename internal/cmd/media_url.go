@@ -1,37 +1,15 @@
 package cmd
 
 import (
-	"net"
-	"net/url"
-	"strings"
+	"github.com/wtgoku-create/popiartcli/internal/popiart"
 )
 
-const publicMediaBaseURL = "https://server.popi.art"
-
+// stableMediaURL 复用主站适配层的稳定地址归一化逻辑。
 func stableMediaURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-
-	if strings.HasPrefix(raw, "/") {
-		return publicMediaBaseURL + stableMediaPath(raw)
-	}
-
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return raw
-	}
-	if !isLoopbackHost(u.Hostname()) && !isHTTPMediaURL(u) {
-		return raw
-	}
-
-	u.Scheme = "https"
-	u.Host = "server.popi.art"
-	u.Path = stableMediaPath(u.Path)
-	return u.String()
+	return popiart.StableMediaURL(raw)
 }
 
+// addStableURLFields 为命令输出补齐稳定 URL 兼容字段。
 func addStableURLFields(result map[string]any, rawURL string) {
 	stableURL := stableMediaURL(rawURL)
 	if stableURL == "" {
@@ -43,32 +21,4 @@ func addStableURLFields(result map[string]any, rawURL string) {
 	if rawURL != "" && rawURL != stableURL {
 		result["original_url"] = rawURL
 	}
-}
-
-func stableMediaPath(path string) string {
-	switch {
-	case strings.HasPrefix(path, "/v1/media/"), strings.HasPrefix(path, "/v1/artifacts/"):
-		return path
-	case strings.HasPrefix(path, "/media/"), strings.HasPrefix(path, "/artifacts/"):
-		return "/v1" + path
-	default:
-		return path
-	}
-}
-
-func isHTTPMediaURL(u *url.URL) bool {
-	return strings.EqualFold(u.Scheme, "http") &&
-		(strings.HasPrefix(u.Path, "/v1/media/") ||
-			strings.HasPrefix(u.Path, "/media/") ||
-			strings.HasPrefix(u.Path, "/v1/artifacts/") ||
-			strings.HasPrefix(u.Path, "/artifacts/"))
-}
-
-func isLoopbackHost(host string) bool {
-	switch strings.ToLower(host) {
-	case "localhost":
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
