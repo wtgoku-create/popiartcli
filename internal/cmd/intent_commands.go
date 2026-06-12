@@ -532,16 +532,6 @@ func executeSkillRun(cmd *cobra.Command, skillID string, payload map[string]any,
 		return writeJobResultOrWait(cmd, job)
 	}
 
-	if job, handled, err := maybeRunOfficialRuntimeDirectFallbackJob(context.Background(), resolvedSkillID, payload, flagString(cmd, "priority"), "", flagString(cmd, "idempotency-key")); handled {
-		if err != nil {
-			return err
-		}
-		for key, value := range extras {
-			job[key] = value
-		}
-		return writeJobResultOrWait(cmd, job)
-	}
-
 	var job types.Job
 	if err := currentClient().PostJSON(context.Background(), "/jobs", body, &job); err != nil {
 		return err

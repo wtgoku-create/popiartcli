@@ -596,10 +596,6 @@ func runSkillTool(ctx context.Context, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if job, handled, err := maybeRunOfficialRuntimeDirectFallbackJob(ctx, resolvedSkillID, payload, defaultString(optionalStringArg(args, "priority"), "normal"), optionalStringArg(args, "project_id"), optionalStringArg(args, "idempotency_key")); handled {
-		return job, err
-	}
-
 	cfg := config.Load()
 	body := map[string]any{
 		"skill_id": resolvedSkillID,

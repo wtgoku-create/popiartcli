@@ -1,8 +1,8 @@
 # PopiArt CLI Current Status
 
-Date: `2026-03-30`
+Date: `2026-06-12`
 
-This document summarizes the current repository-local status of `popiartcli` after the first MCP discoverability and runtime-baseline implementation pass.
+This document summarizes the current repository-local status of `popiartcli` after the main-site task migration pass.
 
 It is intentionally different from the design docs:
 
@@ -52,11 +52,11 @@ It is intentionally different from the design docs:
   - uploads a local file and requests a stable media URL from the server
   - is the native media-facing upload surface in the current migration mode
 - `popiart media get`
-  - is intentionally not supported yet in the current main-site migration mode
+  - resolves media metadata through `/api_client/media/detail?id=...`
 - `popiart skills pull/install/use-local`
   - supports installed local skills without changing bundled seed skills
   - merges installed local skills into `skills list/get/schema`
-  - allows `popiart run` to resolve `execution.mode=remote-runtime` from an installed local skill
+  - allows `popiart run` to resolve `execution.mode=remote-runtime` from an installed local skill when it maps to an already bridged official skill
 
 ### Implemented MCP Tool Surface
 
@@ -91,19 +91,20 @@ The repository now treats these seven skill ids as the official runtime baseline
 
 The `img2img` and `image2video` execution contracts have been written in [docs/mcp-discoverability-v1.md](./mcp-discoverability-v1.md).
 
-As of `2026-06-12`, all seven runtime-baseline skills are also exposed as built-in official contracts in `popiartcli`, and the bridged generation skills now execute through the main-site task pipeline:
+As of `2026-06-12`, all seven runtime-baseline skills are also exposed as built-in official contracts in `popiartcli`, and the currently bridged generation skills now execute through the main-site task pipeline:
 
 - `skills list/get/schema` exposes a local contract even when the remote catalog entry is missing or still a placeholder
 - `run popiskill-image-text2image-basic-v1` bridges to task-based image generation
 - `run popiskill-image-img2img-basic-v1` bridges to task-based image editing
 - `run popiskill-video-image2video-basic-v1` bridges to task-based image-to-video
 - `run popiskill-audio-tts-multimodel-v1` bridges to task-based TTS
+- installed local skills also participate in `skills list/get/schema`, and can execute through `run` when their `runtime_skill_id` maps to one of the bridged official skills
 
 ## Verified
 
 The current repo-local implementation has been verified with:
 
-- `go test ./...`
+- `go test ./internal/cmd ./internal/popiart`
 - `go run ./cmd/popiart mcp serve --describe`
 - `go run ./cmd/popiart artifacts upload --help`
 - `go run ./cmd/popiart media upload --help`
@@ -137,10 +138,14 @@ Tests currently cover:
 Against the current test environment, the following end-to-end paths have been validated:
 
 - auth login / whoami
-- skill listing
+- skill listing / skill schema lookup
 - artifact-compat upload over media upload
+- media detail lookup
+- text-to-image
 - `img2img` using `source_artifact_id`
 - `image2video` using `source_artifact_id`
+- text-to-video submission
+- audio / music task submission
 
 Validated server-side `img2img` route adapters include:
 
@@ -173,7 +178,7 @@ The CLI does not guarantee those provider-specific adapters by itself; they were
 - MCP `sampling`
 - richer artifact-aware tool results such as `primary_artifact_id` or artifact-role metadata
 - direct local execution for arbitrary installed skills beyond `execution.mode=remote-runtime`
-- built-in compatibility execution for the other six official runtime-baseline skills beyond the current `image2video` bridge
+- built-in compatibility execution for arbitrary remote skills beyond the current bridged official skill set
 
 ### Not Done Outside This Repo
 
@@ -191,8 +196,8 @@ Because of that, the current state is:
 - `popiartcli` can make `PopiArt` discoverable
 - `popiartcli` can expose a usable MCP tool surface
 - `popiartcli` can diagnose whether remote runtime pieces are present
-- `popiartcli` can keep `popiskill-video-image2video-basic-v1` usable even when the remote catalog entry is missing or still a placeholder
-- `popiartcli` still cannot, by itself, guarantee that all seven baseline runtime skills will execute successfully end to end
+- `popiartcli` can keep the bridged official generation skills usable even when the remote catalog entry is missing or still a placeholder
+- `popiartcli` still cannot, by itself, guarantee that every baseline skill and every compatibility command will execute successfully end to end
 
 Operationally, this means:
 

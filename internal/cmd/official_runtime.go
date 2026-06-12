@@ -21,8 +21,6 @@ const (
 	officialAliceVideoShowcaseSkillID  = "popiskill-video-image2video-popistudio-alice-showcase-v1"
 	officialTTSMultimodelSkillID       = "popiskill-audio-tts-multimodel-v1"
 	officialSTTLocalSkillID            = "popiskill-audio-stt-local-v1"
-	officialImage2VideoPrimaryModelID  = "viduq3-turbo"
-	officialImage2VideoFallbackModelID = "viduq2-pro-fast"
 
 	officialPlaceholderSnippet = "reserved image2video test skill"
 	officialNotConnectedText   = "runtime is not connected yet"
@@ -38,14 +36,9 @@ var officialRuntimeSkillIDs = []string{
 	officialSTTLocalSkillID,
 }
 
-type officialRuntimeDirectInfer struct {
-	ModelIDs []string
-}
-
 type officialRuntimeContract struct {
 	Name        string
 	Description string
-	DirectInfer *officialRuntimeDirectInfer
 }
 
 var officialRuntimeContracts = map[string]officialRuntimeContract{
@@ -249,59 +242,6 @@ func officialRuntimeSummaryMatches(summary types.SkillSummary, tag, search strin
 	return false
 }
 
-func maybeRunOfficialRuntimeDirectFallbackJob(ctx context.Context, skillID string, payload any, priority, projectID, idempotencyKey string) (map[string]any, bool, error) {
-	contract, ok := officialRuntimeContracts[strings.TrimSpace(skillID)]
-	if !ok || contract.DirectInfer == nil {
-		return nil, false, nil
-	}
-
-	shouldFallback, err := officialRuntimeSkillNeedsDirectInferFallback(ctx, skillID)
-	if err != nil {
-		return nil, false, err
-	}
-	if !shouldFallback {
-		return nil, false, nil
-	}
-
-	payloadMap, ok := payload.(map[string]any)
-	if !ok {
-		return nil, true, output.NewError("VALIDATION_ERROR", "image2video 需要 JSON object 输入", map[string]any{
-			"skill_id": skillID,
-		})
-	}
-
-	input, err := normalizeOfficialRuntimeDirectInput(skillID, payloadMap)
-	if err != nil {
-		return nil, true, err
-	}
-
-	modelIDs := preferredOfficialRuntimeModelIDs(skillID, input, contract.DirectInfer.ModelIDs)
-	job, modelID, err := submitModelInferWithFallback(ctx, modelIDs, input, priority, projectID, idempotencyKey)
-	if err != nil {
-		return nil, true, err
-	}
-	job["requested_skill_id"] = skillID
-	job["model_id"] = modelID
-	job["execution_mode"] = "direct-model-fallback"
-	return job, true, nil
-}
-
-func officialRuntimeSkillNeedsDirectInferFallback(ctx context.Context, skillID string) (bool, error) {
-	contract, ok := officialRuntimeContracts[strings.TrimSpace(skillID)]
-	if !ok || contract.DirectInfer == nil {
-		return false, nil
-	}
-
-	var skill types.Skill
-	if err := currentClient().GetJSON(ctx, "/skills/"+skillID, nil, &skill); err != nil {
-		if cliErr, ok := err.(*output.CLIError); ok && cliErr.Code == "NOT_FOUND" {
-			return true, nil
-		}
-		return false, err
-	}
-	return isOfficialRuntimePlaceholderSkill(skill), nil
-}
-
 func normalizeOfficialRuntimeDirectInput(skillID string, payload map[string]any) (map[string]any, error) {
 	switch strings.TrimSpace(skillID) {
 	case officialImage2ImageSkillID:
@@ -360,46 +300,6 @@ func normalizeOfficialImage2VideoDirectInput(payload map[string]any) (map[string
 	return input, nil
 }
 
-func preferredOfficialRuntimeModelIDs(skillID string, input map[string]any, fallback []string) []string {
-	switch strings.TrimSpace(skillID) {
-	case officialImage2VideoSkillID:
-		return preferredImage2VideoModelIDs(input, fallback)
-	default:
-		return append([]string(nil), fallback...)
-	}
-}
-
-func preferredImage2VideoModelIDs(input map[string]any, fallback []string) []string {
-	duration := numericValue(input["duration_s"])
-	if duration == 0 {
-		duration = numericValue(input["seconds"])
-	}
-	if duration != 0 && duration != 5 && duration != 10 {
-		return []string{officialImage2VideoFallbackModelID}
-	}
-	return append([]string(nil), fallback...)
-}
-
-func submitModelInferWithFallback(ctx context.Context, modelIDs []string, payload map[string]any, priority, projectID, idempotencyKey string) (map[string]any, string, error) {
-	var lastErr error
-	for idx, modelID := range modelIDs {
-		job, err := submitModelInferJob(ctx, modelID, payload, priority, projectID, idempotencyKey)
-		if err == nil {
-			return job, modelID, nil
-		}
-		lastErr = err
-		if idx == len(modelIDs)-1 || !shouldRetryModelInfer(err) {
-			break
-		}
-	}
-	if cliErr, ok := lastErr.(*output.CLIError); ok {
-		details := cloneMapAny(cliErr.Details)
-		details["models_tried"] = append([]string(nil), modelIDs...)
-		return nil, "", output.NewError(cliErr.Code, cliErr.Message, details)
-	}
-	return nil, "", lastErr
-}
-
 func submitModelInferJob(ctx context.Context, modelID string, payload map[string]any, priority, projectID, idempotencyKey string) (map[string]any, error) {
 	return submitModelInferJobWithModelType(ctx, modelID, payload, priority, projectID, idempotencyKey, "")
 }
@@ -429,19 +329,6 @@ func submitModelInferJobWithModelType(ctx context.Context, modelID string, paylo
 		return nil, err
 	}
 	return job, nil
-}
-
-func shouldRetryModelInfer(err error) bool {
-	cliErr, ok := err.(*output.CLIError)
-	if !ok {
-		return false
-	}
-	switch cliErr.Code {
-	case "NETWORK_ERROR", "UNAUTHENTICATED", "FORBIDDEN":
-		return false
-	default:
-		return true
-	}
 }
 
 func writeJobResultOrWait(cmd *cobra.Command, job map[string]any) error {
