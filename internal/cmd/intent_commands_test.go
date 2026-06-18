@@ -118,6 +118,58 @@ func TestImageGenerateDefaultsAspectRatioTo16By9(t *testing.T) {
 	}
 }
 
+func TestImageGenerateAllowsArrayUploadImageLimitFromModelList(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":101,"code":"Nano-banana-pro","aiModelCodeAlias":"gemini-3-pro-image-preview","uploadImageLimit":[0,4],"resolution":["2K"],"categories":[{"taskSubType":103}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["aiModelCode"] != "Nano-banana-pro" {
+				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
+			}
+			if body["chatPrompt"] != "一只小狗" {
+				t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_image_array_limit_1","status":0,"type":1,"subType":103}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/detail":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_image_array_limit_1","status":2,"type":1,"subType":103}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/downloadUrls":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"downloadUrls":["https://cdn.example.com/dog.png"]}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "generate",
+		"--prompt", "一只小狗",
+		"--wait",
+		"--interval", "1",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["status"] != float64(2) {
+		t.Fatalf("unexpected status: %#v", data["status"])
+	}
+	downloadURLs := data["download_urls"].([]any)
+	if len(downloadURLs) != 1 || downloadURLs[0] != "https://cdn.example.com/dog.png" {
+		t.Fatalf("unexpected download_urls: %#v", data["download_urls"])
+	}
+}
+
 func TestImageGenerateNormalizesAspectRatioFlag(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")

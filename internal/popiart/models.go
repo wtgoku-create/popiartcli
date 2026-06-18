@@ -163,25 +163,25 @@ func ValidateModelSupport(model Model, spec ModelValidationSpec) error {
 	if spec.RequiresAudios && !model.IsSupportAudios {
 		return output.NewError("VALIDATION_ERROR", "模型不支持音频输入", map[string]any{"model": model.Code})
 	}
-	if model.UploadImageLimit != nil && *model.UploadImageLimit > 0 && spec.ImageCount > *model.UploadImageLimit {
+	if model.UploadImageLimit.Value != nil && *model.UploadImageLimit.Value > 0 && spec.ImageCount > *model.UploadImageLimit.Value {
 		return output.NewError("VALIDATION_ERROR", "参考图数量超过模型限制", map[string]any{
 			"model":              model.Code,
 			"image_count":        spec.ImageCount,
-			"upload_image_limit": *model.UploadImageLimit,
+			"upload_image_limit": *model.UploadImageLimit.Value,
 		})
 	}
-	if model.UploadVideoLimit != nil && *model.UploadVideoLimit > 0 && spec.VideoCount > *model.UploadVideoLimit {
+	if model.UploadVideoLimit.Value != nil && *model.UploadVideoLimit.Value > 0 && spec.VideoCount > *model.UploadVideoLimit.Value {
 		return output.NewError("VALIDATION_ERROR", "参考视频数量超过模型限制", map[string]any{
 			"model":              model.Code,
 			"video_count":        spec.VideoCount,
-			"upload_video_limit": *model.UploadVideoLimit,
+			"upload_video_limit": *model.UploadVideoLimit.Value,
 		})
 	}
-	if model.UploadAudioLimit != nil && *model.UploadAudioLimit > 0 && spec.AudioCount > *model.UploadAudioLimit {
+	if model.UploadAudioLimit.Value != nil && *model.UploadAudioLimit.Value > 0 && spec.AudioCount > *model.UploadAudioLimit.Value {
 		return output.NewError("VALIDATION_ERROR", "参考音频数量超过模型限制", map[string]any{
 			"model":              model.Code,
 			"audio_count":        spec.AudioCount,
-			"upload_audio_limit": *model.UploadAudioLimit,
+			"upload_audio_limit": *model.UploadAudioLimit.Value,
 		})
 	}
 	if spec.Ratio != "" && len(model.Ratio) > 0 && !containsString(model.Ratio, spec.Ratio) {

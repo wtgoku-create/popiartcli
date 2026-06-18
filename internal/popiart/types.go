@@ -90,6 +90,54 @@ func (l *IntList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// FlexibleLimit 用于兼容主站把上传上限字段返回成单值、字符串或数组的情况。
+// 当前 CLI 仍按单个整数上限消费该字段，因此这里会把输入归一化成一个值：
+// - 正整数数组取最大值，避免因字段扩展而意外收紧校验
+// - 仅包含 0 或没有可解析值时返回 0，沿用 unlimited 语义
+type FlexibleLimit struct {
+	Value *int
+}
+
+func (l *FlexibleLimit) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		l.Value = nil
+		return nil
+	}
+
+	if len(data) > 0 && data[0] == '[' {
+		var raw []any
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return err
+		}
+
+		resolved, ok := normalizeFlexibleLimitValues(raw)
+		if !ok {
+			l.Value = nil
+			return nil
+		}
+		l.Value = intPtrValue(resolved)
+		return nil
+	}
+
+	var number int
+	if err := json.Unmarshal(data, &number); err == nil {
+		l.Value = intPtrValue(number)
+		return nil
+	}
+
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		parsed, err := strconv.Atoi(strings.TrimSpace(text))
+		if err == nil {
+			l.Value = intPtrValue(parsed)
+			return nil
+		}
+	}
+
+	return nil
+}
+
 // UserInfo 表示主站 user/info 接口返回的基础用户信息。
 type UserInfo struct {
 	ID     string   `json:"id"`
@@ -133,9 +181,9 @@ type Model struct {
 	IsSupportImages   bool            `json:"isSupportImages,omitempty"`
 	IsSupportVideos   bool            `json:"isSupportVideos,omitempty"`
 	IsSupportAudios   bool            `json:"isSupportAudios,omitempty"`
-	UploadImageLimit  *int            `json:"uploadImageLimit,omitempty"`
-	UploadVideoLimit  *int            `json:"uploadVideoLimit,omitempty"`
-	UploadAudioLimit  *int            `json:"uploadAudioLimit,omitempty"`
+	UploadImageLimit  FlexibleLimit   `json:"uploadImageLimit,omitempty"`
+	UploadVideoLimit  FlexibleLimit   `json:"uploadVideoLimit,omitempty"`
+	UploadAudioLimit  FlexibleLimit   `json:"uploadAudioLimit,omitempty"`
 	Categories        []ModelCategory `json:"categories,omitempty"`
 	Providers         json.RawMessage `json:"providers,omitempty"`
 	BillingBindings   json.RawMessage `json:"billingBindings,omitempty"`
@@ -360,4 +408,40 @@ func toInt(value any) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func normalizeFlexibleLimitValues(values []any) (int, bool) {
+	hasValue := false
+	maxPositive := 0
+	zeroSeen := false
+
+	for _, item := range values {
+		value, ok := toInt(item)
+		if !ok {
+			continue
+		}
+		hasValue = true
+		if value > maxPositive {
+			maxPositive = value
+		}
+		if value == 0 {
+			zeroSeen = true
+		}
+	}
+
+	switch {
+	case maxPositive > 0:
+		return maxPositive, true
+	case zeroSeen:
+		return 0, true
+	case hasValue:
+		return 0, true
+	default:
+		return 0, false
+	}
+}
+
+func intPtrValue(v int) *int {
+	value := v
+	return &value
 }

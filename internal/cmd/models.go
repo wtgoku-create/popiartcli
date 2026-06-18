@@ -295,14 +295,14 @@ func summarizeModels(models []popiart.Model) []map[string]any {
 		if len(model.Duration) > 0 {
 			item["duration"] = []int(model.Duration)
 		}
-		if model.UploadImageLimit != nil {
-			item["upload_image_limit"] = *model.UploadImageLimit
+		if model.UploadImageLimit.Value != nil {
+			item["upload_image_limit"] = *model.UploadImageLimit.Value
 		}
-		if model.UploadVideoLimit != nil {
-			item["upload_video_limit"] = *model.UploadVideoLimit
+		if model.UploadVideoLimit.Value != nil {
+			item["upload_video_limit"] = *model.UploadVideoLimit.Value
 		}
-		if model.UploadAudioLimit != nil {
-			item["upload_audio_limit"] = *model.UploadAudioLimit
+		if model.UploadAudioLimit.Value != nil {
+			item["upload_audio_limit"] = *model.UploadAudioLimit.Value
 		}
 		items = append(items, item)
 	}

@@ -91,7 +91,7 @@ func TestValidateModelSupportTreatsZeroUploadLimitAsUnlimited(t *testing.T) {
 	model := Model{
 		Code:             "image-main",
 		IsSupportImages:  true,
-		UploadImageLimit: &zero,
+		UploadImageLimit: FlexibleLimit{Value: &zero},
 		Categories:       []ModelCategory{{TaskSubType: 103}},
 	}
 
@@ -110,7 +110,7 @@ func TestValidateModelSupportRejectsImageCountOverPositiveLimit(t *testing.T) {
 	model := Model{
 		Code:             "image-main",
 		IsSupportImages:  true,
-		UploadImageLimit: &imageLimit,
+		UploadImageLimit: FlexibleLimit{Value: &imageLimit},
 		Categories:       []ModelCategory{{TaskSubType: 103}},
 	}
 
@@ -141,8 +141,8 @@ func TestValidateModelSupportRejectsVideoCountOverPositiveLimitAndAllowsAudioZer
 		Code:             "seedance-main",
 		IsSupportVideos:  true,
 		IsSupportAudios:  true,
-		UploadVideoLimit: &videoLimit,
-		UploadAudioLimit: &audioLimit,
+		UploadVideoLimit: FlexibleLimit{Value: &videoLimit},
+		UploadAudioLimit: FlexibleLimit{Value: &audioLimit},
 		Categories:       []ModelCategory{{TaskSubType: 203}},
 	}
 
@@ -170,7 +170,7 @@ func TestValidateModelSupportRejectsVideoCountOverPositiveLimitAndAllowsAudioZer
 	err = ValidateModelSupport(Model{
 		Code:             "audio-main",
 		IsSupportAudios:  true,
-		UploadAudioLimit: &audioLimit,
+		UploadAudioLimit: FlexibleLimit{Value: &audioLimit},
 		Categories:       []ModelCategory{{TaskSubType: 203}},
 	}, ModelValidationSpec{
 		SubType:        203,
@@ -228,6 +228,38 @@ func TestFetchModelsSupportsNumericVideoRatioValues(t *testing.T) {
 	}
 	if got := []string(models[0].VideoRatio); len(got) != 3 || got[0] != "16" || got[1] != "9" || got[2] != "21:9" {
 		t.Fatalf("unexpected videoRatio payload: %#v", got)
+	}
+}
+
+func TestFetchModelsSupportsArrayUploadLimits(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api_client/anime/ai/model/list" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("origin"); got != "web" {
+			t.Fatalf("expected origin=web, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true,"data":[{"id":404,"code":"image-main","uploadImageLimit":[1,4],"uploadVideoLimit":["0"],"uploadAudioLimit":null,"categories":[{"taskSubType":103}]}]}`)
+	}))
+	defer server.Close()
+
+	client := api.NewClient(server.URL, "pk-demo")
+	models, err := FetchModels(context.Background(), client)
+	if err != nil {
+		t.Fatalf("FetchModels returned error: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("unexpected models length: %#v", models)
+	}
+	if models[0].UploadImageLimit.Value == nil || *models[0].UploadImageLimit.Value != 4 {
+		t.Fatalf("unexpected uploadImageLimit normalization: %#v", models[0].UploadImageLimit.Value)
+	}
+	if models[0].UploadVideoLimit.Value == nil || *models[0].UploadVideoLimit.Value != 0 {
+		t.Fatalf("unexpected uploadVideoLimit normalization: %#v", models[0].UploadVideoLimit.Value)
+	}
+	if models[0].UploadAudioLimit.Value != nil {
+		t.Fatalf("expected nil uploadAudioLimit, got %#v", models[0].UploadAudioLimit.Value)
 	}
 }
 
