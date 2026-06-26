@@ -113,6 +113,26 @@ func TestCreateTaskSupportsNumericIdentifier(t *testing.T) {
 	}
 }
 
+func TestCreateTaskSupportsArrayResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api_client/anime/task/create" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[{"id":"task_array_1","status":0,"type":1,"subType":103}],"message":"ok","status":"0000"}`)
+	}))
+	defer server.Close()
+
+	client := api.NewClient(server.URL, "pk-demo")
+	task, err := CreateTask(context.Background(), client, TaskRequest{Type: 1, SubType: 103})
+	if err != nil {
+		t.Fatalf("CreateTask returned error: %v", err)
+	}
+	if task.Identifier() != "task_array_1" {
+		t.Fatalf("unexpected task identifier: %#v", task)
+	}
+}
+
 func TestWaitForTaskSupportsStringStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -14,10 +14,11 @@ import (
 
 // CreateTask 提交统一任务到主站 task/create 接口。
 func CreateTask(ctx context.Context, client *api.Client, req TaskRequest) (TaskDetail, error) {
-	var task TaskDetail
-	if err := client.PostJSON(ctx, "/api_client/anime/task/create", normalizeTaskRequest(req), &task); err != nil {
+	var payload any
+	if err := client.PostJSON(ctx, "/api_client/anime/task/create", normalizeTaskRequest(req), &payload); err != nil {
 		return TaskDetail{}, NormalizeAPIError(err)
 	}
+	task := normalizeTaskCreateResponse(payload)
 	return task, nil
 }
 
@@ -221,6 +222,22 @@ func normalizeTaskDetail(value any) TaskDetail {
 		detail.TaskID = detail.ID
 	}
 	return detail
+}
+
+func normalizeTaskCreateResponse(payload any) TaskDetail {
+	task := normalizeTaskDetail(payload)
+	if task.Identifier() != "" {
+		return task
+	}
+
+	items := normalizeTaskDetailSlice(payload)
+	for _, item := range items {
+		if item.Identifier() != "" {
+			return item
+		}
+	}
+
+	return TaskDetail{}
 }
 
 func parseOptionalInt(raw string) int {
