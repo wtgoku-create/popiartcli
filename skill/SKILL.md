@@ -90,7 +90,7 @@ popiart image generate \
 ```bash
 popiart image describe \
   --image ./source.png \
-  --model gemini-2.5-flash \
+  --model <ai-model-id> \
   --prompt "Write a reusable text-to-image prompt" \
   --output json \
   --quiet \
@@ -146,8 +146,8 @@ Optional prompt enhancement:
 popiart video generate \
   --image ./source.png \
   --prompt "Make the person naturally turn toward camera" \
-  --prompt-enhancer-model gemini-2.5-flash \
-  --model viduq2-pro-fast \
+  --prompt-enhancer-model <image-understanding-ai-model-id> \
+  --model <video-ai-model-id> \
   --wait \
   --output json \
   --quiet \
@@ -258,7 +258,7 @@ Use the lightest model-switching surface that matches the user's intent:
 
 | Intent | Use |
 |---|---|
-| One request should use a named model | Pass `--model <model-id>` on intent commands that support it. |
+| One request should use a specific model | Pass `--model <ai-model-id>` on intent commands that support it. |
 | A project should keep using a model for a whole skill type | Use `popiart models route-override set`. |
 | The user wants to call a raw model directly | Use `popiart models infer <model-id>`. |
 | The user only asks for "best/default" behavior | Do not switch models; let PopiArt route through the skill. |
@@ -267,7 +267,7 @@ Single-request override examples:
 
 ```bash
 popiart image generate \
-  --model image-01 \
+  --model <image-ai-model-id> \
   --prompt "A clean editorial product photo" \
   --aspect-ratio 1:1 \
   --wait \
@@ -278,7 +278,7 @@ popiart image generate \
 
 ```bash
 popiart video generate \
-  --model viduq2-pro-fast \
+  --model <video-ai-model-id> \
   --image ./source.png \
   --prompt "Subtle camera push-in and natural motion" \
   --duration 5 \
@@ -294,7 +294,7 @@ Project-level route override examples:
 popiart models route-override set \
   --project proj_abc123 \
   --skill-type image.img2img \
-  --model seedream-4-5-251128 \
+  --model <image-ai-model-id> \
   --output json \
   --quiet \
   --non-interactive
@@ -304,7 +304,7 @@ popiart models route-override set \
 popiart models route-override set \
   --project proj_abc123 \
   --skill-type video.image2video \
-  --model viduq2-pro-fast \
+  --model <video-ai-model-id> \
   --output json \
   --quiet \
   --non-interactive
@@ -321,7 +321,7 @@ Agent rules:
 
 - Prefer `--model` for a single user request.
 - Prefer `route-override set` only when the user asks to pin future project behavior.
-- Run `models list` or `models routes` before recommending a model, because available models and pricing can change.
+- Run `models list` before recommending a model ID, because available models and pricing can change. The list output is intentionally ID-focused and does not expose model names/codes as supported `--model` values.
 - Avoid `models infer` when an intent command or skill exists, unless the user explicitly names a raw model or asks for low-level routing/debugging.
 
 ## MCP And Tool Schemas

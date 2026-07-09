@@ -207,22 +207,24 @@ func TestCreateTaskSerializesAlignedTaskFields(t *testing.T) {
 		if _, exists := body["aiPlatform"]; exists {
 			t.Fatalf("aiPlatform should not be sent: %#v", body["aiPlatform"])
 		}
+		for _, key := range []string{"model", "aiModelCode", "aiModelCodeAlias", "aiModelname"} {
+			if _, exists := body[key]; exists {
+				t.Fatalf("%s should not be sent: %#v", key, body[key])
+			}
+		}
 		expected := map[string]any{
-			"projectId":        float64(-1),
-			"type":             float64(2),
-			"subType":          float64(203),
-			"model":            "viduq2-pro",
-			"aiModelCode":      "viduq2-pro",
-			"aiModelCodeAlias": "viduq2-pro",
-			"aiModelId":        float64(15),
-			"styleId":          float64(0),
-			"width":            float64(1280),
-			"height":           float64(720),
-			"chatPrompt":       "demo prompt",
-			"aspectRatio":      "16:9",
-			"resolution":       "720P",
-			"batchSize":        float64(1),
-			"duration":         float64(5),
+			"projectId":   float64(-1),
+			"type":        float64(2),
+			"subType":     float64(203),
+			"aiModelId":   float64(15),
+			"styleId":     float64(0),
+			"width":       float64(1280),
+			"height":      float64(720),
+			"chatPrompt":  "demo prompt",
+			"aspectRatio": "16:9",
+			"resolution":  "720P",
+			"batchSize":   float64(1),
+			"duration":    float64(5),
 		}
 		for key, want := range expected {
 			if body[key] != want {

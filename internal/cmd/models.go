@@ -275,9 +275,6 @@ func summarizeModels(models []popiart.Model) []map[string]any {
 	for _, model := range models {
 		item := map[string]any{
 			"id":                  model.ID,
-			"code":                model.Code,
-			"name":                model.Name,
-			"ai_model_code_alias": []string(model.AIModelCodeAlias),
 			"supported_sub_types": modelSubTypes(model),
 			"is_support_images":   model.IsSupportImages,
 			"is_support_videos":   model.IsSupportVideos,

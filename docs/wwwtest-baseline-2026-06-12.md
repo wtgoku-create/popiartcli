@@ -12,6 +12,8 @@ This document records two different baselines and should not mix them:
 1. current CLI default model candidates
 2. models and commands that have been verified to run successfully in `wwwtest`
 
+Model-related examples in the historical probe table may show the pre-unification behavior where `--model` accepted model code/name-like values and task payloads echoed `model` / `aiModelCode`. Current CLI usage is `--model <aiModelId>`, and `task/create` sends `aiModelId` as the only model identity field.
+
 ## Current CLI Defaults
 
 These are the current default candidate pools in [internal/popiart/defaults.go](/Users/ywlmac/Projects/popiartcli/internal/popiart/defaults.go:3).
@@ -40,7 +42,7 @@ The following commands have been observed to complete with `status=2` in the rea
 | image-to-video | request shape aligned to `viduq2-pro`, `subType=202`, `duration=5`, source image URL | `viduq2-pro` | `2223` | success |
 | image-to-video | same request family, previous successful run | `viduq2-pro` | `2219` | success |
 | image-to-video | `go run ./cmd/popiart video img2video --image 'https://popitest-public-1313913486.cos.ap-guangzhou.myqcloud.com/media/image/2026/0129/1914.png' --prompt '生成一个兔子奔跑的视频'` | `viduq2-pro` | `2251` | success |
-| image-to-video | `go run ./cmd/popiart video img2video --model 'kling-video-o1' --image 'https://popitest-public-1313913486.cos.ap-guangzhou.myqcloud.com/media/image/2026/0129/1914.png' --prompt '生成一个兔子奔跑的视频'` | `kling-video-omni` | `2260` | created, still running in latest probe |
+| image-to-video | historical pre-unification probe with a code-like `--model` value; current CLI would require the corresponding `aiModelId` instead | `kling-video-omni` | `2260` | created, still running in latest probe |
 | TTS audio generation | `go run ./cmd/popiart audio tts --text '我是一只小白兔，白白的小白兔' --wait` | `minimax-speech-2.8-hd` | `2231` | success |
 | TTS audio generation | previous real TTS validation | `minimax-speech-2.8-hd` | `2209` | success |
 
@@ -70,20 +72,18 @@ for single-image image tasks, to stay compatible with the successful request sha
 
 ### Image-to-video
 
-The current successful `viduq2-pro` request family is closest to:
+The historical successful `viduq2-pro` request family was closest to this old request shape. Current task creation strips the model code/name fields and keeps only `aiModelId`:
 
 ```json
 {
   "projectId": -1,
   "type": 2,
   "chatPrompt": "生成一个兔子奔跑的视频",
-  "model": "viduq2-pro",
   "styleId": 0,
   "width": 1280,
   "height": 720,
   "resolution": "720P",
   "aiModelId": 15,
-  "aiModelCode": "viduq2-pro",
   "subType": 202,
   "batchSize": 1,
   "duration": 5,
@@ -131,11 +131,8 @@ The following are not currently counted as baseline-success capabilities:
   - image-to-image
   - image-to-video
   - TTS
-- If the user does pass `--model`, CLI still auto-fills the request using that model's `model/list` capabilities:
-  - `aiModelCode`
-  - `aiModelCodeAlias`
-  - `aiModelname`
-  - `aiModelId`
+- If the user does pass `--model`, CLI treats it as the main-site `aiModelId`, then uses that model's `model/list` capabilities to shape the request:
+  - `aiModelId` as the only model identity field sent to `task/create`
   - subtype-compatible request shaping for music `304/305`
   - default `resolution` when supported and omitted
   - model-backed ratio selection when supported and omitted

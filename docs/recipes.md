@@ -341,7 +341,7 @@ popiart music generate \
 
 ```sh
 popiart image generate \
-  --model image-01 \
+  --model <image-ai-model-id> \
   --prompt "A studio portrait of a corgi" \
   --aspect-ratio 4:3 \
   --wait \
@@ -354,7 +354,7 @@ popiart image generate \
 
 ```sh
 popiart image img2img \
-  --model image-01 \
+  --model <image-ai-model-id> \
   --image https://example.com/reference.jpg \
   --prompt "Turn this into a poster-style portrait" \
   --aspect-ratio 3:4 \

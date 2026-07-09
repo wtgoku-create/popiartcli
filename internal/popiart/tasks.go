@@ -301,19 +301,19 @@ func firstNonEmptyValue(values ...any) any {
 }
 
 // normalizeTaskRequest 在发往主站前规整字段格式，兼容 metadata 需要字符串的生产行为。
+func NormalizeTaskRequest(req TaskRequest) map[string]any {
+	return normalizeTaskRequest(req)
+}
+
 func normalizeTaskRequest(req TaskRequest) map[string]any {
 	body := map[string]any{
-		"type":             req.Type,
-		"subType":          req.SubType,
-		"model":            req.Model,
-		"aiModelCode":      req.AIModelCode,
-		"aiModelCodeAlias": req.AIModelCodeAlias,
-		"aiModelname":      req.AIModelName,
-		"aiModelId":        req.AIModelID,
-		"styleId":          req.StyleID,
-		"width":            req.Width,
-		"height":           req.Height,
-		"batchSize":        req.BatchSize,
+		"type":      req.Type,
+		"subType":   req.SubType,
+		"aiModelId": req.AIModelID,
+		"styleId":   req.StyleID,
+		"width":     req.Width,
+		"height":    req.Height,
+		"batchSize": req.BatchSize,
 	}
 	if req.ProjectID != 0 {
 		body["projectId"] = req.ProjectID

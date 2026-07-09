@@ -2,14 +2,14 @@
 
 Date: `2026-06-12`
 
-This document summarizes the current generation-oriented `go run ./cmd/popiart ...` command surface and how `model/list` fields are auto-filled into `/api_client/anime/task/create`.
+This document summarizes the current generation-oriented `go run ./cmd/popiart ...` command surface and how `model/list` fields are used to validate and shape `/api_client/anime/task/create`.
 
 ## Command Matrix
 
 | Command | Capability | Task path | Notes |
 | --- | --- | --- | --- |
 | `popiart image [prompt]` | 文生图 | `type=1`, `subType=103` | root sugar for `image generate` |
-| `popiart image generate` | 文生图 | `type=1`, `subType=103` | supports `--model` override |
+| `popiart image generate` | 文生图 | `type=1`, `subType=103` | supports `--model <aiModelId>` override |
 | `popiart image img2img` | 图生图 | `type=1`, `subType=103` | source image required |
 | `popiart image transform` | 图生图 | `type=1`, `subType=103` | alias of `img2img` |
 | `popiart video [prompt]` | 图生视频 | `type=2`, current generic flow | root sugar for `video generate` |
@@ -23,22 +23,20 @@ This document summarizes the current generation-oriented `go run ./cmd/popiart .
 | `popiart music [prompt]` | 音乐生成 | `type=3`, `subType=304/305` | root sugar for `music generate` |
 | `popiart music generate` | 音乐生成 | `type=3`, `subType=304/305` | model-backed music subtype |
 
-## Autofill Mapping
+## Task Field Mapping
 
-When a command resolves a model from `/api_client/anime/ai/model/list?origin=web`, the CLI now auto-fills these task fields:
+When a command resolves a model from `/api_client/anime/ai/model/list?origin=web`, explicit `--model` values are interpreted as `data[*].id` / `aiModelId`. If `--model` is omitted, the CLI uses its default code candidates internally, resolves them through `model/list`, and still submits only `aiModelId` to `task/create`.
 
 | Task field | Model source | Behavior |
 | --- | --- | --- |
-| `model` | `data[*].code` | always filled |
-| `aiModelCode` | `data[*].code` | always filled |
-| `aiModelCodeAlias` | `data[*].aiModelCodeAlias[0]` | first alias if present, otherwise falls back to `code` |
-| `aiModelname` | `data[*].name` | normalized to task-compatible slug |
-| `aiModelId` | `data[*].id` | always filled |
+| `aiModelId` | `data[*].id` | the only model identity field sent to `task/create` |
 | `subType` | `data[*].categories[*].taskSubType` | chosen from command-compatible subtype set |
 | `aspectRatio` / `ratio` | `data[*].ratio[]` or `data[*].videoRatio[]` | auto-filled when user omits ratio |
 | `resolution` | `data[*].resolution[]` | auto-filled when user omits size |
 | `duration` | `data[*].duration[]` | auto-filled for video when user omits duration |
 | `width` / `height` | derived from `resolution + ratio` | generated after ratio/resolution selection |
+
+The CLI no longer sends `model`, `aiModelCode`, `aiModelCodeAlias`, or `aiModelname` in the task request body.
 
 ## Validation Rules
 

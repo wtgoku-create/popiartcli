@@ -300,7 +300,7 @@ popiart models list --type image
 popiart models list --capability text2image
 ```
 
-列出当前已注册的可用模型库存。
+列出当前已注册的可用模型库存。摘要输出面向 `--model <aiModelId>` 使用，只暴露模型 ID 和能力字段，不暴露模型 `code`、`name`、`ai_model_code_alias` 作为命令入参。
 
 ```sh
 popiart models routes

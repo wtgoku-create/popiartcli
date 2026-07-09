@@ -87,7 +87,7 @@ popiart image generate --prompt "一只小狗" --wait
 常用参数：
 
 - `--prompt` 提示词
-- `--model` 选择模型
+- `--model` 指定主站模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
 - `--aspect-ratio` 图片比例
 - `--size` 图片大小
 - `--style` 风格提示，会透传到 `metadata.style`
@@ -115,7 +115,7 @@ popiart image img2img --image ./source.png --prompt "改成黄昏电影感" --wa
 - `--style-reference-image` 风格参考图，可重复传入
 - `--style-reference-artifact-id` 已上传风格参考图 ID，可重复传入
 - `--prompt` 提示词
-- `--model` 选择模型
+- `--model` 指定主站模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
 - `--aspect-ratio` 图片比例
 - `--size` 图片大小
 - `--style` 风格提示，会透传到 `metadata.style`
@@ -147,7 +147,7 @@ popiart image describe --image ./source.png --prompt "请写成适合文生图�
 - `--from` 等同于 `--image`
 - `--source-artifact-id` 已上传源图 ID
 - `--prompt` 希望生成什么风格的描述
-- `--model` 图像理解模型
+- `--model` 图像理解模型 ID（`aiModelId`，必填）
 - `--wait` 等待任务结果
 
 ## 生视频相关
@@ -166,8 +166,8 @@ popiart video generate --image ./source.png --prompt "镜头缓慢推进" --wait
 - `--from` 等同于 `--image`
 - `--source-artifact-id` 已上传源图 ID
 - `--prompt` 视频提示词
-- `--model` 选择模型
-- `--prompt-enhancer-model` 先用图像理解模型增强 prompt
+- `--model` 指定主站视频模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
+- `--prompt-enhancer-model` 先用图像理解模型 ID（`aiModelId`）增强 prompt
 - `--aspect-ratio` 视频比例
 - `--size` 分辨率，例如 `720P`、`1080P`、`1K`、`2K`、`4K`
 - `--duration` 视频时长秒数
@@ -227,7 +227,7 @@ popiart video action-transfer --image ./face.jpg --video ./motion.mp4 --wait
 - `--image` 身份图
 - `--video` 动作参考视频
 - `--prompt` 可选补充提示
-- `--model` 即梦动作迁移模型，默认 `jimeng_dreamactor_m20_gen_video`
+- `--model` 即梦动作迁移模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
 - `--action` `metadata.action`，默认 `actionGenerate`
 - `--cut-result-first-second-switch` 即梦动作模仿参数
 - `--wait` 轮询结果
@@ -243,7 +243,7 @@ popiart video seedance --prompt "保持主体动作风格一致" --video ./ref.m
 常用参数：
 
 - `--prompt` 提示词
-- `--model` Seedance / 豆包视频模型
+- `--model` Seedance / 豆包视频模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
 - `--image` 参考图片，可重复传入
 - `--video` 参考视频，可重复传入
 - `--audio` 参考音频，可重复传入
@@ -274,7 +274,7 @@ popiart speech synthesize --text "你好，欢迎使用 PopiArt" --wait
 
 - `--text` 文本
 - `--text-file` 从文件读取文本
-- `--model` 语音模型，默认 `speech-2.8-hd`
+- `--model` 语音模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
 - `--voice` 声音 ID
 - `--voice-style` 说话风格
 - `--emotion` 情绪方向
@@ -315,7 +315,7 @@ popiart music generate --prompt "Warm upbeat pop" --lyrics "hello hello" --wait
 - `--prompt` 音乐提示词
 - `--lyrics` 歌词
 - `--lyrics-file` 从文件读取歌词
-- `--model` 音乐模型，默认 `music-2.6`
+- `--model` 音乐模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
 - `--instrumental` 生成纯音乐
 - `--lyrics-optimizer` 自动生成歌词
 - `--audio-url` `music-cover` 参考音频 URL
@@ -350,6 +350,8 @@ popiart music generate --prompt "Warm upbeat pop" --lyrics "hello hello" --wait
 popiart models list
 popiart models list --capability text2image
 ```
+
+`models list` 输出经过 CLI 摘要整理，面向 `--model <aiModelId>` 使用场景；`items[]` 暴露 `id` 和能力字段，不暴露模型 `code`、`name` 或 `ai_model_code_alias` 作为可传参数。
 
 常用参数：
 

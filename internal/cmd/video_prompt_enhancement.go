@@ -73,12 +73,12 @@ func buildVideoGenerateRequestBody(cmd *cobra.Command, payload map[string]any) (
 		return nil, err
 	}
 	return map[string]any{
-		"model_id":       model.Code,
+		"model_id":       model.ID,
 		"execution_mode": taskExecutionMode(modelOverride),
 		"request": map[string]any{
 			"method": "POST",
 			"path":   "/api_client/anime/task/create",
-			"body":   popiart.BuildVideoGenerateTaskRequest(payload, model),
+			"body":   popiart.NormalizeTaskRequest(popiart.BuildVideoGenerateTaskRequest(payload, model)),
 		},
 	}, nil
 }
@@ -216,8 +216,7 @@ func runVideoPromptEnhancement(ctx context.Context, cmd *cobra.Command, modelID 
 	}
 
 	return enhancedPrompt, map[string]any{
-		"model_id":        model.Code,
-		"ai_model_id":     model.ID,
+		"model_id":        model.ID,
 		"execution_mode":  "main-site-llm-chat",
 		"enhanced_prompt": enhancedPrompt,
 	}, nil

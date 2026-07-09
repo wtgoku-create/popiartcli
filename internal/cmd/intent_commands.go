@@ -334,7 +334,7 @@ func addCommonExecutionFlags(cmd *cobra.Command) {
 }
 
 func addText2ImageFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", "", "显式指定本次请求使用的模型")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）")
 	cmd.Flags().String("prompt", "", "图片提示词")
 	cmd.Flags().String("negative-prompt", "", "排除项或不希望出现的元素")
 	cmd.Flags().String("style", "", "风格提示，例如 anime、product render、cinematic realism")
@@ -345,7 +345,7 @@ func addText2ImageFlags(cmd *cobra.Command) {
 }
 
 func addImageTransformFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", "", "显式指定本次请求使用的模型")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）")
 	cmd.Flags().String("image", "", "源图 URL 或本地文件路径")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
 	cmd.Flags().StringArray("identity-reference-image", nil, "主体一致性参考图 URL 或本地文件路径，可重复传入")
@@ -366,8 +366,8 @@ func addImageTransformFlags(cmd *cobra.Command) {
 }
 
 func addVideoGenerateFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", "", "显式指定本次请求使用的模型")
-	cmd.Flags().String("prompt-enhancer-model", "", "显式指定前置图像理解/提示词增强模型；传入后会先生成增强后的图生视频 prompt 再提交视频任务")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）")
+	cmd.Flags().String("prompt-enhancer-model", "", "显式指定前置图像理解/提示词增强模型 ID（aiModelId）；传入后会先生成增强后的图生视频 prompt 再提交视频任务")
 	cmd.Flags().String("from", "", "源图路径或 URL（等同于 --image）")
 	cmd.Flags().String("image", "", "源图 URL 或本地文件路径")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
@@ -385,7 +385,7 @@ func addVideoGenerateFlags(cmd *cobra.Command) {
 }
 
 func addVideoActionTransferFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", defaultJimengActionTransferModelID, "即梦动作迁移模型；默认 jimeng_dreamactor_m20_gen_video")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）；不传则使用即梦动作迁移默认模型")
 	cmd.Flags().String("image", "", "身份图 URL、本地文件路径、纯 base64，或 data:image/*;base64 URL（会自动剥离前缀）")
 	cmd.Flags().String("video", "", "动作参考视频 URL 或本地文件路径；会作为 videos[0] 提交")
 	cmd.Flags().String("prompt", "", "可选动作迁移补充提示；即梦动作模仿可不传")
@@ -395,7 +395,7 @@ func addVideoActionTransferFlags(cmd *cobra.Command) {
 }
 
 func addVideoSeedanceFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", defaultSeedanceVideoModelID, "Seedance / 豆包视频模型；默认 doubao-seedance-2-0-260128")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）；不传则使用 Seedance / 豆包默认模型")
 	cmd.Flags().String("prompt", "", "视频提示词；文生视频必填，参考图/视频/音频模式可选")
 	cmd.Flags().StringArray("image", nil, "参考图片 URL、data URL 或本地文件路径，可重复传入")
 	cmd.Flags().StringArray("video", nil, "参考视频 URL 或本地文件路径，可重复传入")
@@ -417,7 +417,7 @@ func addVideoSeedanceFlags(cmd *cobra.Command) {
 }
 
 func addSpeechSynthesizeFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", defaultMiniMaxSpeechModelID, "显式指定本次请求使用的语音模型；默认使用 MiniMax speech-2.8-hd")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）；不传则使用 MiniMax speech 默认模型")
 	cmd.Flags().String("text", "", "要合成的文本")
 	cmd.Flags().String("text-file", "", "从文件读取文本；传 - 表示标准输入")
 	cmd.Flags().String("voice", "", "语音 ID 或预设名")
@@ -439,7 +439,7 @@ func addSpeechSynthesizeFlags(cmd *cobra.Command) {
 }
 
 func addMusicGenerateFlags(cmd *cobra.Command) {
-	cmd.Flags().String("model", defaultMiniMaxMusicModelID, "显式指定本次请求使用的音乐模型；默认使用 MiniMax music-2.6")
+	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）；不传则使用 MiniMax music 默认模型")
 	cmd.Flags().String("prompt", "", "音乐风格或生成提示词")
 	cmd.Flags().String("lyrics", "", "歌词文本")
 	cmd.Flags().String("lyrics-file", "", "从文件读取歌词；传 - 表示标准输入")
@@ -541,16 +541,16 @@ func executeSkillRun(cmd *cobra.Command, skillID string, payload map[string]any,
 
 // executeTaskCommand 把已解析好的命令 payload 交给主站 task API 执行。
 func executeTaskCommand(cmd *cobra.Command, action string, payload map[string]any, mapper func(map[string]any, popiart.Model) popiart.TaskRequest, extras map[string]any) error {
-	requestedModelCode := ""
+	requestedModelID := ""
 	if cmd.Flags().Changed("model") {
-		requestedModelCode = strings.TrimSpace(flagString(cmd, "model"))
+		requestedModelID = strings.TrimSpace(flagString(cmd, "model"))
 	}
 	spec := taskValidationSpecForAction(action, payload)
 	models, err := popiart.FetchModels(context.Background(), currentClient())
 	if err != nil {
 		return err
 	}
-	model, err := popiart.ResolveCandidateModel(models, requestedModelCode, popiart.DefaultModelCodes(action), spec.SubType)
+	model, err := popiart.ResolveCandidateModel(models, requestedModelID, popiart.DefaultModelCodes(action), spec.SubType)
 	if err != nil {
 		return err
 	}
@@ -562,12 +562,12 @@ func executeTaskCommand(cmd *cobra.Command, action string, payload map[string]an
 	req := mapper(payload, model)
 	if dryRunMode(cmd) {
 		preview := map[string]any{
-			"model_id":       model.Code,
-			"execution_mode": taskExecutionMode(requestedModelCode),
+			"model_id":       model.ID,
+			"execution_mode": taskExecutionMode(requestedModelID),
 			"request": map[string]any{
 				"method": "POST",
 				"path":   "/api_client/anime/task/create",
-				"body":   req,
+				"body":   popiart.NormalizeTaskRequest(req),
 			},
 		}
 		for key, value := range extras {
@@ -580,7 +580,7 @@ func executeTaskCommand(cmd *cobra.Command, action string, payload map[string]an
 	if err != nil {
 		return err
 	}
-	return writeTaskResultOrWait(cmd, task, model, extras, taskExecutionMode(requestedModelCode))
+	return writeTaskResultOrWait(cmd, task, model, extras, taskExecutionMode(requestedModelID))
 }
 
 func taskTypeForAction(action string) int {

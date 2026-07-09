@@ -181,20 +181,20 @@ Date: `2026-06-10`
 
 已确定：
 
-- CLI 的 `--model` 参数后续优先解释为 `aiModelCode`
-- 创建任务时必须解析成 `aiModelId`
+- CLI 的 `--model` 参数解释为主站 `aiModelId`
+- 创建任务时只发送 `aiModelId`，不再发送 `model`、`aiModelCode`、`aiModelCodeAlias`、`aiModelname`
 
 已确定策略：
 
 1. 优先使用用户显式传入的 `--model`
 2. 通过 `GET /api_client/anime/ai/model/list` 查模型列表
-3. 用 `aiModelCode` 匹配模型，得到 `aiModelId`
+3. 用显式 `aiModelId` 匹配模型；未传 `--model` 时用默认 code 候选在内部解析模型
 4. 如果用户未传 `--model`，则降级到本地预设默认模型配置
 
 决议态：
 
 - 默认模型配置写入 `config.go` 或独立默认模型映射模块
-- 默认配置项优先保存 `aiModelCode`
+- 默认配置项仍可保存内部默认模型 code 候选
 - 运行时再解析为 `aiModelId`
 - 解析模型时不能只取 `aiModelId`
 - 还必须同时读取模型能力字段，用于决定：
@@ -228,7 +228,7 @@ Date: `2026-06-10`
 默认模型策略：
 
 - 如果用户未传 `--model`
-- 先按当前命令查默认 `aiModelCode`
+- 先按当前命令查内部默认模型 code 候选
 - 再用 `categories[].taskSubType` 过滤
 - 若默认模型不支持当前 `subType`
   - 继续在同类型默认候选池里找支持该 `subType` 的模型
@@ -272,7 +272,7 @@ Date: `2026-06-10`
 
 已确定：
 
-- `image generate` -> `type=1`, `subType=102`
+- `image generate` -> `type=1`, `subType=103`
 - `image img2img` -> `type=1`, `subType=103`
 - `image transform` -> `type=1`, `subType=103`
 - 多参考图最终都放进 `images[]`
@@ -306,7 +306,7 @@ Date: `2026-06-10`
   - 最多允许 2 张图片和 1 个视频
 - `video seedance`
   - 固定走 Seedance 执行链
-  - 优先选 Seedance 对应的默认 `aiModelCode`
+  - 用户未传 `--model` 时优先选 Seedance 对应的内部默认 code 候选
   - 在该链内部再细分 `subType`
 - `video generate` / `video img2video` / `video from-image`
   - 走通用视频任务执行链
@@ -448,7 +448,7 @@ Authorization: Bearer <token>
 
 | 目的 | `popi.art` 接口 | 说明 |
 | --- | --- | --- |
-| 查询模型列表 | `GET /api_client/anime/ai/model/list` | 用于 `aiModelCode -> aiModelId` 解析 |
+| 查询模型列表 | `GET /api_client/anime/ai/model/list` | 用于显式 `aiModelId` 查找、默认 code 候选解析和模型能力读取 |
 
 用途：
 
@@ -465,9 +465,9 @@ Authorization: Bearer <token>
 | 字段 | 含义 | 迁移用途 |
 | --- | --- | --- |
 | `id` | 模型 ID | 写入 `aiModelId` |
-| `code` | 模型 code | 与 CLI `--model` 对齐 |
-| `aiModelCodeAlias` | 模型别名 | 兼容旧默认模型名或外部别名 |
-| `name` | 展示名 | 输出与报错提示 |
+| `code` | 模型 code | 仅供 CLI 内部默认候选解析和过滤匹配使用，不作为 `--model` 参数值 |
+| `aiModelCodeAlias` | 模型别名 | 仅供内部默认候选和兼容匹配使用，不在 `models list` 摘要中暴露 |
+| `name` | 展示名 | 可用于内部过滤匹配；当前 `models list` 摘要不暴露 |
 | `ratio` | 图片比例候选 | 校验 / 归一化 `--aspect-ratio` |
 | `videoRatio` | 视频比例候选 | 校验视频比例 |
 | `resolution` | 分辨率候选 | 校验 / 归一化 `--size` |
@@ -484,9 +484,9 @@ Authorization: Bearer <token>
 
 补充说明：
 
-- 文档之前只写了 `aiModelCode -> aiModelId`，这个粒度不够。
+- 模型解析不能只停留在“拿到 ID”这一步。
 - 迁移后真正需要的是：
-  - `aiModelCode -> 模型对象`
+  - 显式 `aiModelId` 或内部默认 code 候选 -> 模型对象
   - 再由模型对象提取 `aiModelId + 能力约束 + 可选维度`
 
 ### 5.5 迁移后的模型能力感知流程
@@ -495,9 +495,9 @@ Authorization: Bearer <token>
 
 1. 先根据命令确定目标 `type/subType`
 2. 读取本次命令的原始 CLI flags
-3. 解析 `--model` 或默认模型配置，得到候选 `aiModelCode`
+3. 解析 `--model` 得到显式 `aiModelId`，或从默认模型配置得到内部 code 候选
 4. 调 `GET /api_client/anime/ai/model/list`
-5. 用 `code` 或 `aiModelCodeAlias` 匹配模型
+5. 显式 `--model` 按 `id` 匹配模型；默认候选按 `code` 或 `aiModelCodeAlias` 匹配模型
 6. 校验该模型是否支持当前 `subType`
 7. 校验输入媒资类型是否被支持：
    - `images[]`
@@ -572,8 +572,7 @@ Authorization: Bearer <token>
 | --- | --- | --- |
 | 主任务类型 | `type` | 图片=1，视频=2，音频=3，LLM=5 |
 | 子任务类型 | `subType` | 见具体命令映射 |
-| 模型 code | `aiModelCode` | 由 `--model` 或默认配置提供 |
-| 模型 ID | `aiModelId` | 通过模型列表解析得到 |
+| 模型 ID | `aiModelId` | 由显式 `--model` 或默认候选解析得到，且是唯一发送的模型身份字段 |
 | 提示词 | `chatPrompt` | 主提示词统一映射到这里 |
 | 图片输入 | `images[]` | 本地图先上传，传 `url` |
 | 视频输入 | `videos[]` | 本地图先上传，传 `url` |
@@ -597,9 +596,8 @@ Authorization: Bearer <token>
 | CLI 字段 | `task/create` 字段 |
 | --- | --- |
 | `type` | `1` |
-| `subType` | `102` |
-| `--model` | `aiModelCode` |
-| 解析模型结果 | `aiModelId` |
+| `subType` | `103` |
+| `--model` | `aiModelId` |
 | `prompt` | `chatPrompt` |
 | `--aspect-ratio` | `aspectRatio` + `ratio` |
 | `--size` | `resolution` |
@@ -614,8 +612,7 @@ Authorization: Bearer <token>
 | --- | --- |
 | `type` | `1` |
 | `subType` | `103` |
-| `--model` | `aiModelCode` |
-| 解析模型结果 | `aiModelId` |
+| `--model` | `aiModelId` |
 | `prompt` | `chatPrompt` |
 | `--image` | 上传后写入 `images[0]` |
 | `--identity-reference-image` | 继续追加到 `images[]` |
@@ -640,8 +637,7 @@ Authorization: Bearer <token>
 | --- | --- |
 | `type` | `5` |
 | `subType` | `501` |
-| `--model` | `aiModelCode` |
-| 解析模型结果 | `aiModelId` |
+| `--model` | `aiModelId` |
 | 图片输入 | `images[]` |
 | 描述提示 | `chatPrompt` |
 | `--notes` | `metadata.notes` |
@@ -649,7 +645,7 @@ Authorization: Bearer <token>
 说明：
 
 - 为保持任务式体验，`image describe` 走 `task/create`
-- `--model` 的使用方式不变，但语义从“旧多模态模型 ID”切到“`popi.art` 的 `aiModelCode`”
+- `--model` 传主站 `aiModelId`；可先通过 `popiart models list` 查看可用 ID
 
 ### 6.3 视频命令映射
 
@@ -659,8 +655,7 @@ Authorization: Bearer <token>
 | --- | --- |
 | `type` | `2` |
 | `subType` | 按输入条件确定 |
-| `--model` | `aiModelCode` |
-| 解析模型结果 | `aiModelId` |
+| `--model` | `aiModelId` |
 | `prompt` | `chatPrompt` |
 | `--image` / `--from` | 上传后写入 `images[]` |
 | `--aspect-ratio` | `aspectRatio` + `ratio` |
@@ -686,8 +681,7 @@ Authorization: Bearer <token>
 | --- | --- |
 | `type` | `2` |
 | `subType` | `205` |
-| `--model` | `aiModelCode` |
-| 解析模型结果 | `aiModelId` |
+| `--model` | `aiModelId` |
 | `--image` | 上传后写入 `images[]` |
 | `--video` | 上传后写入 `videos[]` |
 | `prompt` | `chatPrompt` |
@@ -706,8 +700,7 @@ Authorization: Bearer <token>
 | --- | --- |
 | `type` | `2` |
 | `subType` | 按输入条件确定 |
-| `--model` | `aiModelCode` |
-| 解析模型结果 | `aiModelId` |
+| `--model` | `aiModelId` |
 | `prompt` | `chatPrompt` |
 | `--image` | 上传后写入 `images[]` |
 | `--video` | 上传后写入 `videos[]` |
@@ -733,8 +726,7 @@ Authorization: Bearer <token>
 | --- | --- |
 | `type` | `3` |
 | `subType` | `301` |
-| `--model` | `aiModelCode` |
-| 解析模型结果 | `aiModelId` |
+| `--model` | `aiModelId` |
 | `text` | `chatPrompt` |
 | `--voice` | `voiceId` |
 | `--language` | `metadata.language` |
@@ -763,8 +755,7 @@ Authorization: Bearer <token>
 | --- | --- |
 | `type` | `3` |
 | `subType` | `301` |
-| `--model` | `aiModelCode` |
-| 解析模型结果 | `aiModelId` |
+| `--model` | `aiModelId` |
 | `prompt` + `lyrics` | `chatPrompt` |
 | `--lyrics-optimizer` | `metadata.lyrics_optimizer` |
 | `--instrumental` | `metadata.instrumental` |
@@ -893,7 +884,7 @@ Authorization: Bearer <token>
 | `invalid user` | `UNAUTHENTICATED` | 用户态无效 |
 | 参数错误，例如“请上传图片” | `VALIDATION_ERROR` | 用户输入不满足接口要求 |
 | 媒体上传失败 | `UPLOAD_FAILED` 或 `NETWORK_ERROR` | 区分上传链路 |
-| 模型匹配不到 | `MODEL_NOT_FOUND` | `aiModelCode` 无法解析 |
+| 模型匹配不到 | `MODEL_NOT_FOUND` | 显式 `aiModelId` 或默认模型候选无法解析 |
 | task 状态为 `-2` | `JOB_FAILED` | 任务执行失败 |
 | 轮询超时 | `POLL_TIMEOUT` | 与旧 CLI 保持一致 |
 
@@ -994,7 +985,7 @@ task 失败时的错误信息优先级：
 
 迁移后这套系统不再存在，因此该命令若保留，只能改成查看：
 
-- 当前 CLI 命令对应的默认 `aiModelCode`
+- 当前 CLI 命令对应的内部默认模型 code 候选
 - 通过 `ai/model/list` 解析得到的 `aiModelId`
 - 当前模型是否支持目标 `subType`
 
@@ -1028,7 +1019,7 @@ task 失败时的错误信息优先级：
 2. 改 `auth login` / `auth whoami` / `auth logout`
 3. 接入 `media/upload`
 4. 接入 `ai/model/list`
-5. 实现 `aiModelCode -> aiModelId`
+5. 实现显式 `aiModelId` 查找和默认 code 候选解析
 6. 改 `image` / `video` / `audio` / `speech` / `music` / `image describe`
 7. 改 `--wait` 到 task 轮询
 8. 补错误映射

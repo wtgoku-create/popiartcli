@@ -247,8 +247,8 @@ func TestExportSchemaSpeechSynthesizeDefaultsToMiniMaxSpeechModel(t *testing.T) 
 	parameters := tools[0]["parameters"].(map[string]any)
 	properties := parameters["properties"].(map[string]any)
 	model := properties["model"].(map[string]any)
-	if model["default"] != defaultMiniMaxSpeechModelID {
-		t.Fatalf("expected default MiniMax speech model, got %#v", model["default"])
+	if model["default"] != nil {
+		t.Fatalf("did not expect model ID flag to expose a code default, got %#v", model["default"])
 	}
 	if properties["pronunciation"] == nil || properties["subtitles"] == nil {
 		t.Fatalf("expected speech-specific flags, got %#v", properties)
@@ -334,7 +334,7 @@ func TestExportSchemaMusicGenerateIncludesPromptLyricsOptions(t *testing.T) {
 		t.Fatalf("expected music-specific flags, got %#v", properties)
 	}
 	model := properties["model"].(map[string]any)
-	if model["default"] != defaultMiniMaxMusicModelID {
-		t.Fatalf("expected default MiniMax music model, got %#v", model["default"])
+	if model["default"] != nil {
+		t.Fatalf("did not expect model ID flag to expose a code default, got %#v", model["default"])
 	}
 }

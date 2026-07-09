@@ -118,12 +118,12 @@ func executeImageDescribeCommand(cmd *cobra.Command, payload, preview map[string
 	}
 	if dryRunMode(cmd) {
 		return writeDryRunPreview(cmd, "image.describe", map[string]any{
-			"model_id": model.Code,
+			"model_id": model.ID,
 			"source":   preview["source"],
 			"request": map[string]any{
 				"method": "POST",
 				"path":   "/api_client/anime/task/create",
-				"body":   req,
+				"body":   popiart.NormalizeTaskRequest(req),
 			},
 		})
 	}
@@ -136,7 +136,7 @@ func executeImageDescribeCommand(cmd *cobra.Command, payload, preview map[string
 	taskID := task.Identifier()
 	if taskID == "" {
 		return output.NewError("CLI_ERROR", "图片描述响应缺少 task_id", map[string]any{
-			"model_id": model.Code,
+			"model_id": model.ID,
 		})
 	}
 
@@ -162,7 +162,7 @@ func executeImageDescribeCommand(cmd *cobra.Command, payload, preview map[string
 	result := map[string]any{
 		"job_id":             taskID,
 		"task_id":            taskID,
-		"model_id":           model.Code,
+		"model_id":           model.ID,
 		"description_prompt": descriptionPrompt,
 	}
 	if source := preview["source"]; source != nil {

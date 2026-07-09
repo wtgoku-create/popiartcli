@@ -249,7 +249,7 @@ func TaskOutput(task TaskDetail, model Model, extras map[string]any) map[string]
 		"job_id":   taskID,
 		"task_id":  taskID,
 		"status":   int(task.Status),
-		"model":    model.Code,
+		"model":    model.ID,
 		"type":     int(task.Type),
 		"sub_type": int(task.SubType),
 	}

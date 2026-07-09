@@ -28,6 +28,18 @@ func decodeMetadataJSONForTest(t *testing.T, raw any) map[string]any {
 	return metadata
 }
 
+func assertTaskModelIDOnlyForTest(t *testing.T, body map[string]any, want float64) {
+	t.Helper()
+	for _, key := range []string{"model", "aiModelCode", "aiModelCodeAlias", "aiModelname"} {
+		if _, ok := body[key]; ok {
+			t.Fatalf("%s should not be sent: %#v", key, body[key])
+		}
+	}
+	if body["aiModelId"] != want {
+		t.Fatalf("unexpected aiModelId: got=%#v want=%#v", body["aiModelId"], want)
+	}
+}
+
 func TestImageGenerateCommandSubmitsOfficialRuntimeJob(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
@@ -42,9 +54,7 @@ func TestImageGenerateCommandSubmitsOfficialRuntimeJob(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "seedream-4-5-251128" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 101)
 			if body["chatPrompt"] != "hero poster" {
 				t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
 			}
@@ -132,9 +142,7 @@ func TestImageGenerateAllowsArrayUploadImageLimitFromModelList(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "Nano-banana-pro" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 101)
 			if body["chatPrompt"] != "一只小狗" {
 				t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
 			}
@@ -225,9 +233,7 @@ func TestImageGenerateModelOverrideUsesModelsInfer(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCodeAlias"] != "gemini-3-pro-image-preview" {
-				t.Fatalf("unexpected aiModelCodeAlias: %#v", body["aiModelCodeAlias"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 101)
 			if body["chatPrompt"] != "hero poster" {
 				t.Fatalf("unexpected prompt: %#v", body["chatPrompt"])
 			}
@@ -246,7 +252,7 @@ func TestImageGenerateModelOverrideUsesModelsInfer(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"image", "generate",
 		"--prompt", "hero poster",
-		"--model", "gemini-3-pro-image-preview",
+		"--model", "101",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -272,9 +278,7 @@ func TestImageDescribeReturnsDescriptionPrompt(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "gemini-2.5-flash" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 501)
 			images := body["images"].([]any)
 			if len(images) != 1 || images[0] != "https://example.com/source.png" {
 				t.Fatalf("unexpected images payload: %#v", body["images"])
@@ -300,7 +304,7 @@ func TestImageDescribeReturnsDescriptionPrompt(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"image", "describe",
 		"--image", "https://example.com/source.png",
-		"--model", "gemini-2.5-flash",
+		"--model", "501",
 		"--prompt", "请写成适合文生图反推的 prompt",
 	})
 
@@ -327,18 +331,7 @@ func TestImageGenerateAutofillsTaskFieldsFromModelList(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "Nano-banana-pro" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
-			if body["aiModelCodeAlias"] != "gemini-3-pro-image-preview" {
-				t.Fatalf("unexpected aiModelCodeAlias: %#v", body["aiModelCodeAlias"])
-			}
-			if body["aiModelname"] != "popi-banana-pro" {
-				t.Fatalf("unexpected aiModelname: %#v", body["aiModelname"])
-			}
-			if body["aiModelId"] != float64(1) {
-				t.Fatalf("unexpected aiModelId: %#v", body["aiModelId"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 1)
 			if body["aspectRatio"] != "21:9" || body["ratio"] != "21:9" {
 				t.Fatalf("unexpected ratio payload: %#v", body)
 			}
@@ -360,7 +353,7 @@ func TestImageGenerateAutofillsTaskFieldsFromModelList(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"image", "generate",
 		"--prompt", "猫头鹰海报",
-		"--model", "Nano-banana-pro",
+		"--model", "1",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -411,7 +404,7 @@ func TestImageDescribeHydratesArtifactURLWhenAvailable(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"image", "describe",
 		"--source-artifact-id", "art_source_vision_1",
-		"--model", "gemini-2.5-flash",
+		"--model", "501",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -437,7 +430,7 @@ func TestImageDescribeDryRunShowsModelsInferRequest(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"image", "describe",
 		"--image", "https://example.com/source.png",
-		"--model", "gemini-2.5-flash",
+		"--model", "501",
 		"--dry-run",
 	})
 
@@ -445,7 +438,7 @@ func TestImageDescribeDryRunShowsModelsInferRequest(t *testing.T) {
 	if data["action"] != "image.describe" {
 		t.Fatalf("unexpected action: %#v", data["action"])
 	}
-	if data["model_id"] != "gemini-2.5-flash" {
+	if data["model_id"] != float64(501) {
 		t.Fatalf("unexpected model_id: %#v", data["model_id"])
 	}
 	request := data["request"].(map[string]any)
@@ -519,9 +512,7 @@ func TestImageImg2ImgUploadsLocalImageBeforeSubmittingJob(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode task body: %v", err)
 			}
-			if body["aiModelCode"] != "seedream-4-5-251128" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 101)
 			images := body["images"].([]any)
 			if len(images) != 1 || images[0] != "https://media.popi.test/source.png" {
 				t.Fatalf("unexpected images payload: %#v", body["images"])
@@ -713,9 +704,7 @@ func TestImageTransformModelOverrideSubmitsTaskRequest(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "seedream-4-5-251128" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 101)
 			images := body["images"].([]any)
 			if len(images) != 3 || images[0] != "https://media.popi.test/source.png" || images[1] != "https://media.popi.test/ref-1.png" || images[2] != "https://media.popi.test/ref-2.png" {
 				t.Fatalf("unexpected images payload: %#v", body["images"])
@@ -734,7 +723,7 @@ func TestImageTransformModelOverrideSubmitsTaskRequest(t *testing.T) {
 		"--identity-reference-artifact-id", "art_ref_1",
 		"--style-reference-artifact-id", "art_ref_2",
 		"--prompt", "restyle it",
-		"--model", "seedream-4-5-251128",
+		"--model", "101",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -787,9 +776,7 @@ func TestVideoGenerateUploadsLocalImageBeforeSubmittingJob(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode task body: %v", err)
 			}
-			if body["aiModelCode"] != "viduq2-pro-fast" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 203)
 			images := body["images"].([]any)
 			if len(images) != 1 || images[0] != "https://media.popi.test/source.png" {
 				t.Fatalf("unexpected images payload: %#v", body["images"])
@@ -931,9 +918,7 @@ func TestVideoGenerateWithPromptEnhancerUsesMainSiteLLMChat(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode task body: %v", err)
 			}
-			if body["aiModelCode"] != "viduq2-pro-fast" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 203)
 			if body["chatPrompt"] != "保留人物姿态，头发轻微摆动，人物轻轻转头，镜头缓慢推进，背景有自然风动。" {
 				t.Fatalf("unexpected enhanced prompt in task request: %#v", body["chatPrompt"])
 			}
@@ -957,8 +942,8 @@ func TestVideoGenerateWithPromptEnhancerUsesMainSiteLLMChat(t *testing.T) {
 		"video", "generate",
 		"--image", "https://example.com/source.png",
 		"--prompt", "让人物轻轻转头，镜头慢慢推进",
-		"--prompt-enhancer-model", "gemini-2.5-flash",
-		"--model", "viduq2-pro-fast",
+		"--prompt-enhancer-model", "501",
+		"--model", "203",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -969,7 +954,7 @@ func TestVideoGenerateWithPromptEnhancerUsesMainSiteLLMChat(t *testing.T) {
 		t.Fatalf("unexpected resolved_prompt: %#v", data["resolved_prompt"])
 	}
 	enhancement := data["prompt_enhancement"].(map[string]any)
-	if enhancement["model_id"] != "gemini-2.5-flash" {
+	if enhancement["model_id"] != float64(501) {
 		t.Fatalf("unexpected prompt enhancement model_id: %#v", enhancement["model_id"])
 	}
 	if enhancement["enhanced_prompt"] != data["resolved_prompt"] {
@@ -995,8 +980,8 @@ func TestVideoGeneratePromptEnhancerDryRunShowsTwoStageRequests(t *testing.T) {
 		"video", "generate",
 		"--image", "https://example.com/source.png",
 		"--prompt", "make it cinematic",
-		"--prompt-enhancer-model", "gemini-2.5-flash",
-		"--model", "viduq2-pro-fast",
+		"--prompt-enhancer-model", "501",
+		"--model", "203",
 		"--dry-run",
 	})
 
@@ -1005,7 +990,7 @@ func TestVideoGeneratePromptEnhancerDryRunShowsTwoStageRequests(t *testing.T) {
 		t.Fatalf("unexpected execution_mode: %#v", data["execution_mode"])
 	}
 	enhancement := data["prompt_enhancement"].(map[string]any)
-	if enhancement["model_id"] != "gemini-2.5-flash" {
+	if enhancement["model_id"] != "501" {
 		t.Fatalf("unexpected prompt enhancement model_id: %#v", enhancement["model_id"])
 	}
 	enhancementReq := enhancement["request"].(map[string]any)
@@ -1013,7 +998,7 @@ func TestVideoGeneratePromptEnhancerDryRunShowsTwoStageRequests(t *testing.T) {
 		t.Fatalf("unexpected llmChat dry-run path: %#v", enhancementReq["path"])
 	}
 	videoGeneration := data["video_generation"].(map[string]any)
-	if videoGeneration["model_id"] != "viduq2-pro-fast" {
+	if videoGeneration["model_id"] != float64(203) {
 		t.Fatalf("unexpected video_generation model_id: %#v", videoGeneration["model_id"])
 	}
 	request := videoGeneration["request"].(map[string]any)
@@ -1073,8 +1058,8 @@ func TestVideoGeneratePromptEnhancerHydratesArtifactURLWhenAvailable(t *testing.
 		"video", "generate",
 		"--source-artifact-id", "art_source_1",
 		"--prompt", "轻一点",
-		"--prompt-enhancer-model", "gemini-2.5-flash",
-		"--model", "viduq2-pro-fast",
+		"--prompt-enhancer-model", "501",
+		"--model", "203",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -1113,9 +1098,7 @@ func TestVideoActionTransferUsesJimengDreamActorPayload(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != defaultJimengActionTransferModelID {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 205)
 			if body["subType"] != float64(205) {
 				t.Fatalf("unexpected subType: %#v", body["subType"])
 			}
@@ -1205,9 +1188,7 @@ func TestVideoSeedanceUsesDefaultModelAndTaskFieldNames(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != defaultSeedanceVideoModelID {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 203)
 			if body["subType"] != float64(203) {
 				t.Fatalf("unexpected subType: %#v", body["subType"])
 			}
@@ -1323,9 +1304,7 @@ func TestVideoSeedanceStartEndFramesKeepsImageDataURLs(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != defaultSeedanceVideoModelID {
-				t.Fatalf("unexpected model: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 204)
 			images := body["images"].([]any)
 			if len(images) != 2 || images[0] != "https://media.popi.test/frame-uploaded.jpg" || images[1] != "https://media.popi.test/frame-uploaded.jpg" {
 				t.Fatalf("unexpected start/end images: %#v", body["images"])
@@ -1418,9 +1397,7 @@ func TestVideoSeedanceWaitPollsTaskAndSurfacesDownloadURL(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != defaultSeedanceVideoModelID {
-				t.Fatalf("unexpected model: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 203)
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_seedance_wait_1","status":0,"type":2,"subType":203}}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/detail":
 			pollCount++
@@ -1501,9 +1478,7 @@ func TestAudioTTSCommandReadsTextFileAndSubmitsJob(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != defaultMiniMaxSpeechModelID {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 301)
 			if body["chatPrompt"] != "hello from file" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
@@ -1549,15 +1524,7 @@ func TestAudioTTSAutofillsTaskFieldsFromModelList(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "speech-2.8-hd" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
-			if body["aiModelCodeAlias"] != "minimax-speech-2.8-hd" {
-				t.Fatalf("unexpected aiModelCodeAlias: %#v", body["aiModelCodeAlias"])
-			}
-			if body["aiModelname"] != "popi-speech-hd" {
-				t.Fatalf("unexpected aiModelname: %#v", body["aiModelname"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 301)
 			if body["aiModelId"] != float64(301) {
 				t.Fatalf("unexpected aiModelId: %#v", body["aiModelId"])
 			}
@@ -1579,7 +1546,7 @@ func TestAudioTTSAutofillsTaskFieldsFromModelList(t *testing.T) {
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"audio", "tts",
-		"--model", "minimax-speech-2.8-hd",
+		"--model", "301",
 		"--text", "你好，世界",
 		"--voice", "female_01",
 		"--format", "mp3",
@@ -1650,15 +1617,7 @@ func TestVideoImg2VideoAutofillsTaskFieldsFromModelList(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "kling-video-omni" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
-			if body["aiModelCodeAlias"] != "kling-video-o1" {
-				t.Fatalf("unexpected aiModelCodeAlias: %#v", body["aiModelCodeAlias"])
-			}
-			if body["aiModelname"] != "kling-video-o1" {
-				t.Fatalf("unexpected aiModelname: %#v", body["aiModelname"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 27)
 			if body["aiModelId"] != float64(27) {
 				t.Fatalf("unexpected aiModelId: %#v", body["aiModelId"])
 			}
@@ -1689,7 +1648,7 @@ func TestVideoImg2VideoAutofillsTaskFieldsFromModelList(t *testing.T) {
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"video", "img2video",
-		"--model", "kling-video-o1",
+		"--model", "27",
 		"--image", "https://example.com/source.png",
 		"--prompt", "subtle camera move",
 	})
@@ -1729,7 +1688,7 @@ func TestVideoImg2VideoAllowsZeroUploadImageLimitFromModelList(t *testing.T) {
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"video", "img2video",
-		"--model", "kling-v3",
+		"--model", "48",
 		"--image", "https://example.com/source.png",
 		"--prompt", "subtle camera move",
 	})
@@ -1918,9 +1877,7 @@ func TestSpeechSynthesizeModelOverrideUsesModelsInfer(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "speech-2.6" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 301)
 			if body["chatPrompt"] != "hello from override" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
@@ -1936,7 +1893,7 @@ func TestSpeechSynthesizeModelOverrideUsesModelsInfer(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"speech", "synthesize",
 		"--text", "hello from override",
-		"--model", "speech-2.6",
+		"--model", "301",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -1962,9 +1919,7 @@ func TestMusicGenerateUsesDefaultMiniMaxModel(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != defaultMiniMaxMusicModelID {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 401)
 			if body["chatPrompt"] != "Upbeat pop\n\nlyrics:\nLa la la" {
 				t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
 			}
@@ -2009,15 +1964,7 @@ func TestMusicGenerateAutofillsTaskFieldsFromModelList(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["aiModelCode"] != "write_full_song" {
-				t.Fatalf("unexpected aiModelCode: %#v", body["aiModelCode"])
-			}
-			if body["aiModelCodeAlias"] != "write_full_song" {
-				t.Fatalf("unexpected aiModelCodeAlias: %#v", body["aiModelCodeAlias"])
-			}
-			if body["aiModelname"] != "write-full-song" {
-				t.Fatalf("unexpected aiModelname: %#v", body["aiModelname"])
-			}
+			assertTaskModelIDOnlyForTest(t, body, 402)
 			if body["aiModelId"] != float64(402) {
 				t.Fatalf("unexpected aiModelId: %#v", body["aiModelId"])
 			}
@@ -2035,7 +1982,7 @@ func TestMusicGenerateAutofillsTaskFieldsFromModelList(t *testing.T) {
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"music", "generate",
-		"--model", "write_full_song",
+		"--model", "402",
 		"--prompt", "anthemic chorus",
 		"--lyrics", "shine on",
 	})
@@ -2135,12 +2082,12 @@ func TestMusicGenerateDryRunLoadsLyricsFile(t *testing.T) {
 	})
 
 	data := resp["data"].(map[string]any)
-	if data["model_id"] != defaultMiniMaxMusicModelID {
+	if data["model_id"] != float64(401) {
 		t.Fatalf("unexpected model_id: %#v", data["model_id"])
 	}
 	request := data["request"].(map[string]any)
 	body := request["body"].(map[string]any)
-	metadata := body["metadata"].(map[string]any)
+	metadata := decodeMetadataJSONForTest(t, body["metadata"])
 	if metadata["lyrics"] != "line one\nline two" {
 		t.Fatalf("unexpected lyrics payload: %#v", metadata["lyrics"])
 	}
@@ -2177,7 +2124,7 @@ func TestMusicGenerateUsesGatewayFieldNames(t *testing.T) {
 	if body["subType"] != float64(304) {
 		t.Fatalf("expected music subType=304, got %#v", body["subType"])
 	}
-	metadata := body["metadata"].(map[string]any)
+	metadata := decodeMetadataJSONForTest(t, body["metadata"])
 	if metadata["is_instrumental"] != true {
 		t.Fatalf("expected gateway is_instrumental field, got %#v", metadata)
 	}
@@ -2206,7 +2153,7 @@ func TestMusicGenerateUsesModelBackedSubType305WhenOnly305Supported(t *testing.T
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"music", "generate",
-		"--model", "write_full_song",
+		"--model", "402",
 		"--prompt", "anthemic chorus",
 		"--lyrics", "shine on",
 		"--dry-run",
@@ -2226,7 +2173,7 @@ func TestMusicCoverRequiresExactlyOneAudioSource(t *testing.T) {
 
 	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
 		"music", "generate",
-		"--model", "music-cover",
+		"--model", "403",
 		"--prompt", "female pop cover",
 		"--dry-run",
 	})

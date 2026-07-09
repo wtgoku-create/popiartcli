@@ -29,12 +29,35 @@ func TestFetchModelsAndResolveCandidateModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchModels returned error: %v", err)
 	}
-	model, err := ResolveCandidateModel(models, "seedance-alias", nil, 203)
+	model, err := ResolveCandidateModel(models, "101", nil, 203)
 	if err != nil {
 		t.Fatalf("ResolveCandidateModel returned error: %v", err)
 	}
 	if model.Code != "seedance-main" {
 		t.Fatalf("unexpected model: %#v", model)
+	}
+}
+
+func TestResolveCandidateModelRequiresExplicitModelID(t *testing.T) {
+	models := []Model{
+		{
+			ID:               101,
+			Code:             "seedance-main",
+			AIModelCodeAlias: StringList{"seedance-alias"},
+			Categories:       []ModelCategory{{TaskSubType: 203}},
+		},
+	}
+
+	if _, err := ResolveCandidateModel(models, "seedance-alias", nil, 203); err == nil {
+		t.Fatal("expected alias lookup to fail for explicit --model")
+	}
+
+	model, err := ResolveCandidateModel(models, "", []string{"seedance-alias"}, 203)
+	if err != nil {
+		t.Fatalf("expected default alias lookup to keep working, got %v", err)
+	}
+	if model.ID != 101 {
+		t.Fatalf("unexpected default model: %#v", model)
 	}
 }
 

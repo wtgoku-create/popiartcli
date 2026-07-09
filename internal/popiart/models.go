@@ -66,18 +66,48 @@ func ResolveModelByCodeAndSubtype(models []Model, code string, subType int) (Mod
 	return fallback, hasFallback
 }
 
-// ResolveCandidateModel 根据显式模型或默认候选池解析最终模型。
-func ResolveCandidateModel(models []Model, requestedCode string, defaults []string, subType int) (Model, error) {
-	if strings.TrimSpace(requestedCode) != "" {
-		model, ok := ResolveModelByCodeAndSubtype(models, requestedCode, subType)
+// ResolveModelByIDAndSubtype 在重复模型 ID 的情况下优先返回真正支持目标子类型的模型。
+func ResolveModelByIDAndSubtype(models []Model, id string, subType int) (Model, bool) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Model{}, false
+	}
+
+	requestedID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return Model{}, false
+	}
+
+	var fallback Model
+	var hasFallback bool
+	for _, model := range models {
+		if model.ID != requestedID {
+			continue
+		}
+		if !hasFallback {
+			fallback = model
+			hasFallback = true
+		}
+		if subType == 0 || SupportsSubType(model, subType) {
+			return model, true
+		}
+	}
+	return fallback, hasFallback
+}
+
+// ResolveCandidateModel 根据显式模型 ID 或默认候选池解析最终模型。
+func ResolveCandidateModel(models []Model, requestedID string, defaults []string, subType int) (Model, error) {
+	if strings.TrimSpace(requestedID) != "" {
+		model, ok := ResolveModelByIDAndSubtype(models, requestedID, subType)
 		if !ok {
 			return Model{}, output.NewError("MODEL_NOT_FOUND", "未找到匹配模型", map[string]any{
-				"model": requestedCode,
+				"model": requestedID,
+				"hint":  "--model 现在需要传主站 aiModelId，可先用 `popiart models list` 查看 id",
 			})
 		}
 		if subType != 0 && !SupportsSubType(model, subType) {
 			return Model{}, output.NewError("MODEL_SUBTYPE_UNSUPPORTED", "模型不支持当前任务子类型", map[string]any{
-				"model":    requestedCode,
+				"model":    requestedID,
 				"sub_type": subType,
 			})
 		}

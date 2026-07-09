@@ -124,8 +124,13 @@ func TestModelsListFiltersByCapability(t *testing.T) {
 		t.Fatalf("unexpected items payload: %#v", data["items"])
 	}
 	item := items[0].(map[string]any)
-	if item["code"] != "image-main" {
+	if item["id"] != float64(101) {
 		t.Fatalf("unexpected item payload: %#v", item)
+	}
+	for _, key := range []string{"code", "name", "ai_model_code_alias"} {
+		if _, ok := item[key]; ok {
+			t.Fatalf("%s should not be exposed in models list output: %#v", key, item[key])
+		}
 	}
 }
 

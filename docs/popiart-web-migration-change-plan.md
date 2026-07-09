@@ -46,7 +46,7 @@ Date: `2026-06-10`
 
 - 主站接口路径
 - 请求/响应结构
-- `aiModelCode -> aiModelId` 解析
+- 显式 `aiModelId` 查找和默认 code 候选解析
 - 模型能力校验
 - task 创建与轮询
 - 主站错误到 CLI 错误码的映射
@@ -90,7 +90,7 @@ Date: `2026-06-10`
 | `internal/popiart/tasks.go` | `task/create`、`task/detail`、`downloadUrls`、状态映射 |
 | `internal/popiart/mapper.go` | CLI flags 到主站请求体映射 |
 | `internal/popiart/errors.go` | 主站错误文案到 CLI 错误码映射 |
-| `internal/popiart/defaults.go` | 默认 `aiModelCode` 配置 |
+| `internal/popiart/defaults.go` | 内部默认模型 code 候选配置 |
 
 ### 3.3 第一阶段明确不改的文件
 
@@ -179,7 +179,7 @@ Date: `2026-06-10`
 
 目标：
 
-- 从“命令内硬编码默认模型”转成“默认 `aiModelCode` + 运行时解析”
+- 从“命令内硬编码默认模型”转成“内部默认模型 code 候选 + 运行时解析”
 - 把模型能力判断写成统一前置步骤
 
 改动边界：
@@ -190,7 +190,8 @@ Date: `2026-06-10`
 
 完成标准：
 
-- 支持 `code` / `aiModelCodeAlias` 匹配
+- 显式用户 `--model` 按主站 `aiModelId` 匹配
+- 内部默认候选支持 `code` / `aiModelCodeAlias` 匹配
 - 统一检查：
   - `categories[].taskSubType`
   - `isSupportImages`
@@ -217,7 +218,7 @@ Date: `2026-06-10`
 
 完成标准：
 
-- `image generate` -> `type=1/subType=102`
+- `image generate` -> `type=1/subType=103`
 - `image img2img` / `transform` -> `type=1/subType=103`
 - `image describe` -> `type=5/subType=501`
 - `audio tts` / `speech synthesize` / `music generate` -> `type=3/subType=301`
