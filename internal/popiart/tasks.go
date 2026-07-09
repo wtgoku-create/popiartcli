@@ -28,7 +28,7 @@ func GetTaskDetail(ctx context.Context, client *api.Client, id string) (TaskDeta
 	if err := client.GetJSON(ctx, "/api_client/anime/task/detail", map[string]string{"id": id}, &payload); err != nil {
 		return TaskDetail{}, NormalizeAPIError(err)
 	}
-	task := normalizeTaskDetail(payload)
+	task := normalizeTaskResponse(payload)
 	if task.TaskID == "" && task.ID != "" {
 		task.TaskID = task.ID
 	}
@@ -225,6 +225,10 @@ func normalizeTaskDetail(value any) TaskDetail {
 }
 
 func normalizeTaskCreateResponse(payload any) TaskDetail {
+	return normalizeTaskResponse(payload)
+}
+
+func normalizeTaskResponse(payload any) TaskDetail {
 	task := normalizeTaskDetail(payload)
 	if task.Identifier() != "" {
 		return task

@@ -157,6 +157,33 @@ func TestWaitForTaskSupportsStringStatus(t *testing.T) {
 	}
 }
 
+func TestWaitForTaskSupportsArrayDetailResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api_client/anime/task/detail":
+			fmt.Fprint(w, `{"data":[{"id":7003,"status":2,"type":1,"subType":103}],"message":"ok","status":"0000"}`)
+		case "/api_client/anime/task/downloadUrls":
+			fmt.Fprint(w, `{"data":[{"url":"https://cdn.popi.art/result.jpeg"}],"message":"ok","status":"0000"}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := api.NewClient(server.URL, "pk-demo")
+	task, err := WaitForTask(context.Background(), client, "7003", time.Millisecond, 1)
+	if err != nil {
+		t.Fatalf("WaitForTask returned error: %v", err)
+	}
+	if task.Identifier() != "7003" || int(task.Status) != 2 {
+		t.Fatalf("unexpected task payload: %#v", task)
+	}
+	if len(task.DownloadURLs) != 1 || task.DownloadURLs[0] != "https://cdn.popi.art/result.jpeg" {
+		t.Fatalf("unexpected download urls: %#v", task.DownloadURLs)
+	}
+}
+
 func TestCreateTaskSerializesMetadataAsJSONString(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api_client/anime/task/create" {

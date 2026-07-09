@@ -223,3 +223,48 @@ func TestModelsRoutesReturnsDefaultModelSelection(t *testing.T) {
 		t.Fatalf("unexpected resolved model id: %#v", item)
 	}
 }
+
+func TestModelsRoutesIncludesImageText2Image(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api_client/anime/ai/model/list" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if got := r.URL.Query().Get("origin"); got != "web" {
+			t.Fatalf("expected origin=web, got %q", got)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":23,"code":"Nano-banana-pro","categories":[{"taskSubType":106}],"isSupportImages":true},{"id":78,"code":"Nano-banana-pro","categories":[{"taskSubType":103}],"isSupportImages":true}]}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"models", "routes",
+		"--route", "image.text2image",
+	})
+
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object, got %#v", resp["data"])
+	}
+	items, ok := data["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("unexpected items payload: %#v", data["items"])
+	}
+	item := items[0].(map[string]any)
+	if item["command"] != "image.text2image" {
+		t.Fatalf("unexpected route summary: %#v", item)
+	}
+	if item["default_ai_model_code"] != "Nano-banana-pro" {
+		t.Fatalf("unexpected default model code: %#v", item)
+	}
+	if item["resolved_ai_model_id"] != "78" {
+		t.Fatalf("unexpected resolved model id: %#v", item)
+	}
+}

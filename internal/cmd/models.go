@@ -251,6 +251,7 @@ type routeModelView struct {
 type defaultRouteMapping struct {
 	RouteKey string
 	Command  string
+	SubType  int
 }
 
 // filterModelsForList 先满足迁移期最常见的 capability 过滤需求，其余过滤词走宽松匹配。
@@ -325,15 +326,19 @@ func resolveRouteSummaries(models []popiart.Model, routeKey, legacyRouteKey stri
 			Command:    mapping.RouteKey,
 			SelectedBy: "default",
 		}
-		if len(candidates) > 0 {
-			item.DefaultAIModelCode = candidates[0]
-			item.Aliases = append([]string(nil), candidates...)
-		}
-		if len(candidates) > 0 {
-			if model, ok := popiart.ResolveModelByCode(models, candidates[0]); ok {
-				item.ResolvedAIModelID = strconv.FormatInt(model.ID, 10)
-				item.SupportedSubTypes = modelSubTypes(model)
+		item.Aliases = append([]string(nil), candidates...)
+		for _, candidate := range candidates {
+			model, ok := popiart.ResolveModelByCodeAndSubtype(models, candidate, mapping.SubType)
+			if !ok {
+				continue
 			}
+			if mapping.SubType != 0 && !popiart.SupportsSubType(model, mapping.SubType) {
+				continue
+			}
+			item.DefaultAIModelCode = candidate
+			item.ResolvedAIModelID = strconv.FormatInt(model.ID, 10)
+			item.SupportedSubTypes = modelSubTypes(model)
+			break
 		}
 		items = append(items, item)
 	}
@@ -348,11 +353,14 @@ func resolveRouteSummaries(models []popiart.Model, routeKey, legacyRouteKey stri
 
 func defaultRouteMappings() []defaultRouteMapping {
 	return []defaultRouteMapping{
+		{RouteKey: "image.text2image", Command: "image.generate", SubType: 103},
+		{RouteKey: "image.img2img", Command: "image.img2img", SubType: 103},
+		{RouteKey: "video.image2video", Command: "video.generate", SubType: 202},
 		{RouteKey: "video.seedance", Command: "video.seedance"},
-		{RouteKey: "video.action-transfer", Command: "video.action-transfer"},
-		{RouteKey: "audio.tts", Command: "audio.tts"},
-		{RouteKey: "speech.synthesize", Command: "speech.synthesize"},
-		{RouteKey: "music.generate", Command: "music.generate"},
+		{RouteKey: "video.action-transfer", Command: "video.action-transfer", SubType: 205},
+		{RouteKey: "audio.tts", Command: "audio.tts", SubType: 301},
+		{RouteKey: "speech.synthesize", Command: "speech.synthesize", SubType: 301},
+		{RouteKey: "music.generate", Command: "music.generate", SubType: 301},
 	}
 }
 
