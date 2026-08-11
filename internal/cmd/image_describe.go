@@ -30,6 +30,8 @@ func newImageDescribeCmd() *cobra.Command {
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
 	cmd.Flags().String("prompt", "", "可选附加说明，告诉模型描述重点或输出风格")
 	cmd.Flags().String("notes", "", "额外约束说明")
+	cmd.Flags().Bool("download", false, "任务成功后将结果文件直接下载到本地")
+	cmd.Flags().StringP("dir", "d", "", "下载输出目录（默认：./<task-id>，仅在 --download 时生效）")
 	cmd.Flags().String("interval", "2000", "轮询间隔（毫秒，默认：2000）")
 	cmd.Flags().String("priority", "normal", "作业优先级: low | normal | high")
 	cmd.Flags().String("idempotency-key", "", "用于安全重试的幂等键")
@@ -167,6 +169,18 @@ func executeImageDescribeCommand(cmd *cobra.Command, payload, preview map[string
 	}
 	if source := preview["source"]; source != nil {
 		result["source"] = source
+	}
+	if downloadResultRequested(cmd) {
+		files, err := downloadCompletedTaskResults(cmd, completedTask)
+		if err != nil {
+			return err
+		}
+		if descriptionPrompt == firstTaskResultURL(completedTask) || descriptionPrompt == firstTaskDownloadURL(completedTask) {
+			delete(result, "description_prompt")
+		}
+		delete(result, "source")
+		result["artifacts_downloaded"] = len(files)
+		result["files"] = files
 	}
 	return writeOutput(cmd, result)
 }
