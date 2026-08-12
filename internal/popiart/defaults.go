@@ -1,5 +1,7 @@
 package popiart
 
+const DefaultVoiceID = "male-qn-qingse"
+
 var defaultModelCandidates = map[string][]string{
 	"image":                 {"Nano-banana-pro", "gemini-3-pro-image-preview", "seedream-4-5-251128"},
 	"image.generate":        {"Nano-banana-pro", "gemini-3-pro-image-preview", "seedream-4-5-251128"},

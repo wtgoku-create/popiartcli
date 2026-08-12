@@ -194,6 +194,28 @@ func TestExportSchemaVideoSeedanceRequiresPromptOrVisualReference(t *testing.T) 
 	}
 }
 
+func TestExportSchemaVideoGenerateIncludesStartEndFrameFlags(t *testing.T) {
+	root := NewRootCmd("0.test")
+
+	stdout, stderr, err := executeRootRaw(root, []string{
+		"export-schema",
+		"--command", "video generate",
+		"--format", "generic",
+	})
+	if err != nil {
+		t.Fatalf("export-schema failed: %v stderr=%s", err, stderr)
+	}
+
+	var tools []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &tools); err != nil {
+		t.Fatalf("unmarshal export-schema output: %v output=%q", err, stdout)
+	}
+	properties := tools[0]["input_schema"].(map[string]any)["properties"].(map[string]any)
+	if properties["last_frame"] == nil || properties["last_frame_artifact_id"] == nil || properties["size"] == nil {
+		t.Fatalf("expected start-end-frame video flags, got %#v", properties)
+	}
+}
+
 func TestExportSchemaOpenAICompletionCommandUsesShellEnum(t *testing.T) {
 	root := NewRootCmd("0.test")
 
@@ -250,8 +272,11 @@ func TestExportSchemaSpeechSynthesizeDefaultsToMiniMaxSpeechModel(t *testing.T) 
 	if model["default"] != nil {
 		t.Fatalf("did not expect model ID flag to expose a code default, got %#v", model["default"])
 	}
-	if properties["pronunciation"] == nil || properties["subtitles"] == nil {
+	if properties["speed"] == nil || properties["volume"] == nil || properties["pitch"] == nil {
 		t.Fatalf("expected speech-specific flags, got %#v", properties)
+	}
+	if properties["pronunciation"] != nil || properties["subtitles"] != nil {
+		t.Fatalf("did not expect unsupported speech flags, got %#v", properties)
 	}
 }
 
@@ -330,7 +355,7 @@ func TestExportSchemaMusicGenerateIncludesPromptLyricsOptions(t *testing.T) {
 		t.Fatalf("expected oneOf requirement, got %#v", parameters)
 	}
 	properties := parameters["properties"].(map[string]any)
-	if properties["lyrics_optimizer"] == nil || properties["instrumental"] == nil {
+	if properties["title"] == nil || properties["audio_url"] == nil {
 		t.Fatalf("expected music-specific flags, got %#v", properties)
 	}
 	model := properties["model"].(map[string]any)

@@ -314,10 +314,21 @@ func normalizeTaskRequest(req TaskRequest) map[string]any {
 		"type":      req.Type,
 		"subType":   req.SubType,
 		"aiModelId": req.AIModelID,
-		"styleId":   req.StyleID,
-		"width":     req.Width,
-		"height":    req.Height,
 		"batchSize": req.BatchSize,
+	}
+	if req.Origin != "" {
+		body["origin"] = req.Origin
+	}
+	if req.MinimalBody && req.Model != "" {
+		body["model"] = req.Model
+	}
+	if req.MinimalBody && req.AIPlatform != "" {
+		body["aiPlatform"] = req.AIPlatform
+	}
+	if !req.MinimalBody {
+		body["styleId"] = req.StyleID
+		body["width"] = req.Width
+		body["height"] = req.Height
 	}
 	if req.ProjectID != 0 {
 		body["projectId"] = req.ProjectID
@@ -354,5 +365,19 @@ func normalizeTaskRequest(req TaskRequest) map[string]any {
 			body["metadata"] = string(payload)
 		}
 	}
+	if len(req.ExtraTaskParams) > 0 {
+		body["extraTaskParams"] = cloneTaskMap(req.ExtraTaskParams)
+	}
+	if len(req.AssetDraft) > 0 {
+		body["assetDraft"] = cloneTaskMap(req.AssetDraft)
+	}
 	return body
+}
+
+func cloneTaskMap(values map[string]any) map[string]any {
+	out := make(map[string]any, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }

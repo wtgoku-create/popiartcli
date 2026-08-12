@@ -68,3 +68,52 @@ func TestRunOfficialImage2VideoUsesFallbackModelForUnsupportedPrimaryDuration(t 
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
 }
+
+func TestRunOfficialImage2VideoFallbackNormalizesStartEndFrameAliases(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("POPIART_CONFIG_DIR", configDir)
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":27,"code":"viduq2-pro","isSupportImages":true,"uploadImageLimit":2,"ratio":["16:9"],"resolution":["720P"],"duration":[5],"categories":[{"taskSubType":204}]}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode task body: %v", err)
+			}
+			images, ok := body["images"].([]any)
+			if !ok || len(images) != 2 || images[0] != "https://example.com/first.jpg" || images[1] != "https://example.com/last.jpg" {
+				t.Fatalf("unexpected images: %#v", body["images"])
+			}
+			if body["subType"] != float64(204) {
+				t.Fatalf("unexpected subType: %#v", body["subType"])
+			}
+			metadata := decodeMetadataJSONForTest(t, body["metadata"])
+			if metadata["action"] != "firstTailGenerate" {
+				t.Fatalf("unexpected metadata action: %#v", metadata)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"data":{"id":"job_image2video_start_end_fallback","status":0,"type":2,"subType":204}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"ok":false,"error":{"code":"NOT_FOUND","message":"not found"}}`))
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"run", officialImage2VideoSkillID,
+		"--input", `{"image_url":"https://example.com/first.jpg","end_frame_image_url":"https://example.com/last.jpg","prompt":"transition naturally"}`,
+	})
+
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object, got %#v", resp["data"])
+	}
+	if data["job_id"] != "job_image2video_start_end_fallback" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}

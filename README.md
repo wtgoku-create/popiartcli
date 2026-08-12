@@ -32,6 +32,127 @@ popiart --endpoint https://www.popi.art auth login --key <token>
 
 完整命令说明、参数和示例统一见 [docs/cli-command-reference.md](./docs/cli-command-reference.md)。
 
+如果你已经有一张本地图，最短的视频路径是：
+
+```sh
+popiart video generate \
+  --image ./source.png \
+  --prompt "Slow push-in and soft wind movement" \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+如果要提交首尾帧视频，首帧仍用 `--image` / `--from`，尾帧用 `--last-frame`：
+
+```sh
+popiart video generate \
+  --image ./first-frame.png \
+  --last-frame ./last-frame.png \
+  --prompt "从第一帧自然过渡到最后一帧，镜头平稳推进" \
+  --model MiniMax-Hailuo-02 \
+  --size 768P \
+  --duration 6 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+如果你想直接识别一张图并返回可复用的描述性 prompt，可以执行：
+
+```sh
+popiart image describe \
+  --image ./source.png \
+  --model gemini-2.5-flash \
+  --prompt "请写成适合文生图复用的 prompt" \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+如果想先让带图像理解的模型把“一张图 + 一句简单描述”扩写成更完整的图生视频提示词，再提交视频模型，可以加：
+
+```sh
+popiart video generate \
+  --image ./source.png \
+  --prompt "让人物自然转头，镜头慢慢推进" \
+  --prompt-enhancer-model gemini-2.5-flash \
+  --model viduq2-pro-fast \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+如果要做即梦动作迁移，传一张身份图和一个动作参考视频：
+
+```sh
+popiart video action-transfer \
+  --image ./face.jpg \
+  --video https://example.com/source-action.mp4 \
+  --cut-result-first-second-switch \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+行为说明：
+
+- 默认模型是 `jimeng_dreamactor_m20_gen_video`。
+- `--image` 是身份图，会提交为统一网关 `images[0]`。
+- `--video` 是动作参考视频，会提交为统一网关 `videos[0]`。
+- `--cut-result-first-second-switch` 会提交为 `metadata.cut_result_first_second_switch=true`。
+- 本地图片 / 视频会先上传为 stable media URL，再提交给服务端。
+- 如果 `--image` 是 `data:image/*;base64,...`，CLI 会自动剥离前缀，只提交即梦要求的纯 base64。
+
+如果要走 Seedance / 豆包视频模型，可以直接用专门入口：
+
+```sh
+popiart video seedance \
+  --prompt "保持主体动作风格一致" \
+  --video https://example.com/ref.mp4 \
+  --ratio 16:9 \
+  --return-last-frame \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+Seedance 首尾帧也可以用便捷参数：
+
+```sh
+popiart video seedance \
+  --image ./first-frame.png \
+  --last-frame ./last-frame.png \
+  --prompt "从第一帧自然过渡到最后一帧" \
+  --ratio 16:9 \
+  --wait \
+  --output json \
+  --quiet \
+  --non-interactive
+```
+
+## 默认入口
+
+推荐优先记住这几个入口：
+
+- `popiart setup --agent codex`
+- `popiart image generate`
+- `popiart image describe`
+- `popiart image img2img`
+- `popiart video generate`
+- `popiart video img2video`
+- `popiart video action-transfer`
+- `popiart video seedance`
+- `popiart speech synthesize`
+- `popiart music generate`
+
+它们是面向新用户和 agent 的 opinionated façade，内部仍然映射到官方 runtime skill，不改变底层架构。
+
 ## 当前保证范围
 
 - 仓库中的权威实现是 Go CLI：`cmd/popiart`。根目录 `package.json` 只保留仓库任务入口，不再代表一个正式发布的 Node CLI。

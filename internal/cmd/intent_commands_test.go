@@ -28,6 +28,15 @@ func decodeMetadataJSONForTest(t *testing.T, raw any) map[string]any {
 	return metadata
 }
 
+func objectFieldForTest(t *testing.T, raw any, name string) map[string]any {
+	t.Helper()
+	value, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("expected %s object, got %#v", name, raw)
+	}
+	return value
+}
+
 func assertTaskModelIDOnlyForTest(t *testing.T, body map[string]any, want float64) {
 	t.Helper()
 	for _, key := range []string{"model", "aiModelCode", "aiModelCodeAlias", "aiModelname"} {
@@ -37,6 +46,21 @@ func assertTaskModelIDOnlyForTest(t *testing.T, body map[string]any, want float6
 	}
 	if body["aiModelId"] != want {
 		t.Fatalf("unexpected aiModelId: got=%#v want=%#v", body["aiModelId"], want)
+	}
+}
+
+func assertSpeechTaskModelForTest(t *testing.T, body map[string]any, wantID float64, wantModel string) {
+	t.Helper()
+	for _, key := range []string{"aiModelCode", "aiModelCodeAlias", "aiModelname"} {
+		if _, ok := body[key]; ok {
+			t.Fatalf("%s should not be sent: %#v", key, body[key])
+		}
+	}
+	if body["aiModelId"] != wantID {
+		t.Fatalf("unexpected aiModelId: got=%#v want=%#v", body["aiModelId"], wantID)
+	}
+	if body["model"] != wantModel || body["aiPlatform"] != "GATEWAY" || body["origin"] != "web" {
+		t.Fatalf("unexpected speech model fields: %#v", body)
 	}
 }
 
@@ -1276,6 +1300,123 @@ func TestVideoSeedanceTextOnlyDryRunReturnsCapabilityUnavailable(t *testing.T) {
 	}
 }
 
+func TestVideoSeedanceDryRunNormalizesFriendlyModelAlias(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api_client/anime/ai/model/list" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"--dry-run",
+		"video", "seedance",
+		"--prompt", "a cat chasing a butterfly",
+		"--image", "https://example.com/frame.jpg",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["model_id"] != float64(203) {
+		t.Fatalf("unexpected model_id: %#v", data["model_id"])
+	}
+	request := data["request"].(map[string]any)
+	if request["path"] != "/api_client/anime/task/create" {
+		t.Fatalf("unexpected request path: %#v", request["path"])
+	}
+	body := request["body"].(map[string]any)
+	if body["aiModelId"] != float64(203) || body["subType"] != float64(203) {
+		t.Fatalf("unexpected dry-run body: %#v", body)
+	}
+}
+
+func TestVideoSeedanceChecksSupportedModelsBeforeSubmittingAlias(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	seenModels := false
+	seenSubmit := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			seenModels = true
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			seenSubmit = true
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["aiModelId"] != float64(203) || body["subType"] != float64(203) {
+				t.Fatalf("unexpected task body: %#v", body)
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_seedance_alias_1","status":0,"type":2,"subType":203}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--prompt", "a cat chasing a butterfly",
+		"--image", "https://example.com/frame.jpg",
+	})
+
+	if !seenModels || !seenSubmit {
+		t.Fatalf("expected model discovery and submit, seenModels=%v seenSubmit=%v", seenModels, seenSubmit)
+	}
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_seedance_alias_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestVideoSeedanceFallsBackToSupportedModelForAlias(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":204,"code":"doubao-seedance-2-0-fast-260128","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["aiModelId"] != float64(204) {
+				t.Fatalf("unexpected aiModelId: %#v", body["aiModelId"])
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_seedance_supported_1","status":0,"type":2,"subType":203}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--model", "204",
+		"--prompt", "a cat chasing a butterfly",
+		"--image", "https://example.com/frame.jpg",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["model"] != float64(204) || data["execution_mode"] != "task-model-override" {
+		t.Fatalf("unexpected task result: %#v", data)
+	}
+}
+
 func TestVideoSeedanceStartEndFramesKeepsImageDataURLs(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
@@ -1337,6 +1478,49 @@ func TestVideoSeedanceStartEndFramesKeepsImageDataURLs(t *testing.T) {
 
 	data := resp["data"].(map[string]any)
 	if data["job_id"] != "task_seedance_start_end_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestVideoSeedanceLastFrameFlagAppendsSecondImage(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list" {
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":204,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"uploadImageLimit":2,"categories":[{"taskSubType":204}]}]}`)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/api_client/anime/task/create" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		images := body["images"].([]any)
+		if len(images) != 2 || images[0] != "https://example.com/first.jpg" || images[1] != "https://example.com/last.jpg" {
+			t.Fatalf("unexpected images: %#v", body["images"])
+		}
+		metadata := decodeMetadataJSONForTest(t, body["metadata"])
+		if metadata["action"] != "firstTailGenerate" {
+			t.Fatalf("unexpected action metadata: %#v", metadata)
+		}
+		fmt.Fprint(w, `{"ok":true,"data":{"id":"task_seedance_last_frame_1","status":0,"type":2,"subType":204}}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "seedance",
+		"--prompt", "transition smoothly",
+		"--image", "https://example.com/first.jpg",
+		"--last-frame", "https://example.com/last.jpg",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_seedance_last_frame_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
 }
@@ -1478,13 +1662,17 @@ func TestAudioTTSCommandReadsTextFileAndSubmitsJob(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			assertTaskModelIDOnlyForTest(t, body, 301)
+			assertSpeechTaskModelForTest(t, body, 301, "speech-2.8-hd")
 			if body["chatPrompt"] != "hello from file" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
-			metadata := decodeMetadataJSONForTest(t, body["metadata"])
-			if metadata["format"] != "mp3" {
-				t.Fatalf("unexpected metadata format: %#v", metadata["format"])
+			if body["voiceId"] != "male-qn-qingse" {
+				t.Fatalf("unexpected default voiceId: %#v", body["voiceId"])
+			}
+			for _, key := range []string{"metadata", "projectId", "styleId", "width", "height"} {
+				if _, ok := body[key]; ok {
+					t.Fatalf("%s should be omitted from speech request: %#v", key, body[key])
+				}
 			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_audio_tts_1","status":0,"type":3,"subType":301}}`)
@@ -1498,7 +1686,6 @@ func TestAudioTTSCommandReadsTextFileAndSubmitsJob(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"audio", "tts",
 		"--text-file", textPath,
-		"--format", "mp3",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -1524,16 +1711,23 @@ func TestAudioTTSAutofillsTaskFieldsFromModelList(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			assertTaskModelIDOnlyForTest(t, body, 301)
+			assertSpeechTaskModelForTest(t, body, 301, "speech-2.8-hd")
 			if body["aiModelId"] != float64(301) {
 				t.Fatalf("unexpected aiModelId: %#v", body["aiModelId"])
 			}
 			if body["voiceId"] != "female_01" {
 				t.Fatalf("unexpected voiceId: %#v", body["voiceId"])
 			}
-			metadata := decodeMetadataJSONForTest(t, body["metadata"])
-			if metadata["format"] != "mp3" {
-				t.Fatalf("unexpected metadata: %#v", metadata)
+			extraTaskParams := objectFieldForTest(t, body["extraTaskParams"], "extraTaskParams")
+			if extraTaskParams["speed"] != float64(1.2) || extraTaskParams["vol"] != float64(0.8) || extraTaskParams["pitch"] != float64(0) {
+				t.Fatalf("unexpected extraTaskParams: %#v", extraTaskParams)
+			}
+			if extraTaskParams["language_boost"] != "Chinese" {
+				t.Fatalf("unexpected language_boost: %#v", extraTaskParams["language_boost"])
+			}
+			voiceSetting := objectFieldForTest(t, extraTaskParams["voice_setting"], "voice_setting")
+			if voiceSetting["emotion"] != "fearful" {
+				t.Fatalf("unexpected voice emotion: %#v", voiceSetting)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_audio_autofill_1","status":0,"type":3,"subType":301}}`)
@@ -1549,12 +1743,36 @@ func TestAudioTTSAutofillsTaskFieldsFromModelList(t *testing.T) {
 		"--model", "301",
 		"--text", "你好，世界",
 		"--voice", "female_01",
-		"--format", "mp3",
+		"--language", "Chinese",
+		"--emotion", "fearful",
+		"--speed", "1.2",
+		"--volume", "0.8",
+		"--pitch", "0",
 	})
 
 	data := resp["data"].(map[string]any)
 	if data["job_id"] != "task_audio_autofill_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestSpeechRejectsUnsupportedMainSiteFlags(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
+		"speech", "synthesize",
+		"--text", "hello",
+		"--format", "mp3",
+	})
+	if err == nil {
+		t.Fatal("expected unsupported speech flag to fail")
+	}
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != "VALIDATION_ERROR" || cliErr.Details["flag"] != "--format" {
+		t.Fatalf("unexpected error: %#v", cliErr)
 	}
 }
 
@@ -1604,6 +1822,176 @@ func TestVideoImg2VideoCommandSubmitsTaskRequest(t *testing.T) {
 }
 
 func TestVideoImg2VideoAutofillsTaskFieldsFromModelList(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":27,"code":"kling-video-omni","name":"Kling Video O1","aiModelCodeAlias":["kling-video-o1"],"isSupportImages":true,"uploadImageLimit":1,"ratio":["16:9","9:16"],"resolution":["720P","1080P","4K"],"duration":[5],"categories":[{"taskSubType":202},{"taskSubType":203},{"taskSubType":204}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			assertTaskModelIDOnlyForTest(t, body, 27)
+			if body["aiModelId"] != float64(27) {
+				t.Fatalf("unexpected aiModelId: %#v", body["aiModelId"])
+			}
+			if body["subType"] != float64(203) {
+				t.Fatalf("unexpected subType: %#v", body["subType"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_video_autofill_1","status":0,"type":2,"subType":203}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "img2video",
+		"--model", "27",
+		"--image", "https://example.com/source.png",
+		"--prompt", "subtle camera move",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_video_autofill_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestVideoGenerateStartEndFramesSubmitsTaskRequest(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":27,"code":"kling-video-omni","isSupportImages":true,"uploadImageLimit":2,"ratio":["16:9"],"resolution":["720P"],"duration":[5],"categories":[{"taskSubType":204}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			assertTaskModelIDOnlyForTest(t, body, 27)
+			if body["subType"] != float64(204) {
+				t.Fatalf("unexpected subType: %#v", body["subType"])
+			}
+			images := body["images"].([]any)
+			if len(images) != 2 || images[0] != "https://example.com/first.png" || images[1] != "https://example.com/last.png" {
+				t.Fatalf("unexpected start/end images: %#v", body["images"])
+			}
+			metadata := decodeMetadataJSONForTest(t, body["metadata"])
+			if metadata["action"] != "firstTailGenerate" {
+				t.Fatalf("unexpected metadata action: %#v", metadata)
+			}
+			if body["resolution"] != "720P" || body["duration"] != float64(5) {
+				t.Fatalf("unexpected size/duration: %#v", body)
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_video_start_end_1","status":0,"type":2,"subType":204}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--image", "https://example.com/first.png",
+		"--last-frame", "https://example.com/last.png",
+		"--prompt", "transition naturally",
+		"--duration", "5",
+		"--size", "720p",
+		"--model", "27",
+	})
+
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_video_start_end_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestVideoGenerateStartEndFramesUploadsLocalFrames(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	tempDir := t.TempDir()
+	firstPath := filepath.Join(tempDir, "first.png")
+	lastPath := filepath.Join(tempDir, "last.png")
+	if err := os.WriteFile(firstPath, []byte("first-frame"), 0o644); err != nil {
+		t.Fatalf("write first frame: %v", err)
+	}
+	if err := os.WriteFile(lastPath, []byte("last-frame"), 0o644); err != nil {
+		t.Fatalf("write last frame: %v", err)
+	}
+
+	uploadCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":27,"code":"kling-video-omni","isSupportImages":true,"uploadImageLimit":2,"resolution":["720P"],"duration":[5],"categories":[{"taskSubType":204}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/media/upload":
+			uploadCalls++
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse multipart form: %v", err)
+			}
+			switch uploadCalls {
+			case 1:
+				fmt.Fprint(w, `{"ok":true,"data":{"id":"media_first_1","filename":"first.png","content_type":"image/png","size_bytes":11,"created_at":"2026-05-15T00:00:00Z","url":"https://media.popi.test/first.png","visibility":"unlisted"}}`)
+			case 2:
+				fmt.Fprint(w, `{"ok":true,"data":{"id":"media_last_1","filename":"last.png","content_type":"image/png","size_bytes":10,"created_at":"2026-05-15T00:00:00Z","url":"https://media.popi.test/last.png","visibility":"unlisted"}}`)
+			default:
+				t.Fatalf("unexpected upload call %d", uploadCalls)
+			}
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			assertTaskModelIDOnlyForTest(t, body, 27)
+			images := body["images"].([]any)
+			if len(images) != 2 || images[0] != "https://media.popi.test/first.png" || images[1] != "https://media.popi.test/last.png" {
+				t.Fatalf("unexpected start/end images: %#v", body["images"])
+			}
+			metadata := decodeMetadataJSONForTest(t, body["metadata"])
+			if metadata["action"] != "firstTailGenerate" {
+				t.Fatalf("unexpected metadata action: %#v", metadata)
+			}
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_video_start_end_upload_1","status":0,"type":2,"subType":204}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--image", firstPath,
+		"--last-frame", lastPath,
+		"--prompt", "A little girl grows up.",
+		"--duration", "5",
+		"--size", "720P",
+		"--model", "27",
+	})
+
+	if uploadCalls != 2 {
+		t.Fatalf("expected two uploads, got %d", uploadCalls)
+	}
+	data := resp["data"].(map[string]any)
+	if data["job_id"] != "task_video_start_end_upload_1" {
+		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestVideoFromImageAliasSubmitsOfficialRuntimeJob(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
@@ -1877,7 +2265,7 @@ func TestSpeechSynthesizeModelOverrideUsesModelsInfer(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			assertTaskModelIDOnlyForTest(t, body, 301)
+			assertSpeechTaskModelForTest(t, body, 301, "speech-2.6")
 			if body["chatPrompt"] != "hello from override" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
@@ -1920,8 +2308,16 @@ func TestMusicGenerateUsesDefaultMiniMaxModel(t *testing.T) {
 				t.Fatalf("decode body: %v", err)
 			}
 			assertTaskModelIDOnlyForTest(t, body, 401)
-			if body["chatPrompt"] != "Upbeat pop\n\nlyrics:\nLa la la" {
+			if body["chatPrompt"] != "Upbeat pop" {
 				t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
+			}
+			extraTaskParams := objectFieldForTest(t, body["extraTaskParams"], "extraTaskParams")
+			if extraTaskParams["lyrics"] != "La la la" {
+				t.Fatalf("unexpected lyrics payload: %#v", extraTaskParams["lyrics"])
+			}
+			assetDraft := objectFieldForTest(t, body["assetDraft"], "assetDraft")
+			if assetDraft["title"] != "Upbeat pop" {
+				t.Fatalf("unexpected asset title: %#v", assetDraft["title"])
 			}
 			if body["subType"] != float64(304) {
 				t.Fatalf("unexpected subType: %#v", body["subType"])
@@ -1993,7 +2389,7 @@ func TestMusicGenerateAutofillsTaskFieldsFromModelList(t *testing.T) {
 	}
 }
 
-func TestMusicRootSugarUsesPositionalPromptAndInstrumental(t *testing.T) {
+func TestMusicRootSugarUsesPositionalPrompt(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
@@ -2010,9 +2406,8 @@ func TestMusicRootSugarUsesPositionalPromptAndInstrumental(t *testing.T) {
 			if body["chatPrompt"] != "Warm morning folk" {
 				t.Fatalf("unexpected prompt: %#v", body["chatPrompt"])
 			}
-			metadata := decodeMetadataJSONForTest(t, body["metadata"])
-			if metadata["is_instrumental"] != true {
-				t.Fatalf("unexpected instrumental flag: %#v", metadata["is_instrumental"])
+			if _, ok := body["metadata"]; ok {
+				t.Fatalf("metadata should be omitted from music request: %#v", body["metadata"])
 			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_music_root_1","status":0,"type":3,"subType":304}}`)
@@ -2025,7 +2420,6 @@ func TestMusicRootSugarUsesPositionalPromptAndInstrumental(t *testing.T) {
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"music", "Warm morning folk",
-		"--instrumental",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -2034,24 +2428,24 @@ func TestMusicRootSugarUsesPositionalPromptAndInstrumental(t *testing.T) {
 	}
 }
 
-func TestMusicGenerateLyricsOptimizerConflictsWithLyrics(t *testing.T) {
+func TestMusicGenerateRejectsUnsupportedMainSiteFlags(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 
 	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
 		"music", "generate",
 		"--prompt", "Upbeat pop",
 		"--lyrics", "La la la",
-		"--lyrics-optimizer",
+		"--format", "mp3",
 	})
 	if err == nil {
-		t.Fatal("expected conflicting lyrics flags to fail")
+		t.Fatal("expected unsupported music flag to fail")
 	}
 	cliErr, ok := err.(*output.CLIError)
 	if !ok {
 		t.Fatalf("expected CLIError, got %T", err)
 	}
-	if cliErr.Code != "VALIDATION_ERROR" {
-		t.Fatalf("expected VALIDATION_ERROR, got %#v", cliErr.Code)
+	if cliErr.Code != "VALIDATION_ERROR" || cliErr.Details["flag"] != "--format" {
+		t.Fatalf("unexpected error: %#v", cliErr)
 	}
 }
 
@@ -2087,13 +2481,13 @@ func TestMusicGenerateDryRunLoadsLyricsFile(t *testing.T) {
 	}
 	request := data["request"].(map[string]any)
 	body := request["body"].(map[string]any)
-	metadata := decodeMetadataJSONForTest(t, body["metadata"])
-	if metadata["lyrics"] != "line one\nline two" {
-		t.Fatalf("unexpected lyrics payload: %#v", metadata["lyrics"])
+	extraTaskParams := objectFieldForTest(t, body["extraTaskParams"], "extraTaskParams")
+	if extraTaskParams["lyrics"] != "line one\nline two" {
+		t.Fatalf("unexpected lyrics payload: %#v", extraTaskParams["lyrics"])
 	}
 }
 
-func TestMusicGenerateUsesGatewayFieldNames(t *testing.T) {
+func TestMusicGenerateUsesMinimalMainSiteFields(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
@@ -2110,11 +2504,7 @@ func TestMusicGenerateUsesGatewayFieldNames(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"music", "generate",
 		"--prompt", "Warm vlog bed",
-		"--instrumental",
-		"--output-format", "url",
-		"--format", "mp3",
-		"--sample-rate-hz", "44100",
-		"--bitrate", "256000",
+		"--title", "测试标题",
 		"--dry-run",
 	})
 
@@ -2124,16 +2514,20 @@ func TestMusicGenerateUsesGatewayFieldNames(t *testing.T) {
 	if body["subType"] != float64(304) {
 		t.Fatalf("expected music subType=304, got %#v", body["subType"])
 	}
-	metadata := decodeMetadataJSONForTest(t, body["metadata"])
-	if metadata["is_instrumental"] != true {
-		t.Fatalf("expected gateway is_instrumental field, got %#v", metadata)
+	if body["origin"] != "web" {
+		t.Fatalf("expected origin=web, got %#v", body["origin"])
 	}
-	if metadata["output_format"] != "url" {
-		t.Fatalf("expected output_format=url, got %#v", metadata["output_format"])
+	if body["chatPrompt"] != "Warm vlog bed" {
+		t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
 	}
-	audioSetting := metadata["audio_setting"].(map[string]any)
-	if audioSetting["format"] != "mp3" || audioSetting["sample_rate"] != float64(44100) || audioSetting["bitrate"] != float64(256000) {
-		t.Fatalf("unexpected audio_setting: %#v", audioSetting)
+	assetDraft := objectFieldForTest(t, body["assetDraft"], "assetDraft")
+	if assetDraft["title"] != "测试标题" {
+		t.Fatalf("unexpected title: %#v", assetDraft["title"])
+	}
+	for _, key := range []string{"metadata", "projectId", "styleId", "width", "height"} {
+		if _, ok := body[key]; ok {
+			t.Fatalf("%s should be omitted from music request: %#v", key, body[key])
+		}
 	}
 }
 
@@ -2164,24 +2558,5 @@ func TestMusicGenerateUsesModelBackedSubType305WhenOnly305Supported(t *testing.T
 	body := request["body"].(map[string]any)
 	if body["subType"] != float64(305) {
 		t.Fatalf("expected music subType=305, got %#v", body["subType"])
-	}
-}
-
-func TestMusicCoverRequiresExactlyOneAudioSource(t *testing.T) {
-	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
-	t.Setenv("POPIART_KEY", "pk-demo")
-
-	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
-		"music", "generate",
-		"--model", "403",
-		"--prompt", "female pop cover",
-		"--dry-run",
-	})
-	if err == nil {
-		t.Fatal("expected missing cover audio source to fail")
-	}
-	cliErr, ok := err.(*output.CLIError)
-	if !ok || cliErr.Code != "VALIDATION_ERROR" {
-		t.Fatalf("unexpected error for music-cover: %#v", err)
 	}
 }

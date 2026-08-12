@@ -285,6 +285,9 @@ func bridgeRunImageToVideoPayload(cmd *cobra.Command, payload map[string]any) (m
 	putFloat(taskPayload, "duration", duration)
 	putFloat(taskPayload, "fps", numericValue(normalized["fps"]))
 	putFloat(taskPayload, "seed", numericValue(normalized["seed"]))
+	if metadata, ok := normalized["metadata"].(map[string]any); ok && len(metadata) > 0 {
+		taskPayload["metadata"] = metadata
+	}
 	mergeStringAnyMaps(extras, preview)
 	return taskPayload, extras, nil
 }
@@ -333,10 +336,12 @@ func bridgeRunImageSources(cmd *cobra.Command, payload map[string]any) ([]string
 
 func bridgeRunVideoSources(cmd *cobra.Command, payload map[string]any) ([]string, map[string]any, error) {
 	urlInputs := []string{}
-	if source := strings.TrimSpace(firstNonEmptyString(stringValue(payload["image_url"]), stringValue(payload["reference_image_url"]))); source != "" {
+	images := stringSliceValue(payload["images"])
+	if len(images) > 0 {
+		urlInputs = append(urlInputs, images...)
+	} else if source := strings.TrimSpace(firstNonEmptyString(stringValue(payload["image_url"]), stringValue(payload["reference_image_url"]))); source != "" {
 		urlInputs = append(urlInputs, source)
 	}
-	urlInputs = append(urlInputs, stringSliceValue(payload["images"])...)
 	artifactIDs := []string{}
 	if sourceArtifactID := strings.TrimSpace(stringValue(payload["source_artifact_id"])); sourceArtifactID != "" {
 		artifactIDs = append(artifactIDs, sourceArtifactID)

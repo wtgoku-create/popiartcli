@@ -13,6 +13,33 @@
       "type": "string",
       "description": "Compatibility alias for image_url."
     },
+    "last_frame_image_url": {
+      "type": "string",
+      "description": "Optional final-frame image URL or data URL for start-end video generation."
+    },
+    "end_frame_image_url": {
+      "type": "string",
+      "description": "Compatibility alias for last_frame_image_url."
+    },
+    "last_frame_artifact_id": {
+      "type": "string",
+      "description": "Optional PopiArt artifact ID for the final frame when the runtime can resolve artifacts."
+    },
+    "end_frame_artifact_id": {
+      "type": "string",
+      "description": "Compatibility alias for last_frame_artifact_id."
+    },
+    "images": {
+      "type": "array",
+      "description": "Gateway-compatible image list. For start-end video, images[0] is the first frame and images[1] is the final frame.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional gateway metadata. For start-end video, metadata.action defaults to firstTailGenerate when omitted."
+    },
     "prompt": {
       "type": "string",
       "description": "Short motion direction or scene behavior."
@@ -44,6 +71,10 @@
     "style": {
       "type": "string",
       "description": "Optional look-and-feel hint."
+    },
+    "size": {
+      "type": "string",
+      "description": "Optional resolution or exact size such as 720p, 1080P, or 1280x720."
     },
     "aspect_ratio": {
       "type": "string",

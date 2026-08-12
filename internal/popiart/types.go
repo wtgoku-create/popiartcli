@@ -193,6 +193,8 @@ type Model struct {
 type TaskRequest struct {
 	Type             int            `json:"type"`
 	SubType          int            `json:"subType"`
+	Origin           string         `json:"origin,omitempty"`
+	AIPlatform       string         `json:"aiPlatform,omitempty"`
 	ProjectID        int            `json:"projectId,omitempty"`
 	Model            string         `json:"model,omitempty"`
 	AIModelCode      string         `json:"aiModelCode,omitempty"`
@@ -212,7 +214,10 @@ type TaskRequest struct {
 	Duration         int            `json:"duration,omitempty"`
 	VoiceID          string         `json:"voiceId,omitempty"`
 	Metadata         map[string]any `json:"metadata,omitempty"`
+	ExtraTaskParams  map[string]any `json:"extraTaskParams,omitempty"`
+	AssetDraft       map[string]any `json:"assetDraft,omitempty"`
 	BatchSize        int            `json:"batchSize,omitempty"`
+	MinimalBody      bool           `json:"-"`
 }
 
 // TaskDetail 表示主站任务查询结果及 CLI 兼容输出所需字段。

@@ -18,6 +18,7 @@ const (
 	officialImage2ImageSkillID         = "popiskill-image-img2img-basic-v1"
 	officialAliceImageShowcaseSkillID  = "popiskill-image-img2img-popistudio-alice-showcase-v1"
 	officialImage2VideoSkillID         = "popiskill-video-image2video-basic-v1"
+	officialImage2VideoFallbackModelID = defaultSeedanceVideoModelID
 	officialAliceVideoShowcaseSkillID  = "popiskill-video-image2video-popistudio-alice-showcase-v1"
 	officialTTSMultimodelSkillID       = "popiskill-audio-tts-multimodel-v1"
 	officialSTTLocalSkillID            = "popiskill-audio-stt-local-v1"
@@ -287,8 +288,9 @@ func normalizeOfficialImage2VideoDirectInput(payload map[string]any) (map[string
 			input["duration_s"] = seconds
 		}
 	}
+	normalizeOfficialImage2VideoStartEndInput(input)
 
-	if stringValue(input["source_artifact_id"]) == "" && stringValue(input["image_url"]) == "" {
+	if stringValue(input["source_artifact_id"]) == "" && stringValue(input["image_url"]) == "" && len(extractStringSliceAny(input["images"])) == 0 {
 		if stringValue(input["prompt"]) != "" {
 			return input, nil
 		}
@@ -298,6 +300,91 @@ func normalizeOfficialImage2VideoDirectInput(payload map[string]any) (map[string
 		})
 	}
 	return input, nil
+}
+
+func normalizeOfficialImage2VideoStartEndInput(input map[string]any) {
+	images := extractStringSliceAny(input["images"])
+	if len(images) > 0 && stringValue(input["image_url"]) == "" {
+		input["image_url"] = images[0]
+	}
+	if len(images) > 1 {
+		if stringValue(input["last_frame_image_url"]) == "" {
+			input["last_frame_image_url"] = images[1]
+		}
+		if stringValue(input["end_frame_image_url"]) == "" {
+			input["end_frame_image_url"] = images[1]
+		}
+		ensureOfficialImage2VideoAction(input)
+		return
+	}
+
+	firstFrame := strings.TrimSpace(stringValue(input["image_url"]))
+	lastFrame := ""
+	for _, key := range []string{"last_frame_image_url", "end_frame_image_url", "last_frame_url"} {
+		if value := strings.TrimSpace(stringValue(input[key])); value != "" {
+			lastFrame = value
+			break
+		}
+	}
+	if firstFrame == "" || lastFrame == "" {
+		if stringValue(input["last_frame_artifact_id"]) != "" || stringValue(input["end_frame_artifact_id"]) != "" {
+			ensureOfficialImage2VideoAction(input)
+		}
+		return
+	}
+	input["images"] = []string{firstFrame, lastFrame}
+	ensureOfficialImage2VideoAction(input)
+}
+
+func ensureOfficialImage2VideoAction(input map[string]any) {
+	metadata, _ := input["metadata"].(map[string]any)
+	if metadata == nil {
+		metadata = map[string]any{}
+		input["metadata"] = metadata
+	}
+	if strings.TrimSpace(stringValue(metadata["action"])) == "" {
+		metadata["action"] = "firstTailGenerate"
+	}
+}
+
+func preferredOfficialRuntimeModelIDs(skillID string, input map[string]any, fallback []string) []string {
+	switch strings.TrimSpace(skillID) {
+	case officialImage2VideoSkillID:
+		return preferredImage2VideoModelIDs(input, fallback)
+	default:
+		return append([]string(nil), fallback...)
+	}
+}
+
+func preferredImage2VideoModelIDs(input map[string]any, fallback []string) []string {
+	duration := numericValue(input["duration_s"])
+	if duration == 0 {
+		duration = numericValue(input["seconds"])
+	}
+	if duration != 0 && duration != 5 && duration != 10 {
+		return []string{officialImage2VideoFallbackModelID}
+	}
+	return append([]string(nil), fallback...)
+}
+
+func submitModelInferWithFallback(ctx context.Context, modelIDs []string, payload map[string]any, priority, projectID, idempotencyKey string) (map[string]any, string, error) {
+	var lastErr error
+	for idx, modelID := range modelIDs {
+		job, err := submitModelInferJob(ctx, modelID, payload, priority, projectID, idempotencyKey)
+		if err == nil {
+			return job, modelID, nil
+		}
+		lastErr = err
+		if idx == len(modelIDs)-1 || !shouldRetryModelInfer(err) {
+			break
+		}
+	}
+	if cliErr, ok := lastErr.(*output.CLIError); ok {
+		details := cloneMapAny(cliErr.Details)
+		details["models_tried"] = append([]string(nil), modelIDs...)
+		return nil, "", output.NewError(cliErr.Code, cliErr.Message, details)
+	}
+	return nil, "", lastErr
 }
 
 func submitModelInferJob(ctx context.Context, modelID string, payload map[string]any, priority, projectID, idempotencyKey string) (map[string]any, error) {
@@ -414,6 +501,29 @@ func cloneValueAny(value any) any {
 	}
 }
 
+func extractStringSliceAny(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if item = strings.TrimSpace(item); item != "" {
+				out = append(out, item)
+			}
+		}
+		return out
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text := strings.TrimSpace(stringValue(item)); text != "" {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 func numericValue(value any) float64 {
 	switch typed := value.(type) {
 	case float64:
@@ -428,5 +538,18 @@ func numericValue(value any) float64 {
 		return float64(typed)
 	default:
 		return 0
+	}
+}
+
+func shouldRetryModelInfer(err error) bool {
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		return false
+	}
+	switch cliErr.Code {
+	case "NETWORK_ERROR", "HTTP_ERROR", "RATE_LIMITED", "TEMPORARY_UNAVAILABLE":
+		return true
+	default:
+		return false
 	}
 }
