@@ -128,6 +128,14 @@ func newArtifactsCmd() *cobra.Command {
 			if dir == "" {
 				dir = filepath.Join(".", args[0])
 			}
+			if dryRunMode(cmd) {
+				return writeDryRunPreview(cmd, "artifacts.pull-all", map[string]any{
+					"job_id":               args[0],
+					"task_id":              args[0],
+					"artifacts_downloaded": len(urls),
+					"files":                plannedDownloadFiles(urls, dir, true),
+				})
+			}
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return output.NewError("CLI_ERROR", "创建输出目录失败", map[string]any{"details": err.Error()})
 			}
@@ -203,6 +211,20 @@ func filenameFromDownloadURL(raw string, index int) string {
 		}
 	}
 	return fmt.Sprintf("artifact-%d", index)
+}
+
+func plannedDownloadFiles(urls []string, dir string, includeURL bool) []map[string]any {
+	files := make([]map[string]any, 0, len(urls))
+	for index, item := range urls {
+		fileResult := map[string]any{
+			"would_save_to": filepath.Join(dir, filenameFromDownloadURL(item, index+1)),
+		}
+		if includeURL {
+			fileResult["url"] = item
+		}
+		files = append(files, fileResult)
+	}
+	return files
 }
 
 func downloadResultURLs(ctx context.Context, urls []string, dir string, includeURL bool) ([]map[string]any, error) {

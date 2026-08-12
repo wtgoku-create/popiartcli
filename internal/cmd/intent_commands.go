@@ -1162,7 +1162,10 @@ func taskValidationSpecForAction(action string, payload map[string]any) popiart.
 		spec.Ratio = stringValue(payload["aspect_ratio"])
 		spec.Resolution = stringValue(payload["size"])
 	case "video", "video.generate", "video.img2video", "video.from-image":
-		spec.AllowedSubTypes = []int{202, 203, 204}
+		spec.SubType = int(numericValue(payload["sub_type"]))
+		if spec.SubType == 0 {
+			spec.AllowedSubTypes = []int{202, 203, 204}
+		}
 		spec.ImageCount = len(stringSliceValue(payload["images"]))
 		spec.VideoCount = len(stringSliceValue(payload["videos"]))
 		spec.AudioCount = len(stringSliceValue(payload["audios"]))
@@ -1660,6 +1663,7 @@ func applyVideoLastFrameInput(cmd *cobra.Command, payload, preview map[string]an
 			payload["images"] = []string{firstFrame, lastFrameValue}
 		}
 	}
+	payload["sub_type"] = 204
 	ensurePayloadMetadataAction(payload, "firstTailGenerate")
 	return nil
 }

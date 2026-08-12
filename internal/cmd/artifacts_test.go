@@ -211,6 +211,46 @@ func TestArtifactsPullAllDownloadsTaskResults(t *testing.T) {
 	}
 }
 
+func TestArtifactsPullAllDryRunPlansDownloadsWithoutWritingFiles(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-artifacts")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/downloadUrls":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"downloadUrls":["`+serverURLForHost(r.Host)+`/download/result-1.png","`+serverURLForHost(r.Host)+`/download/result-2.txt"]}}`)
+		case strings.HasPrefix(r.URL.Path, "/download/"):
+			t.Fatalf("dry-run should not download result file: %s %s", r.Method, r.URL.Path)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	dir := filepath.Join(t.TempDir(), "task-downloads")
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{"artifacts", "pull-all", "task_456", "--dir", dir, "--dry-run"})
+	data := resp["data"].(map[string]any)
+	if data["dry_run"] != true {
+		t.Fatalf("expected dry_run true, got %#v", data["dry_run"])
+	}
+	if data["artifacts_downloaded"] != float64(2) {
+		t.Fatalf("unexpected artifacts_downloaded: %#v", data["artifacts_downloaded"])
+	}
+	files := data["files"].([]any)
+	if len(files) != 2 {
+		t.Fatalf("unexpected files: %#v", data["files"])
+	}
+	first := files[0].(map[string]any)
+	if first["would_save_to"] != filepath.Join(dir, "result-1.png") {
+		t.Fatalf("unexpected dry-run target: %#v", first)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("dry-run should not create output dir, stat err=%v", err)
+	}
+}
+
 func TestArtifactsGetUsesMediaDetailInPopiArtMode(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-artifacts")
