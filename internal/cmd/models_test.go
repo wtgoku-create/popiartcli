@@ -193,7 +193,7 @@ func TestModelsRoutesReturnsDefaultModelSelection(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":301,"code":"speech-2.8-hd","categories":[{"taskSubType":301}]},{"id":401,"code":"music-2.6-free","categories":[{"taskSubType":301}]},{"id":501,"code":"doubao-seedance-2-0-260128","categories":[{"taskSubType":203},{"taskSubType":204}]},{"id":601,"code":"jimeng_dreamactor_m20_gen_video","categories":[{"taskSubType":205}]}]}`))
+		_, _ = w.Write([]byte(`{"ok":true,"data":[{"id":301,"code":"speech-2.8-hd","categories":[{"taskSubType":301}]},{"id":401,"code":"music-2.6-free","categories":[{"taskSubType":301}]},{"id":501,"code":"huimeng-seedance-2.0","categories":[{"taskSubType":203},{"taskSubType":204}]},{"id":601,"code":"jimeng_dreamactor_m20_gen_video","categories":[{"taskSubType":205}]}]}`))
 	}))
 	defer server.Close()
 
@@ -216,7 +216,7 @@ func TestModelsRoutesReturnsDefaultModelSelection(t *testing.T) {
 	if item["command"] != "video.seedance" {
 		t.Fatalf("unexpected route summary: %#v", item)
 	}
-	if item["default_ai_model_code"] != "doubao-seedance-2-0-260128" {
+	if item["default_ai_model_code"] != "huimeng-seedance-2.0" {
 		t.Fatalf("unexpected default model code: %#v", item)
 	}
 	if item["resolved_ai_model_id"] != "501" {

@@ -223,7 +223,7 @@ popiart artifacts pull <artifact-id> --out ./action-transfer-preview.mp4
 
 ## Recipe: Seedance video
 
-Seedance / 豆包视频建议使用专门命令面。默认模型是 `doubao-seedance-2-0-260128`。
+Seedance / 豆包视频建议使用专门命令面。默认模型是 `huimeng-seedance-2.0`。
 CLI 现在会通过主站 `model/list -> task/create` 任务链路提交请求。
 
 文生视频需要 `--prompt`：

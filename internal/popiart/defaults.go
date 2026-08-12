@@ -11,7 +11,7 @@ var defaultModelCandidates = map[string][]string{
 	"video.generate":        {"viduq2-pro", "viduq2-pro-fast"},
 	"video.img2video":       {"viduq2-pro", "viduq2-pro-fast"},
 	"video.from-image":      {"viduq2-pro", "viduq2-pro-fast"},
-	"video.seedance":        {"doubao-seedance-2-0-260128"},
+	"video.seedance":        {"huimeng-seedance-2.0"},
 	"video.action-transfer": {"jimeng_dreamactor_m20_gen_video"},
 	"audio.tts":             {"speech-2.8-hd"},
 	"speech.synthesize":     {"speech-2.8-hd"},

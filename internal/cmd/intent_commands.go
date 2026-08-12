@@ -27,7 +27,7 @@ const (
 	defaultMiniMaxMusicModelID         = "music-2.6"
 	defaultMiniMaxSpeechModelID        = "speech-2.8-hd"
 	defaultJimengActionTransferModelID = "jimeng_dreamactor_m20_gen_video"
-	defaultSeedanceVideoModelID        = "doubao-seedance-2-0-260128"
+	defaultSeedanceVideoModelID        = "huimeng-seedance-2.0"
 )
 
 func newImageCmd() *cobra.Command {
@@ -183,7 +183,7 @@ func newVideoCmd() *cobra.Command {
 		Use:     "seedance",
 		Aliases: []string{"doubao", "doubao-seedance"},
 		Short:   "通过 Seedance / 豆包视频模型生成视频",
-		Long:    "提交文生、图生、参考视频或参考音频请求到 Seedance / Doubao 视频模型。默认模型为 doubao-seedance-2-0-260128，按 action 和输入形态映射到主站视频 task。",
+		Long:    "提交文生、图生、参考视频或参考音频请求到 Seedance / Doubao 视频模型。默认模型为 huimeng-seedance-2.0，按 action 和输入形态映射到主站视频 task。",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload, preview, err := resolveSeedanceVideoInput(cmd)
 			if err != nil {
@@ -686,7 +686,7 @@ func executeSeedanceVideoCommand(cmd *cobra.Command, payload map[string]any, act
 	if modelID == "" {
 		return output.NewError("VALIDATION_ERROR", "缺少可用 Seedance 模型", map[string]any{
 			"flag": "model",
-			"hint": "请显式传入 --model，或使用默认 doubao-seedance-2-0-260128",
+			"hint": "请显式传入 --model，或使用默认 huimeng-seedance-2.0",
 		})
 	}
 

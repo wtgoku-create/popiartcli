@@ -1390,7 +1390,7 @@ func TestVideoSeedanceUsesDefaultModelAndTaskFieldNames(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"isSupportVideos":true,"isSupportAudios":true,"videoRatio":["16:9"],"categories":[{"taskSubType":203},{"taskSubType":204}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"huimeng-seedance-2.0","isSupportImages":true,"isSupportVideos":true,"isSupportAudios":true,"videoRatio":["16:9"],"categories":[{"taskSubType":203},{"taskSubType":204}]}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1493,7 +1493,7 @@ func TestVideoSeedanceDryRunNormalizesFriendlyModelAlias(t *testing.T) {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
+		fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"huimeng-seedance-2.0","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
 	}))
 	defer server.Close()
 	t.Setenv("POPIART_ENDPOINT", server.URL)
@@ -1530,7 +1530,7 @@ func TestVideoSeedanceChecksSupportedModelsBeforeSubmittingAlias(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
 			seenModels = true
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"huimeng-seedance-2.0","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
 			seenSubmit = true
 			var body map[string]any
@@ -1612,7 +1612,7 @@ func TestVideoSeedanceStartEndFramesKeepsImageDataURLs(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":204,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"categories":[{"taskSubType":204}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":204,"code":"huimeng-seedance-2.0","isSupportImages":true,"categories":[{"taskSubType":204}]}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/media/upload":
 			if err := r.ParseMultipartForm(1 << 20); err != nil {
 				t.Fatalf("parse multipart form: %v", err)
@@ -1673,7 +1673,7 @@ func TestVideoSeedanceLastFrameFlagAppendsSecondImage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list" {
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":204,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"uploadImageLimit":2,"categories":[{"taskSubType":204}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":204,"code":"huimeng-seedance-2.0","isSupportImages":true,"uploadImageLimit":2,"categories":[{"taskSubType":204}]}]}`)
 			return
 		}
 		if r.Method != http.MethodPost || r.URL.Path != "/api_client/anime/task/create" {
@@ -1717,7 +1717,7 @@ func TestVideoSeedanceImageModeDoesNotRequirePrompt(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"huimeng-seedance-2.0","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1759,7 +1759,7 @@ func TestVideoSeedanceWaitPollsTaskAndSurfacesDownloadURL(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"doubao-seedance-2-0-260128","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"huimeng-seedance-2.0","isSupportImages":true,"categories":[{"taskSubType":203}]}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

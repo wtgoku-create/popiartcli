@@ -23,7 +23,7 @@ These are the current default candidate pools in [internal/popiart/defaults.go](
 | `image`, `image generate` | `Nano-banana-pro`, `gemini-3-pro-image-preview`, `seedream-4-5-251128` | now prefers the model that has passed real `wwwtest` runs |
 | `image img2img`, `image transform` | `Nano-banana-pro`, `gemini-3-pro-image-preview`, `seedream-4-5-251128` | same default pool as image generation |
 | `video`, `video generate`, `video img2video`, `video from-image` | `viduq2-pro`, `viduq2-pro-fast` | now prefers the model that has passed real `wwwtest` image-to-video runs |
-| `video seedance` | `doubao-seedance-2-0-260128` | kept as Seedance-specific default |
+| `video seedance` | `huimeng-seedance-2.0` | kept as Seedance-specific default |
 | `video action-transfer` | `jimeng_dreamactor_m20_gen_video` | not revalidated in this pass |
 | `audio tts`, `speech synthesize` | `speech-2.8-hd` | real TTS success confirmed |
 | `music`, `music generate` | `music-2.6`, `music-2.6-free` | default candidate pool; check latest real validations before tightening default further |
