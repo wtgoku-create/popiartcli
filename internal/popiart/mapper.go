@@ -44,77 +44,57 @@ func BuildTextToImageTaskRequest(payload map[string]any, model Model) TaskReques
 
 // BuildTextToSpeechTaskRequest 把语音命令 payload 映射为主站音频任务请求。
 func BuildTextToSpeechTaskRequest(payload map[string]any, model Model) TaskRequest {
-	width, height := taskCanvasDimensions("", "", 3)
 	req := TaskRequest{
-		Type:             3,
-		SubType:          301,
-		ProjectID:        -1,
-		Model:            model.Code,
-		AIModelCode:      model.Code,
-		AIModelCodeAlias: preferredModelAlias(model),
-		AIModelName:      preferredModelName(model),
-		AIModelID:        model.ID,
-		StyleID:          0,
-		Width:            width,
-		Height:           height,
-		ChatPrompt:       stringField(payload, "text"),
-		VoiceID:          stringField(payload, "voice"),
-		BatchSize:        1,
-		Metadata:         map[string]any{},
+		Type:            3,
+		SubType:         301,
+		Origin:          "web",
+		Model:           model.Code,
+		AIPlatform:      "GATEWAY",
+		AIModelID:       model.ID,
+		ChatPrompt:      stringField(payload, "text"),
+		VoiceID:         stringField(payload, "voice"),
+		BatchSize:       1,
+		ExtraTaskParams: map[string]any{},
+		MinimalBody:     true,
 	}
-	for _, key := range []string{
-		"language", "voice_style", "emotion", "format", "sound_effect", "notes",
-	} {
-		putMetadataString(req.Metadata, key, payload[key])
+	putExtraTaskParamFloat(req.ExtraTaskParams, "speed", payload["speed"])
+	putExtraTaskParamFloat(req.ExtraTaskParams, "vol", payload["volume"])
+	putExtraTaskParamFloatAllowZero(req.ExtraTaskParams, "pitch", payload["pitch"])
+	putExtraTaskParamString(req.ExtraTaskParams, "language_boost", payload["language"])
+	if emotion := stringField(payload, "emotion"); emotion != "" {
+		req.ExtraTaskParams["voice_setting"] = map[string]any{
+			"emotion": emotion,
+		}
 	}
-	for _, key := range []string{"speed", "volume", "pitch", "sample_rate_hz", "seed"} {
-		putMetadataFloat(req.Metadata, key, payload[key])
-	}
-	for _, key := range []string{"bitrate", "channels"} {
-		putMetadataInt(req.Metadata, key, payload[key])
-	}
-	putMetadataBool(req.Metadata, "subtitles", payload["subtitles"])
-	if values := stringSliceField(payload["pronunciation"]); len(values) > 0 {
-		req.Metadata["pronunciation"] = values
-	}
-	if len(req.Metadata) == 0 {
-		req.Metadata = nil
+	if len(req.ExtraTaskParams) == 0 {
+		req.ExtraTaskParams = nil
 	}
 	return req
 }
 
 // BuildMusicTaskRequest 把音乐命令 payload 映射为主站音频任务请求。
 func BuildMusicTaskRequest(payload map[string]any, model Model) TaskRequest {
-	width, height := taskCanvasDimensions("", "", 3)
 	req := TaskRequest{
-		Type:             3,
-		SubType:          resolveMusicTaskSubType(payload, model),
-		ProjectID:        -1,
-		Model:            model.Code,
-		AIModelCode:      model.Code,
-		AIModelCodeAlias: preferredModelAlias(model),
-		AIModelName:      preferredModelName(model),
-		AIModelID:        model.ID,
-		StyleID:          0,
-		Width:            width,
-		Height:           height,
-		ChatPrompt:       buildMusicPrompt(payload),
-		BatchSize:        1,
-		Metadata:         map[string]any{},
+		Type:            3,
+		SubType:         resolveMusicTaskSubType(payload, model),
+		Origin:          "web",
+		AIModelID:       model.ID,
+		ChatPrompt:      stringField(payload, "prompt"),
+		BatchSize:       1,
+		ExtraTaskParams: map[string]any{},
+		AssetDraft:      map[string]any{},
+		MinimalBody:     true,
 	}
-	for _, key := range []string{
-		"prompt", "lyrics", "output_format", "audio_url", "audio_base64",
-	} {
-		putMetadataString(req.Metadata, key, payload[key])
+	putExtraTaskParamString(req.ExtraTaskParams, "lyrics", payload["lyrics"])
+	putExtraTaskParamString(req.ExtraTaskParams, "audio_url", payload["audio_url"])
+	if len(req.ExtraTaskParams) == 0 {
+		req.ExtraTaskParams = nil
 	}
-	for _, key := range []string{"lyrics_optimizer", "is_instrumental", "stream", "aigc_watermark"} {
-		putMetadataBool(req.Metadata, key, payload[key])
+	if title := musicAssetTitle(payload); title != "" {
+		req.AssetDraft["title"] = title
 	}
-	if audioSetting, ok := payload["audio_setting"].(map[string]any); ok && len(audioSetting) > 0 {
-		req.Metadata["audio_setting"] = audioSetting
-	}
-	if len(req.Metadata) == 0 {
-		req.Metadata = nil
+	if len(req.AssetDraft) == 0 {
+		req.AssetDraft = nil
 	}
 	return req
 }
@@ -265,17 +245,17 @@ func TaskOutput(task TaskDetail, model Model, extras map[string]any) map[string]
 	return result
 }
 
-func buildMusicPrompt(payload map[string]any) string {
+func musicAssetTitle(payload map[string]any) string {
+	title := strings.TrimSpace(stringField(payload, "title"))
 	prompt := strings.TrimSpace(stringField(payload, "prompt"))
 	lyrics := strings.TrimSpace(stringField(payload, "lyrics"))
-	switch {
-	case prompt != "" && lyrics != "":
-		return fmt.Sprintf("%s\n\nlyrics:\n%s", prompt, lyrics)
-	case prompt != "":
-		return prompt
-	default:
-		return lyrics
+	if title != "" {
+		return title
 	}
+	if prompt != "" {
+		return prompt
+	}
+	return lyrics
 }
 
 func preferredModelAlias(model Model) string {
@@ -670,6 +650,34 @@ func stringSliceField(value any) []string {
 func putMetadataString(metadata map[string]any, key string, value any) {
 	if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
 		metadata[key] = strings.TrimSpace(text)
+	}
+}
+
+func putExtraTaskParamString(params map[string]any, key string, value any) {
+	if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+		params[key] = strings.TrimSpace(text)
+	}
+}
+
+func putExtraTaskParamFloat(params map[string]any, key string, value any) {
+	switch typed := value.(type) {
+	case float64:
+		if typed != 0 {
+			params[key] = typed
+		}
+	case float32:
+		if typed != 0 {
+			params[key] = typed
+		}
+	}
+}
+
+func putExtraTaskParamFloatAllowZero(params map[string]any, key string, value any) {
+	switch typed := value.(type) {
+	case float64:
+		params[key] = typed
+	case float32:
+		params[key] = typed
 	}
 }
 

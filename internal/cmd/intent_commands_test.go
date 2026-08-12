@@ -28,6 +28,15 @@ func decodeMetadataJSONForTest(t *testing.T, raw any) map[string]any {
 	return metadata
 }
 
+func objectFieldForTest(t *testing.T, raw any, name string) map[string]any {
+	t.Helper()
+	value, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("expected %s object, got %#v", name, raw)
+	}
+	return value
+}
+
 func assertTaskModelIDOnlyForTest(t *testing.T, body map[string]any, want float64) {
 	t.Helper()
 	for _, key := range []string{"model", "aiModelCode", "aiModelCodeAlias", "aiModelname"} {
@@ -37,6 +46,21 @@ func assertTaskModelIDOnlyForTest(t *testing.T, body map[string]any, want float6
 	}
 	if body["aiModelId"] != want {
 		t.Fatalf("unexpected aiModelId: got=%#v want=%#v", body["aiModelId"], want)
+	}
+}
+
+func assertSpeechTaskModelForTest(t *testing.T, body map[string]any, wantID float64, wantModel string) {
+	t.Helper()
+	for _, key := range []string{"aiModelCode", "aiModelCodeAlias", "aiModelname"} {
+		if _, ok := body[key]; ok {
+			t.Fatalf("%s should not be sent: %#v", key, body[key])
+		}
+	}
+	if body["aiModelId"] != wantID {
+		t.Fatalf("unexpected aiModelId: got=%#v want=%#v", body["aiModelId"], wantID)
+	}
+	if body["model"] != wantModel || body["aiPlatform"] != "GATEWAY" || body["origin"] != "web" {
+		t.Fatalf("unexpected speech model fields: %#v", body)
 	}
 }
 
@@ -1662,13 +1686,20 @@ func TestAudioTTSCommandReadsTextFileAndSubmitsJob(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			assertTaskModelIDOnlyForTest(t, body, 301)
+			assertSpeechTaskModelForTest(t, body, 301, "speech-2.8-hd")
 			if body["chatPrompt"] != "hello from file" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
-			metadata := decodeMetadataJSONForTest(t, body["metadata"])
-			if metadata["format"] != "mp3" {
-				t.Fatalf("unexpected metadata format: %#v", metadata["format"])
+			if body["voiceId"] != "male-qn-qingse" {
+				t.Fatalf("unexpected default voiceId: %#v", body["voiceId"])
+			}
+			if body["origin"] != "web" || body["model"] != "speech-2.8-hd" || body["aiPlatform"] != "GATEWAY" {
+				t.Fatalf("unexpected main site fields: %#v", body)
+			}
+			for _, key := range []string{"metadata", "projectId", "styleId", "width", "height"} {
+				if _, ok := body[key]; ok {
+					t.Fatalf("%s should be omitted from speech request: %#v", key, body[key])
+				}
 			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_audio_tts_1","status":0,"type":3,"subType":301}}`)
@@ -1682,7 +1713,6 @@ func TestAudioTTSCommandReadsTextFileAndSubmitsJob(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"audio", "tts",
 		"--text-file", textPath,
-		"--format", "mp3",
 	})
 
 	data := resp["data"].(map[string]any)
@@ -1708,16 +1738,23 @@ func TestAudioTTSAutofillsTaskFieldsFromModelList(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			assertTaskModelIDOnlyForTest(t, body, 301)
+			assertSpeechTaskModelForTest(t, body, 301, "speech-2.8-hd")
 			if body["aiModelId"] != float64(301) {
 				t.Fatalf("unexpected aiModelId: %#v", body["aiModelId"])
 			}
 			if body["voiceId"] != "female_01" {
 				t.Fatalf("unexpected voiceId: %#v", body["voiceId"])
 			}
-			metadata := decodeMetadataJSONForTest(t, body["metadata"])
-			if metadata["format"] != "mp3" {
-				t.Fatalf("unexpected metadata: %#v", metadata)
+			extraTaskParams := objectFieldForTest(t, body["extraTaskParams"], "extraTaskParams")
+			if extraTaskParams["speed"] != float64(1.2) || extraTaskParams["vol"] != float64(0.8) || extraTaskParams["pitch"] != float64(0) {
+				t.Fatalf("unexpected extraTaskParams: %#v", extraTaskParams)
+			}
+			if extraTaskParams["language_boost"] != "Chinese" {
+				t.Fatalf("unexpected language_boost: %#v", extraTaskParams["language_boost"])
+			}
+			voiceSetting := objectFieldForTest(t, extraTaskParams["voice_setting"], "voice_setting")
+			if voiceSetting["emotion"] != "fearful" {
+				t.Fatalf("unexpected voice emotion: %#v", voiceSetting)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_audio_autofill_1","status":0,"type":3,"subType":301}}`)
@@ -1733,12 +1770,36 @@ func TestAudioTTSAutofillsTaskFieldsFromModelList(t *testing.T) {
 		"--model", "301",
 		"--text", "你好，世界",
 		"--voice", "female_01",
-		"--format", "mp3",
+		"--language", "Chinese",
+		"--emotion", "fearful",
+		"--speed", "1.2",
+		"--volume", "0.8",
+		"--pitch", "0",
 	})
 
 	data := resp["data"].(map[string]any)
 	if data["job_id"] != "task_audio_autofill_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	}
+}
+
+func TestSpeechRejectsUnsupportedMainSiteFlags(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
+		"speech", "synthesize",
+		"--text", "hello",
+		"--format", "mp3",
+	})
+	if err == nil {
+		t.Fatal("expected unsupported speech flag to fail")
+	}
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != "VALIDATION_ERROR" || cliErr.Details["flag"] != "--format" {
+		t.Fatalf("unexpected error: %#v", cliErr)
 	}
 }
 
@@ -2024,6 +2085,9 @@ func TestSpeechSynthesizeAliasReadsTextFileAndSubmitsJob(t *testing.T) {
 			if body["chatPrompt"] != "hello from speech alias" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
+			if body["voiceId"] != "male-qn-qingse" {
+				t.Fatalf("unexpected default voiceId: %#v", body["voiceId"])
+			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_speech_alias_1","status":0,"type":3,"subType":301}}`)
 		default:
@@ -2061,7 +2125,7 @@ func TestSpeechSynthesizeModelOverrideUsesModelsInfer(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			assertTaskModelIDOnlyForTest(t, body, 301)
+			assertSpeechTaskModelForTest(t, body, 301, "speech-2.6")
 			if body["chatPrompt"] != "hello from override" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
@@ -2104,8 +2168,16 @@ func TestMusicGenerateUsesDefaultMiniMaxModel(t *testing.T) {
 				t.Fatalf("decode body: %v", err)
 			}
 			assertTaskModelIDOnlyForTest(t, body, 401)
-			if body["chatPrompt"] != "Upbeat pop\n\nlyrics:\nLa la la" {
+			if body["chatPrompt"] != "Upbeat pop" {
 				t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
+			}
+			extraTaskParams := objectFieldForTest(t, body["extraTaskParams"], "extraTaskParams")
+			if extraTaskParams["lyrics"] != "La la la" {
+				t.Fatalf("unexpected lyrics payload: %#v", extraTaskParams["lyrics"])
+			}
+			assetDraft := objectFieldForTest(t, body["assetDraft"], "assetDraft")
+			if assetDraft["title"] != "Upbeat pop" {
+				t.Fatalf("unexpected asset title: %#v", assetDraft["title"])
 			}
 			if body["subType"] != float64(304) {
 				t.Fatalf("unexpected subType: %#v", body["subType"])
@@ -2177,7 +2249,7 @@ func TestMusicGenerateAutofillsTaskFieldsFromModelList(t *testing.T) {
 	}
 }
 
-func TestMusicRootSugarUsesPositionalPromptAndInstrumental(t *testing.T) {
+func TestMusicRootSugarUsesPositionalPrompt(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
@@ -2194,9 +2266,8 @@ func TestMusicRootSugarUsesPositionalPromptAndInstrumental(t *testing.T) {
 			if body["chatPrompt"] != "Warm morning folk" {
 				t.Fatalf("unexpected prompt: %#v", body["chatPrompt"])
 			}
-			metadata := decodeMetadataJSONForTest(t, body["metadata"])
-			if metadata["is_instrumental"] != true {
-				t.Fatalf("unexpected instrumental flag: %#v", metadata["is_instrumental"])
+			if _, ok := body["metadata"]; ok {
+				t.Fatalf("metadata should be omitted from music request: %#v", body["metadata"])
 			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_music_root_1","status":0,"type":3,"subType":304}}`)
@@ -2209,33 +2280,11 @@ func TestMusicRootSugarUsesPositionalPromptAndInstrumental(t *testing.T) {
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"music", "Warm morning folk",
-		"--instrumental",
 	})
 
 	data := resp["data"].(map[string]any)
 	if data["job_id"] != "task_music_root_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
-	}
-}
-
-func TestMusicGenerateLyricsOptimizerConflictsWithLyrics(t *testing.T) {
-	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
-
-	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
-		"music", "generate",
-		"--prompt", "Upbeat pop",
-		"--lyrics", "La la la",
-		"--lyrics-optimizer",
-	})
-	if err == nil {
-		t.Fatal("expected conflicting lyrics flags to fail")
-	}
-	cliErr, ok := err.(*output.CLIError)
-	if !ok {
-		t.Fatalf("expected CLIError, got %T", err)
-	}
-	if cliErr.Code != "VALIDATION_ERROR" {
-		t.Fatalf("expected VALIDATION_ERROR, got %#v", cliErr.Code)
 	}
 }
 
@@ -2271,13 +2320,34 @@ func TestMusicGenerateDryRunLoadsLyricsFile(t *testing.T) {
 	}
 	request := data["request"].(map[string]any)
 	body := request["body"].(map[string]any)
-	metadata := decodeMetadataJSONForTest(t, body["metadata"])
-	if metadata["lyrics"] != "line one\nline two" {
-		t.Fatalf("unexpected lyrics payload: %#v", metadata["lyrics"])
+	extraTaskParams := objectFieldForTest(t, body["extraTaskParams"], "extraTaskParams")
+	if extraTaskParams["lyrics"] != "line one\nline two" {
+		t.Fatalf("unexpected lyrics payload: %#v", extraTaskParams["lyrics"])
 	}
 }
 
-func TestMusicGenerateUsesGatewayFieldNames(t *testing.T) {
+func TestMusicGenerateRejectsUnsupportedMainSiteFlags(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
+		"music", "generate",
+		"--prompt", "Warm pop",
+		"--lyrics", "hello",
+		"--format", "mp3",
+	})
+	if err == nil {
+		t.Fatal("expected unsupported music flag to fail")
+	}
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		t.Fatalf("expected CLIError, got %T", err)
+	}
+	if cliErr.Code != "VALIDATION_ERROR" || cliErr.Details["flag"] != "--format" {
+		t.Fatalf("unexpected error: %#v", cliErr)
+	}
+}
+
+func TestMusicGenerateUsesMinimalMainSiteFields(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
@@ -2294,11 +2364,7 @@ func TestMusicGenerateUsesGatewayFieldNames(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"music", "generate",
 		"--prompt", "Warm vlog bed",
-		"--instrumental",
-		"--output-format", "url",
-		"--format", "mp3",
-		"--sample-rate-hz", "44100",
-		"--bitrate", "256000",
+		"--title", "测试标题",
 		"--dry-run",
 	})
 
@@ -2308,16 +2374,20 @@ func TestMusicGenerateUsesGatewayFieldNames(t *testing.T) {
 	if body["subType"] != float64(304) {
 		t.Fatalf("expected music subType=304, got %#v", body["subType"])
 	}
-	metadata := decodeMetadataJSONForTest(t, body["metadata"])
-	if metadata["is_instrumental"] != true {
-		t.Fatalf("expected gateway is_instrumental field, got %#v", metadata)
+	if body["origin"] != "web" {
+		t.Fatalf("expected origin=web, got %#v", body["origin"])
 	}
-	if metadata["output_format"] != "url" {
-		t.Fatalf("expected output_format=url, got %#v", metadata["output_format"])
+	if body["chatPrompt"] != "Warm vlog bed" {
+		t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
 	}
-	audioSetting := metadata["audio_setting"].(map[string]any)
-	if audioSetting["format"] != "mp3" || audioSetting["sample_rate"] != float64(44100) || audioSetting["bitrate"] != float64(256000) {
-		t.Fatalf("unexpected audio_setting: %#v", audioSetting)
+	assetDraft := objectFieldForTest(t, body["assetDraft"], "assetDraft")
+	if assetDraft["title"] != "测试标题" {
+		t.Fatalf("unexpected title: %#v", assetDraft["title"])
+	}
+	for _, key := range []string{"metadata", "projectId", "styleId", "width", "height"} {
+		if _, ok := body[key]; ok {
+			t.Fatalf("%s should be omitted from music request: %#v", key, body[key])
+		}
 	}
 }
 
@@ -2348,24 +2418,5 @@ func TestMusicGenerateUsesModelBackedSubType305WhenOnly305Supported(t *testing.T
 	body := request["body"].(map[string]any)
 	if body["subType"] != float64(305) {
 		t.Fatalf("expected music subType=305, got %#v", body["subType"])
-	}
-}
-
-func TestMusicCoverRequiresExactlyOneAudioSource(t *testing.T) {
-	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
-	t.Setenv("POPIART_KEY", "pk-demo")
-
-	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
-		"music", "generate",
-		"--model", "403",
-		"--prompt", "female pop cover",
-		"--dry-run",
-	})
-	if err == nil {
-		t.Fatal("expected missing cover audio source to fail")
-	}
-	cliErr, ok := err.(*output.CLIError)
-	if !ok || cliErr.Code != "VALIDATION_ERROR" {
-		t.Fatalf("unexpected error for music-cover: %#v", err)
 	}
 }

@@ -250,8 +250,11 @@ func TestExportSchemaSpeechSynthesizeDefaultsToMiniMaxSpeechModel(t *testing.T) 
 	if model["default"] != nil {
 		t.Fatalf("did not expect model ID flag to expose a code default, got %#v", model["default"])
 	}
-	if properties["pronunciation"] == nil || properties["subtitles"] == nil {
+	if properties["speed"] == nil || properties["volume"] == nil || properties["pitch"] == nil {
 		t.Fatalf("expected speech-specific flags, got %#v", properties)
+	}
+	if properties["pronunciation"] != nil || properties["subtitles"] != nil {
+		t.Fatalf("did not expect unsupported speech flags, got %#v", properties)
 	}
 }
 
@@ -330,7 +333,7 @@ func TestExportSchemaMusicGenerateIncludesPromptLyricsOptions(t *testing.T) {
 		t.Fatalf("expected oneOf requirement, got %#v", parameters)
 	}
 	properties := parameters["properties"].(map[string]any)
-	if properties["lyrics_optimizer"] == nil || properties["instrumental"] == nil {
+	if properties["title"] == nil || properties["audio_url"] == nil {
 		t.Fatalf("expected music-specific flags, got %#v", properties)
 	}
 	model := properties["model"].(map[string]any)

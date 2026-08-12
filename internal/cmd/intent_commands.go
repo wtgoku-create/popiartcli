@@ -217,22 +217,15 @@ func newAudioCmd() *cobra.Command {
 			payload := map[string]any{
 				"text": text,
 			}
-			putString(payload, "voice", flagString(cmd, "voice"))
+			if err := rejectUnsupportedSpeechFlags(cmd); err != nil {
+				return err
+			}
+			putString(payload, "voice", resolveSpeechVoice(cmd))
 			putString(payload, "language", flagString(cmd, "language"))
-			putString(payload, "voice_style", flagString(cmd, "voice-style"))
 			putString(payload, "emotion", flagString(cmd, "emotion"))
-			putString(payload, "format", flagString(cmd, "format"))
-			putString(payload, "sound_effect", flagString(cmd, "sound-effect"))
-			putString(payload, "notes", flagString(cmd, "notes"))
-			putFloat(payload, "speed", flagFloat64(cmd, "speed"))
-			putFloat(payload, "volume", flagFloat64(cmd, "volume"))
-			putFloat(payload, "pitch", flagFloat64(cmd, "pitch"))
-			putFloat(payload, "sample_rate_hz", flagFloat64(cmd, "sample-rate-hz"))
-			putFloat(payload, "seed", flagFloat64(cmd, "seed"))
-			putInt(payload, "bitrate", flagInt(cmd, "bitrate"))
-			putInt(payload, "channels", flagInt(cmd, "channels"))
-			putBool(payload, "subtitles", flagBool(cmd, "subtitles"))
-			putStringSlice(payload, "pronunciation", flagStringArray(cmd, "pronunciation"))
+			putChangedFloat(payload, "speed", cmd, "speed")
+			putChangedFloat(payload, "volume", cmd, "volume")
+			putChangedFloat(payload, "pitch", cmd, "pitch")
 
 			return executeTaskCommand(cmd, "audio.tts", payload, popiart.BuildTextToSpeechTaskRequest, nil)
 		},
@@ -262,22 +255,15 @@ func newSpeechCmd() *cobra.Command {
 			payload := map[string]any{
 				"text": text,
 			}
-			putString(payload, "voice", flagString(cmd, "voice"))
+			if err := rejectUnsupportedSpeechFlags(cmd); err != nil {
+				return err
+			}
+			putString(payload, "voice", resolveSpeechVoice(cmd))
 			putString(payload, "language", flagString(cmd, "language"))
-			putString(payload, "voice_style", flagString(cmd, "voice-style"))
 			putString(payload, "emotion", flagString(cmd, "emotion"))
-			putString(payload, "format", flagString(cmd, "format"))
-			putString(payload, "sound_effect", flagString(cmd, "sound-effect"))
-			putString(payload, "notes", flagString(cmd, "notes"))
-			putFloat(payload, "speed", flagFloat64(cmd, "speed"))
-			putFloat(payload, "volume", flagFloat64(cmd, "volume"))
-			putFloat(payload, "pitch", flagFloat64(cmd, "pitch"))
-			putFloat(payload, "sample_rate_hz", flagFloat64(cmd, "sample-rate-hz"))
-			putFloat(payload, "seed", flagFloat64(cmd, "seed"))
-			putInt(payload, "bitrate", flagInt(cmd, "bitrate"))
-			putInt(payload, "channels", flagInt(cmd, "channels"))
-			putBool(payload, "subtitles", flagBool(cmd, "subtitles"))
-			putStringSlice(payload, "pronunciation", flagStringArray(cmd, "pronunciation"))
+			putChangedFloat(payload, "speed", cmd, "speed")
+			putChangedFloat(payload, "volume", cmd, "volume")
+			putChangedFloat(payload, "pitch", cmd, "pitch")
 
 			return executeTaskCommand(cmd, "speech.synthesize", payload, popiart.BuildTextToSpeechTaskRequest, nil)
 		},
@@ -423,7 +409,7 @@ func addSpeechSynthesizeFlags(cmd *cobra.Command) {
 	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）；不传则使用 MiniMax speech 默认模型")
 	cmd.Flags().String("text", "", "要合成的文本")
 	cmd.Flags().String("text-file", "", "从文件读取文本；传 - 表示标准输入")
-	cmd.Flags().String("voice", "", "语音 ID 或预设名")
+	cmd.Flags().String("voice", popiart.DefaultVoiceID, "语音 ID 或预设名")
 	cmd.Flags().String("language", "", "语言标签，例如 zh-CN、en-US")
 	cmd.Flags().String("voice-style", "", "语气、说话风格或表演方向")
 	cmd.Flags().Float64("speed", 0, "语速倍率")
@@ -439,11 +425,41 @@ func addSpeechSynthesizeFlags(cmd *cobra.Command) {
 	cmd.Flags().String("sound-effect", "", "附加音效提示")
 	cmd.Flags().Float64("seed", 0, "可选复现种子")
 	cmd.Flags().String("notes", "", "额外约束说明")
+	for _, name := range []string{
+		"voice-style", "format", "sample-rate-hz", "bitrate", "channels", "subtitles",
+		"pronunciation", "sound-effect", "seed", "notes",
+	} {
+		_ = cmd.Flags().MarkHidden(name)
+	}
+}
+
+func resolveSpeechVoice(cmd *cobra.Command) string {
+	voice := strings.TrimSpace(flagString(cmd, "voice"))
+	if voice == "" {
+		return popiart.DefaultVoiceID
+	}
+	return voice
+}
+
+func rejectUnsupportedSpeechFlags(cmd *cobra.Command) error {
+	for _, name := range []string{
+		"voice-style", "format", "sample-rate-hz", "bitrate", "channels", "subtitles",
+		"pronunciation", "sound-effect", "seed", "notes",
+	} {
+		if cmd.Flags().Changed(name) {
+			return output.NewError("VALIDATION_ERROR", "当前主站语音接口不支持该参数", map[string]any{
+				"flag": "--" + name,
+				"hint": "当前 speech synthesize / audio tts 仅支持 --text、--text-file、--model、--voice、--language、--emotion、--speed、--volume、--pitch、--wait、--download、--dir",
+			})
+		}
+	}
+	return nil
 }
 
 func addMusicGenerateFlags(cmd *cobra.Command) {
 	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）；不传则使用 MiniMax music 默认模型")
 	cmd.Flags().String("prompt", "", "音乐风格或生成提示词")
+	cmd.Flags().String("title", "", "作品标题（默认：使用 prompt）")
 	cmd.Flags().String("lyrics", "", "歌词文本")
 	cmd.Flags().String("lyrics-file", "", "从文件读取歌词；传 - 表示标准输入")
 	cmd.Flags().Bool("lyrics-optimizer", false, "根据 prompt 自动生成歌词")
@@ -468,6 +484,13 @@ func addMusicGenerateFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("bitrate", 0, "输出码率提示")
 	cmd.Flags().String("audio-url", "", "music-cover 参考音频 URL")
 	cmd.Flags().String("audio-base64", "", "music-cover 参考音频 Base64")
+	for _, name := range []string{
+		"lyrics-optimizer", "instrumental", "vocals", "genre", "mood", "instruments", "tempo", "bpm",
+		"key", "avoid", "use-case", "structure", "references", "extra", "aigc-watermark", "output-format",
+		"stream", "format", "sample-rate-hz", "bitrate", "audio-base64",
+	} {
+		_ = cmd.Flags().MarkHidden(name)
+	}
 }
 
 func executeSkillRun(cmd *cobra.Command, skillID string, payload map[string]any, action string, extras map[string]any) error {
@@ -893,113 +916,39 @@ func resolveMusicGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 	if err != nil {
 		return nil, err
 	}
-	lyricsOptimizer := flagBool(cmd, "lyrics-optimizer")
-	instrumental := flagBool(cmd, "instrumental")
-	modelID := strings.TrimSpace(flagString(cmd, "model"))
+	if err := rejectUnsupportedMusicFlags(cmd); err != nil {
+		return nil, err
+	}
 	audioURL := strings.TrimSpace(flagString(cmd, "audio-url"))
-	audioBase64 := strings.TrimSpace(flagString(cmd, "audio-base64"))
-	outputFormat := strings.TrimSpace(flagString(cmd, "output-format"))
-	stream := flagBool(cmd, "stream")
-	isCoverModel := strings.HasPrefix(modelID, "music-cover")
+	title := strings.TrimSpace(flagString(cmd, "title"))
 
 	switch {
-	case lyrics != "" && lyricsOptimizer:
-		return nil, output.NewError("VALIDATION_ERROR", "lyrics-optimizer 不能与 lyrics 同时使用", map[string]any{
-			"flags": []string{"lyrics", "lyrics-file", "lyrics-optimizer"},
-		})
-	case lyrics != "" && instrumental:
-		return nil, output.NewError("VALIDATION_ERROR", "instrumental 不能与歌词同时使用", map[string]any{
-			"flags": []string{"lyrics", "lyrics-file", "instrumental"},
-		})
-	case lyricsOptimizer && instrumental:
-		return nil, output.NewError("VALIDATION_ERROR", "lyrics-optimizer 不能与 instrumental 同时使用", map[string]any{
-			"flags": []string{"lyrics-optimizer", "instrumental"},
-		})
-	case outputFormat != "" && outputFormat != "hex" && outputFormat != "url":
-		return nil, invalidFlagValueError("--output-format", outputFormat, "请传入 hex 或 url")
-	case stream && outputFormat != "" && outputFormat != "hex":
-		return nil, output.NewError("VALIDATION_ERROR", "stream=true 时只能使用 output-format=hex", map[string]any{
-			"flags": []string{"stream", "output-format"},
-		})
-	case audioURL != "" && audioBase64 != "":
-		return nil, output.NewError("VALIDATION_ERROR", "audio-url 和 audio-base64 只能提供一个", map[string]any{
-			"flags": []string{"audio-url", "audio-base64"},
-		})
-	case isCoverModel && prompt == "":
-		return nil, invalidFlagValueError("--prompt", "", "music-cover 模型必须传入 prompt")
-	case isCoverModel && audioURL == "" && audioBase64 == "":
-		return nil, output.NewError("VALIDATION_ERROR", "music-cover 模型必须传入 audio-url 或 audio-base64", map[string]any{
-			"flags": []string{"audio-url", "audio-base64"},
-		})
-	case isCoverModel && (lyricsOptimizer || instrumental):
-		return nil, output.NewError("VALIDATION_ERROR", "music-cover 模型不支持 lyrics-optimizer 或 instrumental", map[string]any{
-			"flags": []string{"lyrics-optimizer", "instrumental"},
-		})
-	case !isCoverModel && (audioURL != "" || audioBase64 != ""):
-		return nil, output.NewError("VALIDATION_ERROR", "music-2.6 模型不支持 audio-url 或 audio-base64", map[string]any{
-			"flags": []string{"audio-url", "audio-base64"},
-		})
-	case !isCoverModel && instrumental && prompt == "":
-		return nil, invalidFlagValueError("--prompt", "", "instrumental=true 时必须传入 prompt")
-	case !isCoverModel && !instrumental && lyrics == "" && !lyricsOptimizer:
-		return nil, invalidFlagValueError("--lyrics", "", "非纯音乐必须传入 lyrics，或使用 --lyrics-optimizer")
-	case prompt == "" && lyrics == "":
-		return nil, invalidFlagValueError("--prompt", "", "请传入 --prompt、--lyrics，或通过 --lyrics-file 提供歌词")
+	case prompt == "":
+		return nil, invalidFlagValueError("--prompt", "", "请传入音乐风格提示词")
 	}
 
 	payload := map[string]any{}
 	putString(payload, "prompt", prompt)
+	putString(payload, "title", title)
 	putString(payload, "lyrics", lyrics)
-	putString(payload, "output_format", outputFormat)
 	putString(payload, "audio_url", audioURL)
-	putString(payload, "audio_base64", audioBase64)
-	putBool(payload, "lyrics_optimizer", lyricsOptimizer)
-	putBool(payload, "is_instrumental", instrumental)
-	putBool(payload, "stream", stream)
-	putBool(payload, "aigc_watermark", flagBool(cmd, "aigc-watermark"))
-	if audioSetting := musicAudioSetting(cmd); len(audioSetting) > 0 {
-		payload["audio_setting"] = audioSetting
-	}
-	if promptAddendum := musicPromptAddendum(cmd); promptAddendum != "" {
-		if payload["prompt"] == nil {
-			payload["prompt"] = promptAddendum
-		} else {
-			payload["prompt"] = strings.TrimSpace(payload["prompt"].(string) + "\n\n" + promptAddendum)
-		}
-	}
 	return payload, nil
 }
 
-func musicAudioSetting(cmd *cobra.Command) map[string]any {
-	audioSetting := map[string]any{}
-	putString(audioSetting, "format", flagString(cmd, "format"))
-	putInt(audioSetting, "sample_rate", flagInt(cmd, "sample-rate-hz"))
-	putInt(audioSetting, "bitrate", flagInt(cmd, "bitrate"))
-	return audioSetting
-}
-
-func musicPromptAddendum(cmd *cobra.Command) string {
-	parts := []string{}
-	appendPart := func(label, flagName string) {
-		if value := strings.TrimSpace(flagString(cmd, flagName)); value != "" {
-			parts = append(parts, label+": "+value)
+func rejectUnsupportedMusicFlags(cmd *cobra.Command) error {
+	for _, name := range []string{
+		"lyrics-optimizer", "instrumental", "vocals", "genre", "mood", "instruments", "tempo", "bpm",
+		"key", "avoid", "use-case", "structure", "references", "extra", "aigc-watermark", "output-format",
+		"stream", "format", "sample-rate-hz", "bitrate", "audio-base64",
+	} {
+		if cmd.Flags().Changed(name) {
+			return output.NewError("VALIDATION_ERROR", "当前主站音乐接口不支持该参数", map[string]any{
+				"flag": "--" + name,
+				"hint": "当前 music generate 仅支持 --prompt、--title、--lyrics、--lyrics-file、--model、--audio-url、--wait、--download、--dir",
+			})
 		}
 	}
-	appendPart("vocals", "vocals")
-	appendPart("genre", "genre")
-	appendPart("mood", "mood")
-	appendPart("instruments", "instruments")
-	appendPart("tempo", "tempo")
-	appendPart("key", "key")
-	appendPart("avoid", "avoid")
-	appendPart("use case", "use-case")
-	appendPart("structure", "structure")
-	appendPart("references", "references")
-	appendPart("extra", "extra")
-	if bpm := flagInt(cmd, "bpm"); bpm > 0 {
-		parts = append(parts, fmt.Sprintf("bpm: %d", bpm))
-	}
-	return strings.Join(parts, "\n")
+	return nil
 }
 
 // resolveVideoGenerateInput 统一解析普通图生视频与纯提示词视频两类输入。
@@ -2401,6 +2350,12 @@ func putFloat(payload map[string]any, key string, value float64) {
 		return
 	}
 	payload[key] = value
+}
+
+func putChangedFloat(payload map[string]any, key string, cmd *cobra.Command, flagName string) {
+	if cmd.Flags().Changed(flagName) {
+		payload[key] = flagFloat64(cmd, flagName)
+	}
 }
 
 func putInt(payload map[string]any, key string, value int) {

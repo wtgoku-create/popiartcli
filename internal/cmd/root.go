@@ -67,6 +67,7 @@ func NewRootCmd(version string) *cobra.Command {
 		newAudioCmd(),
 		newSpeechCmd(),
 		newMusicCmd(),
+		newVoicesCmd(),
 		newSetupCmd(),
 		newAuthCmd(),
 		newSkillsCmd(),
