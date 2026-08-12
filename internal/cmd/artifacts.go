@@ -132,42 +132,9 @@ func newArtifactsCmd() *cobra.Command {
 				return output.NewError("CLI_ERROR", "创建输出目录失败", map[string]any{"details": err.Error()})
 			}
 
-			files := make([]map[string]any, 0, len(urls))
-			for index, item := range urls {
-				res, err := http.Get(item)
-				if err != nil {
-					return output.NewError("NETWORK_ERROR", "下载任务结果失败", map[string]any{
-						"url":     item,
-						"details": err.Error(),
-					})
-				}
-				if res.StatusCode < 200 || res.StatusCode >= 300 {
-					res.Body.Close()
-					return output.NewError("NETWORK_ERROR", "下载任务结果失败", map[string]any{
-						"url":    item,
-						"status": res.StatusCode,
-					})
-				}
-
-				outPath := filepath.Join(dir, filenameFromDownloadURL(item, index+1))
-				file, err := os.Create(outPath)
-				if err != nil {
-					res.Body.Close()
-					return output.NewError("CLI_ERROR", "创建输出文件失败", map[string]any{"details": err.Error()})
-				}
-
-				n, copyErr := io.Copy(file, res.Body)
-				file.Close()
-				res.Body.Close()
-				if copyErr != nil {
-					return output.NewError("NETWORK_ERROR", "写入工件失败", map[string]any{"details": copyErr.Error()})
-				}
-
-				files = append(files, map[string]any{
-					"url":      item,
-					"saved_to": outPath,
-					"bytes":    n,
-				})
+			files, err := downloadResultURLs(context.Background(), urls, dir, true)
+			if err != nil {
+				return err
 			}
 
 			return writeOutput(cmd, map[string]any{
@@ -236,6 +203,57 @@ func filenameFromDownloadURL(raw string, index int) string {
 		}
 	}
 	return fmt.Sprintf("artifact-%d", index)
+}
+
+func downloadResultURLs(ctx context.Context, urls []string, dir string, includeURL bool) ([]map[string]any, error) {
+	files := make([]map[string]any, 0, len(urls))
+	for index, item := range urls {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, item, nil)
+		if err != nil {
+			return nil, output.NewError("BAD_REQUEST", "无效的任务结果下载地址", map[string]any{
+				"url":     item,
+				"details": err.Error(),
+			})
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return nil, output.NewError("NETWORK_ERROR", "下载任务结果失败", map[string]any{
+				"url":     item,
+				"details": err.Error(),
+			})
+		}
+		if res.StatusCode < 200 || res.StatusCode >= 300 {
+			res.Body.Close()
+			return nil, output.NewError("NETWORK_ERROR", "下载任务结果失败", map[string]any{
+				"url":    item,
+				"status": res.StatusCode,
+			})
+		}
+
+		outPath := filepath.Join(dir, filenameFromDownloadURL(item, index+1))
+		file, err := os.Create(outPath)
+		if err != nil {
+			res.Body.Close()
+			return nil, output.NewError("CLI_ERROR", "创建输出文件失败", map[string]any{"details": err.Error()})
+		}
+
+		n, copyErr := io.Copy(file, res.Body)
+		file.Close()
+		res.Body.Close()
+		if copyErr != nil {
+			return nil, output.NewError("NETWORK_ERROR", "写入工件失败", map[string]any{"details": copyErr.Error()})
+		}
+
+		fileResult := map[string]any{
+			"saved_to": outPath,
+			"bytes":    n,
+		}
+		if includeURL {
+			fileResult["url"] = item
+		}
+		files = append(files, fileResult)
+	}
+	return files, nil
 }
 
 func uploadArtifact(ctx context.Context, path string, opts artifactUploadOptions) (map[string]any, error) {

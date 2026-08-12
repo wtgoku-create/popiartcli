@@ -262,6 +262,20 @@ popiart video seedance --prompt "保持主体动作风格一致" --video ./ref.m
 
 ## 语音相关
 
+0. 查询音色：`popiart voices list`
+
+示例：
+
+```sh
+popiart voices list --pageSize 50
+```
+
+说明：
+
+- 输出里的 `voice_id` 可用于 `speech synthesize` / `audio tts` 的 `--voice`
+- `--page` 页码
+- `--pageSize` 每页数量；也兼容 `--page-size`
+
 1. 语音合成：`popiart speech synthesize`
 
 示例：
@@ -275,22 +289,15 @@ popiart speech synthesize --text "你好，欢迎使用 PopiArt" --wait
 - `--text` 文本
 - `--text-file` 从文件读取文本
 - `--model` 语音模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
-- `--voice` 声音 ID
-- `--voice-style` 说话风格
+- `--voice` 声音 ID；默认 `male-qn-qingse`
 - `--emotion` 情绪方向
-- `--language` 语言标签
-- `--sound-effect` 附加音效提示
-- `--format` 输出格式，例如 `mp3`、`wav`
-- `--bitrate` 输出码率提示
-- `--channels` 声道数
-- `--sample-rate-hz` 采样率提示
+- `--language` 语言增强标签，例如 `Chinese`
 - `--speed` 语速
 - `--volume` 音量
 - `--pitch` 音高
-- `--pronunciation` 自定义发音映射，可重复传入
-- `--subtitles` 返回字幕时间信息
-- `--seed` 随机种子
 - `--wait` 轮询结果
+- `--download` 任务成功后直接下载结果文件
+- `--dir` 下载输出目录
 
 2. 兼容 TTS 入口：`popiart audio tts`
 
@@ -307,38 +314,25 @@ popiart audio tts --text "你好，欢迎使用 PopiArt" --wait
 示例：
 
 ```sh
-popiart music generate --prompt "Warm upbeat pop" --lyrics "hello hello" --wait
+popiart music generate \
+  --prompt "独立民谣, 忧郁, 深夜咖啡馆" \
+  --title "测试标题" \
+  --lyrics "[Verse]\n街灯微亮晚风轻抚\n[Chorus]\n心事落在雨里" \
+  --wait
 ```
 
 常用参数：
 
 - `--prompt` 音乐提示词
+- `--title` 作品标题；不传则使用 `--prompt`
 - `--lyrics` 歌词
 - `--lyrics-file` 从文件读取歌词
 - `--model` 音乐模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
-- `--instrumental` 生成纯音乐
-- `--lyrics-optimizer` 自动生成歌词
 - `--audio-url` `music-cover` 参考音频 URL
-- `--audio-base64` `music-cover` 参考音频 Base64
-- `--genre` 音乐流派
-- `--mood` 情绪氛围
-- `--tempo` 速度描述
-- `--bpm` 精确 BPM
-- `--key` 调式
-- `--instruments` 乐器
-- `--vocals` 人声风格
-- `--references` 参考曲目或歌手
-- `--use-case` 使用场景
-- `--structure` 歌曲结构
-- `--avoid` 希望避免的元素
-- `--extra` 额外细粒度要求
-- `--format` 输出格式
-- `--output-format` 返回格式，例如 `hex`、`url`
-- `--sample-rate-hz` 采样率提示
-- `--bitrate` 码率提示
-- `--stream` 流式音乐生成
-- `--aigc-watermark` 嵌入 AIGC 水印
 - `--wait` 轮询结果
+- `--download` 任务成功后直接下载结果文件
+- `--dir` 下载输出目录
+
 
 ## 模型相关
 

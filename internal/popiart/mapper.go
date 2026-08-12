@@ -62,7 +62,9 @@ func BuildTextToSpeechTaskRequest(payload map[string]any, model Model) TaskReque
 	putExtraTaskParamFloatAllowZero(req.ExtraTaskParams, "pitch", payload["pitch"])
 	putExtraTaskParamString(req.ExtraTaskParams, "language_boost", payload["language"])
 	if emotion := stringField(payload, "emotion"); emotion != "" {
-		req.ExtraTaskParams["voice_setting"] = map[string]any{"emotion": emotion}
+		req.ExtraTaskParams["voice_setting"] = map[string]any{
+			"emotion": emotion,
+		}
 	}
 	if len(req.ExtraTaskParams) == 0 {
 		req.ExtraTaskParams = nil

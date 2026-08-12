@@ -202,6 +202,190 @@ func TestImageGenerateAllowsArrayUploadImageLimitFromModelList(t *testing.T) {
 	}
 }
 
+func TestImageGenerateDownloadSavesResultWithoutReturningURLs(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":101,"code":"seedream-4-5-251128","ratio":["16:9"],"resolution":["2K"],"categories":[{"taskSubType":103}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_image_download_1","status":0,"type":1,"subType":103}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/detail":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_image_download_1","status":2,"type":1,"subType":103}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/downloadUrls":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"downloadUrls":["`+serverURLForHost(r.Host)+`/download/result.png"]}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/download/result.png":
+			_, _ = w.Write([]byte("image-body"))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	dir := filepath.Join(t.TempDir(), "downloads")
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "generate",
+		"--prompt", "一只小狗",
+		"--download",
+		"--dir", dir,
+		"--interval", "1",
+	})
+
+	data := resp["data"].(map[string]any)
+	if _, ok := data["download_urls"]; ok {
+		t.Fatalf("download_urls should be omitted when --download is set: %#v", data["download_urls"])
+	}
+	if data["artifacts_downloaded"] != float64(1) {
+		t.Fatalf("unexpected artifacts_downloaded: %#v", data["artifacts_downloaded"])
+	}
+	files := data["files"].([]any)
+	if len(files) != 1 {
+		t.Fatalf("unexpected files: %#v", data["files"])
+	}
+	file := files[0].(map[string]any)
+	if _, ok := file["url"]; ok {
+		t.Fatalf("file url should be omitted when --download is set: %#v", file)
+	}
+	if file["saved_to"] != filepath.Join(dir, "result.png") {
+		t.Fatalf("unexpected saved_to: %#v", file["saved_to"])
+	}
+	body, err := os.ReadFile(filepath.Join(dir, "result.png"))
+	if err != nil {
+		t.Fatalf("read downloaded result: %v", err)
+	}
+	if string(body) != "image-body" {
+		t.Fatalf("unexpected downloaded body: %q", string(body))
+	}
+}
+
+func TestImageGenerateDirWithoutDownloadKeepsURLOutput(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":101,"code":"seedream-4-5-251128","ratio":["16:9"],"resolution":["2K"],"categories":[{"taskSubType":103}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_image_dir_only_1","status":0,"type":1,"subType":103}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/detail":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_image_dir_only_1","status":2,"type":1,"subType":103}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/downloadUrls":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"downloadUrls":["`+serverURLForHost(r.Host)+`/download/result.png"]}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	dir := filepath.Join(t.TempDir(), "dir-only")
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"image", "generate",
+		"--prompt", "一只小狗",
+		"--wait",
+		"--dir", dir,
+		"--interval", "1",
+	})
+
+	data := resp["data"].(map[string]any)
+	if _, ok := data["artifacts_downloaded"]; ok {
+		t.Fatalf("artifacts_downloaded should be omitted without --download: %#v", data["artifacts_downloaded"])
+	}
+	if _, ok := data["files"]; ok {
+		t.Fatalf("files should be omitted without --download: %#v", data["files"])
+	}
+	downloadURLs := data["download_urls"].([]any)
+	if len(downloadURLs) != 1 || downloadURLs[0] != serverURLForHost(server.Listener.Addr().String())+"/download/result.png" {
+		t.Fatalf("unexpected download_urls: %#v", data["download_urls"])
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("--dir should not create output directory without --download, err=%v", err)
+	}
+}
+
+func TestVideoGenerateDownloadCompactsLocalUploadOutput(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	sourcePath := filepath.Join(t.TempDir(), "source.jpeg")
+	if err := os.WriteFile(sourcePath, []byte("jpeg-body"), 0o600); err != nil {
+		t.Fatalf("write source image: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":202,"code":"viduq2-pro","isSupportImages":true,"categories":[{"taskSubType":202}]}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/media/upload":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Fatalf("parse upload form: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"media_source_1","filename":"source.jpeg","content_type":"image/jpeg","size_bytes":9,"created_at":"2026-08-11T00:00:00Z","url":"https://media.popi.test/source.jpeg","visibility":"unlisted"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			images := body["images"].([]any)
+			if len(images) != 1 || images[0] != "https://media.popi.test/source.jpeg" {
+				t.Fatalf("unexpected images: %#v", body["images"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_video_download_1","status":0,"type":2,"subType":202}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/detail":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_video_download_1","status":2,"type":2,"subType":202}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/task/downloadUrls":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"ok":true,"data":{"downloadUrls":["`+serverURLForHost(r.Host)+`/download/result.mp4"]}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/download/result.mp4":
+			_, _ = w.Write([]byte("video-body"))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	dir := filepath.Join(t.TempDir(), "videos")
+	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+		"video", "generate",
+		"--download",
+		"--dir", dir,
+		"--image", sourcePath,
+		"--prompt", "小狗在跑步",
+		"--interval", "1",
+	})
+
+	data := resp["data"].(map[string]any)
+	for _, key := range []string{"download_urls", "source_sources", "source_uploaded_media"} {
+		if _, ok := data[key]; ok {
+			t.Fatalf("%s should be omitted when --download is set: %#v", key, data[key])
+		}
+	}
+	files := data["files"].([]any)
+	if len(files) != 1 {
+		t.Fatalf("unexpected files: %#v", data["files"])
+	}
+	if files[0].(map[string]any)["saved_to"] != filepath.Join(dir, "result.mp4") {
+		t.Fatalf("unexpected files: %#v", data["files"])
+	}
+}
+
 func TestImageGenerateNormalizesAspectRatioFlag(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
@@ -1669,6 +1853,9 @@ func TestAudioTTSCommandReadsTextFileAndSubmitsJob(t *testing.T) {
 			if body["voiceId"] != "male-qn-qingse" {
 				t.Fatalf("unexpected default voiceId: %#v", body["voiceId"])
 			}
+			if body["origin"] != "web" || body["model"] != "speech-2.8-hd" || body["aiPlatform"] != "GATEWAY" {
+				t.Fatalf("unexpected main site fields: %#v", body)
+			}
 			for _, key := range []string{"metadata", "projectId", "styleId", "width", "height"} {
 				if _, ok := body[key]; ok {
 					t.Fatalf("%s should be omitted from speech request: %#v", key, body[key])
@@ -2227,6 +2414,9 @@ func TestSpeechSynthesizeAliasReadsTextFileAndSubmitsJob(t *testing.T) {
 			}
 			if body["chatPrompt"] != "hello from speech alias" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
+			}
+			if body["voiceId"] != "male-qn-qingse" {
+				t.Fatalf("unexpected default voiceId: %#v", body["voiceId"])
 			}
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_speech_alias_1","status":0,"type":3,"subType":301}}`)

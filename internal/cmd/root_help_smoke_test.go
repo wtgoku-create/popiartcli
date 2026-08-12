@@ -29,6 +29,7 @@ func TestTopLevelCommandHelpSmoke(t *testing.T) {
 		"skills",
 		"update",
 		"video",
+		"voices",
 	}
 
 	for _, name := range commands {

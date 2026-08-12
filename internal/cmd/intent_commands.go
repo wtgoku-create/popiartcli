@@ -11,6 +11,7 @@ import (
 	neturl "net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -314,6 +315,8 @@ func newMusicCmd() *cobra.Command {
 
 func addCommonExecutionFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolP("wait", "w", false, "阻塞进程直到作业完成")
+	cmd.Flags().Bool("download", false, "任务成功后将结果文件直接下载到本地")
+	cmd.Flags().StringP("dir", "d", "", "下载输出目录（默认：./<task-id>，仅在 --download 时生效）")
 	cmd.Flags().String("interval", "2000", "轮询间隔（毫秒，默认：2000）")
 	cmd.Flags().String("priority", "normal", "作业优先级: low | normal | high")
 	cmd.Flags().String("idempotency-key", "", "用于安全重试的幂等键")
@@ -1049,6 +1052,13 @@ func writeTaskResultOrWait(cmd *cobra.Command, task popiart.TaskDetail, model po
 	if err != nil {
 		return err
 	}
+	download := downloadResultRequested(cmd)
+	if download {
+		if flagBool(cmd, "async") {
+			return conflictingAgentFlagsError("download", "async")
+		}
+		wait = true
+	}
 	if wait {
 		taskID := task.Identifier()
 		if taskID == "" {
@@ -1066,7 +1076,67 @@ func writeTaskResultOrWait(cmd *cobra.Command, task popiart.TaskDetail, model po
 
 	outputData := popiart.TaskOutput(task, model, extras)
 	outputData["execution_mode"] = executionMode
+	if download {
+		files, err := downloadCompletedTaskResults(cmd, task)
+		if err != nil {
+			return err
+		}
+		delete(outputData, "download_urls")
+		delete(outputData, "result_urls")
+		compactDownloadedTaskOutput(outputData)
+		outputData["artifacts_downloaded"] = len(files)
+		outputData["files"] = files
+	}
 	return writeOutput(cmd, outputData)
+}
+
+func downloadResultRequested(cmd *cobra.Command) bool {
+	if cmd == nil || cmd.Flags().Lookup("download") == nil {
+		return false
+	}
+	return flagBool(cmd, "download")
+}
+
+func downloadCompletedTaskResults(cmd *cobra.Command, task popiart.TaskDetail) ([]map[string]any, error) {
+	taskID := task.Identifier()
+	if taskID == "" {
+		return nil, output.NewError("CLI_ERROR", "任务响应中缺少 task_id", nil)
+	}
+
+	urls := append([]string(nil), task.DownloadURLs...)
+	if len(urls) == 0 {
+		urls = append(urls, task.ResultURLs...)
+	}
+	if len(urls) == 0 {
+		return nil, nil
+	}
+
+	dir := ""
+	if cmd != nil && cmd.Flags().Lookup("dir") != nil {
+		dir = flagString(cmd, "dir")
+	}
+	if strings.TrimSpace(dir) == "" {
+		dir = filepath.Join(".", taskID)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, output.NewError("CLI_ERROR", "创建输出目录失败", map[string]any{"details": err.Error()})
+	}
+	return downloadResultURLs(context.Background(), urls, dir, false)
+}
+
+func compactDownloadedTaskOutput(outputData map[string]any) {
+	for key := range outputData {
+		switch {
+		case key == "uploaded_media", key == "uploaded_reference_artifacts":
+			delete(outputData, key)
+		case strings.HasPrefix(key, "source_"):
+			delete(outputData, key)
+		case strings.HasSuffix(key, "_uploaded_media"):
+			delete(outputData, key)
+		case strings.HasSuffix(key, "_sources"):
+			delete(outputData, key)
+		}
+	}
 }
 
 // taskExecutionMode 标记这次 task 执行是否使用了显式模型覆盖。
