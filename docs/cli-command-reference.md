@@ -272,7 +272,6 @@ popiart voices list --pageSize 50
 
 说明：
 
-- 请求 `/api_client/anime/voiceLibrary/list`
 - 输出里的 `voice_id` 可用于 `speech synthesize` / `audio tts` 的 `--voice`
 - `--page` 页码
 - `--pageSize` 每页数量；也兼容 `--page-size`
@@ -299,35 +298,6 @@ popiart speech synthesize --text "你好，欢迎使用 PopiArt" --wait
 - `--wait` 轮询结果
 - `--download` 任务成功后直接下载结果文件
 - `--dir` 下载输出目录
-
-当前主站语音接口只支持以下任务字段：
-
-- `type=3`
-- `subType=301`
-- `origin=web`
-- `chatPrompt` 来自 `--text` / `--text-file`
-- `model` 来自模型 code，例如 `speech-2.8-hd`
-- `aiPlatform=GATEWAY`
-- `aiModelId` 来自 `--model` 或默认模型候选
-- `voiceId` 来自 `--voice`
-- `batchSize=1`
-- `extraTaskParams.speed` 来自 `--speed`
-- `extraTaskParams.vol` 来自 `--volume`
-- `extraTaskParams.pitch` 来自 `--pitch`
-- `extraTaskParams.language_boost` 来自 `--language`
-- `extraTaskParams.voice_setting.emotion` 来自 `--emotion`
-
-以下旧兼容参数当前不再发送到主站语音接口；如果显式传入会返回 `VALIDATION_ERROR`：
-
-- `--voice-style`
-- `--format`
-- `--bitrate`
-- `--channels`
-- `--sample-rate-hz`
-- `--pronunciation`
-- `--subtitles`
-- `--sound-effect`
-- `--seed`
 
 2. 兼容 TTS 入口：`popiart audio tts`
 
@@ -363,41 +333,6 @@ popiart music generate \
 - `--download` 任务成功后直接下载结果文件
 - `--dir` 下载输出目录
 
-当前主站音乐接口只支持以下任务字段：
-
-- `type=3`
-- `subType=304`
-- `origin=web`
-- `chatPrompt` 来自 `--prompt`
-- `aiModelId` 来自 `--model` 或默认模型候选
-- `batchSize=1`
-- `extraTaskParams.lyrics` 来自 `--lyrics` / `--lyrics-file`
-- `extraTaskParams.audio_url` 来自 `--audio-url`
-- `assetDraft.title` 来自 `--title`，默认回退到 `--prompt`
-
-以下旧兼容参数当前不再发送到主站音乐接口；如果显式传入会返回 `VALIDATION_ERROR`：
-
-- `--instrumental`
-- `--lyrics-optimizer`
-- `--audio-base64`
-- `--genre`
-- `--mood`
-- `--tempo`
-- `--bpm`
-- `--key`
-- `--instruments`
-- `--vocals`
-- `--references`
-- `--use-case`
-- `--structure`
-- `--avoid`
-- `--extra`
-- `--format`
-- `--output-format`
-- `--sample-rate-hz`
-- `--bitrate`
-- `--stream`
-- `--aigc-watermark`
 
 ## 模型相关
 
