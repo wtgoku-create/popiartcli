@@ -91,7 +91,7 @@ func TestExportSchemaImageImg2ImgIncludesReferenceFusionFlags(t *testing.T) {
 	}
 }
 
-func TestExportSchemaImageDescribeRequiresModelAndImageSource(t *testing.T) {
+func TestExportSchemaImageDescribeRequiresImageSource(t *testing.T) {
 	root := NewRootCmd("0.test")
 
 	stdout, stderr, err := executeRootRaw(root, []string{
@@ -111,16 +111,12 @@ func TestExportSchemaImageDescribeRequiresModelAndImageSource(t *testing.T) {
 	if properties["model"] == nil || properties["image"] == nil || properties["source_artifact_id"] == nil {
 		t.Fatalf("expected image describe flags, got %#v", properties)
 	}
-	required := tools[0]["input_schema"].(map[string]any)["required"].([]any)
-	foundModel := false
-	for _, item := range required {
-		if item == "model" {
-			foundModel = true
-			break
+	if required, ok := tools[0]["input_schema"].(map[string]any)["required"].([]any); ok {
+		for _, item := range required {
+			if item == "model" {
+				t.Fatalf("model should be optional, got required=%#v", required)
+			}
 		}
-	}
-	if !foundModel {
-		t.Fatalf("expected model to be required, got %#v", required)
 	}
 	if tools[0]["input_schema"].(map[string]any)["oneOf"] == nil {
 		t.Fatalf("expected oneOf image source constraint, got %#v", tools[0]["input_schema"])

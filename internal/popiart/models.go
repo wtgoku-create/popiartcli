@@ -22,7 +22,7 @@ func FetchModels(ctx context.Context, client *api.Client) ([]Model, error) {
 	return models, nil
 }
 
-// ResolveModelByCode 按 code 或 alias 从模型列表中查找候选模型。
+// ResolveModelByCode 按 code、alias 或展示名从模型列表中查找候选模型。
 func ResolveModelByCode(models []Model, code string) (Model, bool) {
 	code = strings.TrimSpace(code)
 	if code == "" {
@@ -151,6 +151,9 @@ func SupportsSubType(model Model, subType int) bool {
 
 func matchesModelCode(model Model, code string) bool {
 	if strings.EqualFold(strings.TrimSpace(model.Code), code) {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(model.Name), code) {
 		return true
 	}
 	for _, alias := range model.AIModelCodeAlias {

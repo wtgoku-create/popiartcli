@@ -94,6 +94,8 @@ popiart image generate --prompt "一只小狗" --wait
 - `--negative-prompt` 排除项，会透传到 `metadata.negative_prompt`
 - `--seed` 随机种子，会透传到 `metadata.seed`
 - `--wait` 轮询结果
+- `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
+- `--dir` 下载输出目录（仅在 `--download` 时生效）
 - `--interval` 轮询间隔毫秒
 
 2. 图生图：`popiart image img2img`
@@ -124,6 +126,8 @@ popiart image img2img --image ./source.png --prompt "改成黄昏电影感" --wa
 - `--preserve-composition` 尽量保留原构图
 - `--seed` 随机种子，会透传到 `metadata.seed`
 - `--wait` 轮询结果
+- `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
+- `--dir` 下载输出目录（仅在 `--download` 时生效）
 
 3. 显式图生图入口：`popiart image transform`
 
@@ -147,8 +151,10 @@ popiart image describe --image ./source.png --prompt "请写成适合文生图�
 - `--from` 等同于 `--image`
 - `--source-artifact-id` 已上传源图 ID
 - `--prompt` 希望生成什么风格的描述
-- `--model` 图像理解模型 ID（`aiModelId`，必填）
+- `--model` 图像理解模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
 - `--wait` 等待任务结果
+- `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
+- `--dir` 下载输出目录（仅在 `--download` 时生效）
 
 ## 生视频相关
 
@@ -178,6 +184,8 @@ popiart video generate --image ./source.png --prompt "镜头缓慢推进" --wait
 - `--negative-prompt` 排除项，会透传到 `metadata.negative_prompt`
 - `--seed` 随机种子，会透传到 `metadata.seed`
 - `--wait` 轮询结果
+- `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
+- `--dir` 下载输出目录（仅在 `--download` 时生效）
 
 2. 显式图生视频：`popiart video img2video`
 
@@ -205,6 +213,8 @@ popiart video img2video --image ./source.png --prompt "让头发和衣摆自然�
 - `--negative-prompt` 排除项，会透传到 `metadata.negative_prompt`
 - `--seed` 随机种子，会透传到 `metadata.seed`
 - `--wait` 轮询结果
+- `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
+- `--dir` 下载输出目录（仅在 `--download` 时生效）
 
 3. 显式 `from-image` 入口：`popiart video from-image`
 
@@ -213,6 +223,8 @@ popiart video img2video --image ./source.png --prompt "让头发和衣摆自然�
 ```sh
 popiart video from-image --image ./source.png --prompt "慢慢推近人物面部" --wait
 ```
+
+常用参数同 `popiart video img2video`，也支持 `--download` / `--dir` 直接下载结果文件。
 
 4. 即梦动作迁移：`popiart video action-transfer`
 
@@ -231,6 +243,8 @@ popiart video action-transfer --image ./face.jpg --video ./motion.mp4 --wait
 - `--action` `metadata.action`，默认 `actionGenerate`
 - `--cut-result-first-second-switch` 即梦动作模仿参数
 - `--wait` 轮询结果
+- `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
+- `--dir` 下载输出目录（仅在 `--download` 时生效）
 
 5. Seedance / 豆包视频：`popiart video seedance`
 
@@ -259,6 +273,8 @@ popiart video seedance --prompt "保持主体动作风格一致" --video ./ref.m
 - `--service-tier` 服务等级
 - `--tools-json` Seedance 2.0 工具 JSON
 - `--wait` 轮询结果
+- `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
+- `--dir` 下载输出目录（仅在 `--download` 时生效）
 
 ## 语音相关
 

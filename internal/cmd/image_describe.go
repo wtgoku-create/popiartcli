@@ -24,7 +24,7 @@ func newImageDescribeCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("model", "", "用于图片理解的多模态模型 ID")
+	cmd.Flags().String("model", "", "用于图片理解的多模态模型 ID；不传则使用 CLI 默认模型候选")
 	cmd.Flags().String("image", "", "源图 URL 或本地文件路径")
 	cmd.Flags().String("from", "", "源图路径或 URL（等同于 --image）")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
@@ -35,16 +35,10 @@ func newImageDescribeCmd() *cobra.Command {
 	cmd.Flags().String("interval", "2000", "轮询间隔（毫秒，默认：2000）")
 	cmd.Flags().String("priority", "normal", "作业优先级: low | normal | high")
 	cmd.Flags().String("idempotency-key", "", "用于安全重试的幂等键")
-	_ = cmd.MarkFlagRequired("model")
 	return cmd
 }
 
 func resolveImageDescribeInput(cmd *cobra.Command, args []string) (map[string]any, map[string]any, error) {
-	modelID := strings.TrimSpace(flagString(cmd, "model"))
-	if modelID == "" {
-		return nil, nil, invalidFlagValueError("--model", "", "请传入一个支持图片理解的多模态模型 ID")
-	}
-
 	payload, preview, err := resolveImageSourceInput(cmd)
 	if err != nil {
 		return nil, nil, err
@@ -86,9 +80,6 @@ func buildImageDescribeInstruction(instruction, notes string) string {
 
 func executeImageDescribeCommand(cmd *cobra.Command, payload, preview map[string]any) error {
 	modelCode := strings.TrimSpace(flagString(cmd, "model"))
-	if modelCode == "" {
-		return invalidFlagValueError("--model", "", "请传入一个支持图片理解的多模态模型 ID")
-	}
 
 	input := hydratePromptEnhancerImageInput(context.Background(), payload)
 	model, err := popiart.ResolveModelForCommand(context.Background(), currentClient(), "image.describe", modelCode, popiart.ModelValidationSpec{

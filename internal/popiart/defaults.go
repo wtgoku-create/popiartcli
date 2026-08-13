@@ -7,6 +7,7 @@ var defaultModelCandidates = map[string][]string{
 	"image.generate":        {"Nano-banana-pro", "gemini-3-pro-image-preview", "seedream-4-5-251128"},
 	"image.img2img":         {"Nano-banana-pro", "gemini-3-pro-image-preview", "seedream-4-5-251128"},
 	"image.transform":       {"Nano-banana-pro", "gemini-3-pro-image-preview", "seedream-4-5-251128"},
+	"image.describe":        {"Doubao seed 2.0 lite"},
 	"video":                 {"viduq2-pro", "viduq2-pro-fast"},
 	"video.generate":        {"viduq2-pro", "viduq2-pro-fast"},
 	"video.img2video":       {"viduq2-pro", "viduq2-pro-fast"},

@@ -98,7 +98,7 @@ func buildAgentSkillWrapperLines() []string {
 		"Intent-first commands:",
 		"",
 		"1. `popiart image generate --prompt \"...\" --output json --quiet --non-interactive`",
-		"2. `popiart image describe --image ./source.png --model gemini-2.5-flash --output json --quiet --non-interactive`",
+		"2. `popiart image describe --image ./source.png --output json --quiet --non-interactive`",
 		"3. `popiart image img2img --image ./source.png --prompt \"...\" --output json --quiet --non-interactive`",
 		"4. `popiart video generate --image ./source.png --prompt \"...\" --wait --output json --quiet --non-interactive`",
 		"5. `popiart video action-transfer --image ./face.jpg --video https://example.com/action.mp4 --wait --output json --quiet --non-interactive`",

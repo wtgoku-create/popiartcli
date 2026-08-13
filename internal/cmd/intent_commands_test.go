@@ -480,7 +480,7 @@ func TestImageDescribeReturnsDescriptionPrompt(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":501,"code":"gemini-2.5-flash","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":501,"code":"doubao-seed-2-0-lite-260428","name":"Doubao seed 2.0 lite","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -512,7 +512,6 @@ func TestImageDescribeReturnsDescriptionPrompt(t *testing.T) {
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
 		"image", "describe",
 		"--image", "https://example.com/source.png",
-		"--model", "501",
 		"--prompt", "请写成适合文生图反推的 prompt",
 	})
 
@@ -578,7 +577,7 @@ func TestImageDescribeHydratesArtifactURLWhenAvailable(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":501,"code":"gemini-2.5-flash","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":501,"code":"doubao-seed-2-0-lite-260428","name":"Doubao seed 2.0 lite","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/media/detail":
 			if r.URL.Query().Get("id") != "art_source_vision_1" {
 				t.Fatalf("unexpected media detail id: %q", r.URL.Query().Get("id"))
@@ -629,8 +628,11 @@ func TestImageDescribeDryRunShowsModelsInferRequest(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api_client/anime/ai/model/list" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
+		if got := r.URL.Query().Get("origin"); got != "web" {
+			t.Fatalf("expected image describe model list origin=web, got %q", got)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"ok":true,"data":[{"id":501,"code":"gemini-2.5-flash","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
+		fmt.Fprint(w, `{"ok":true,"data":[{"id":501,"code":"doubao-seed-2-0-lite-260428","name":"Doubao seed 2.0 lite","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
 	}))
 	defer server.Close()
 	t.Setenv("POPIART_ENDPOINT", server.URL)
@@ -652,6 +654,36 @@ func TestImageDescribeDryRunShowsModelsInferRequest(t *testing.T) {
 	request := data["request"].(map[string]any)
 	if request["path"] != "/api_client/anime/task/create" {
 		t.Fatalf("unexpected request path: %#v", request["path"])
+	}
+}
+
+func TestImageDescribeReturnsModelNotFoundWhenNoDescribeModel(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api_client/anime/ai/model/list" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true,"data":[]}`)
+	}))
+	defer server.Close()
+	t.Setenv("POPIART_ENDPOINT", server.URL)
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
+		"image", "describe",
+		"--image", "https://example.com/source.png",
+	})
+	if err == nil {
+		t.Fatal("expected MODEL_NOT_FOUND error")
+	}
+	cliErr, ok := err.(*output.CLIError)
+	if !ok {
+		t.Fatalf("expected CLIError, got %#v", err)
+	}
+	if cliErr.Code != "MODEL_NOT_FOUND" {
+		t.Fatalf("unexpected error code: %#v", cliErr.Code)
 	}
 }
 
@@ -1095,13 +1127,13 @@ func TestVideoGenerateWithPromptEnhancerUsesMainSiteLLMChat(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"categories":[{"taskSubType":202}]},{"id":501,"code":"gemini-2.5-flash","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"categories":[{"taskSubType":202}]},{"id":501,"code":"doubao-seed-2-0-lite-260428","name":"Doubao seed 2.0 lite","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/llmChat":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["model"] != "gemini-2.5-flash" {
+			if body["model"] != "doubao-seed-2-0-lite-260428" {
 				t.Fatalf("unexpected prompt enhancer model: %#v", body["model"])
 			}
 			if body["aiModelId"] != float64(501) {
@@ -1120,7 +1152,7 @@ func TestVideoGenerateWithPromptEnhancerUsesMainSiteLLMChat(t *testing.T) {
 				t.Fatalf("unexpected enhancer image_url: %#v", content[1])
 			}
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"choices":[{"message":{"content":"保留人物姿态，头发轻微摆动，人物轻轻转头，镜头缓慢推进，背景有自然风动。","role":"assistant"}}],"model":"gemini-2.5-flash","id":"chatcmpl-demo"}}`)
+			fmt.Fprint(w, `{"ok":true,"data":{"choices":[{"message":{"content":"保留人物姿态，头发轻微摆动，人物轻轻转头，镜头缓慢推进，背景有自然风动。","role":"assistant"}}],"model":"doubao-seed-2-0-lite-260428","id":"chatcmpl-demo"}}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1179,7 +1211,7 @@ func TestVideoGeneratePromptEnhancerDryRunShowsTwoStageRequests(t *testing.T) {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"categories":[{"taskSubType":202}]},{"id":501,"code":"gemini-2.5-flash","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
+		fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"categories":[{"taskSubType":202}]},{"id":501,"code":"doubao-seed-2-0-lite-260428","name":"Doubao seed 2.0 lite","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
 	}))
 	defer server.Close()
 	t.Setenv("POPIART_ENDPOINT", server.URL)
@@ -1224,7 +1256,7 @@ func TestVideoGeneratePromptEnhancerHydratesArtifactURLWhenAvailable(t *testing.
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"categories":[{"taskSubType":202}]},{"id":501,"code":"gemini-2.5-flash","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"categories":[{"taskSubType":202}]},{"id":501,"code":"doubao-seed-2-0-lite-260428","name":"Doubao seed 2.0 lite","isSupportImages":true,"categories":[{"taskSubType":501}]}]}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/media/detail":
 			if r.URL.Query().Get("id") != "art_source_1" {
 				t.Fatalf("unexpected media detail id: %q", r.URL.Query().Get("id"))
