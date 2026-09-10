@@ -128,7 +128,7 @@
 | 缺少 `--prompt` | `VALIDATION_ERROR` | façade 命令会直接拒绝 |
 | 远端 job 创建失败 | `NETWORK_ERROR` / `RATE_LIMITED` / `SERVER_ERROR` | 按重试语义处理 |
 
-### `popiart video generate`
+### `popiart video img2video`
 
 | Scenario | Error Code | Notes |
 |---|---|---|

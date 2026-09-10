@@ -68,7 +68,7 @@ func executeVideoGenerateCommand(cmd *cobra.Command, payload map[string]any, act
 // buildVideoGenerateRequestBody 为提示词增强 dry-run 生成第二段视频任务请求预览。
 func buildVideoGenerateRequestBody(cmd *cobra.Command, payload map[string]any) (map[string]any, error) {
 	modelOverride := strings.TrimSpace(flagString(cmd, "model"))
-	model, err := popiart.ResolveModelForCommand(context.Background(), currentClient(), "video.generate", modelOverride, taskValidationSpecForAction("video.generate", payload))
+	model, err := popiart.ResolveModelForCommand(context.Background(), currentClient(), "video.img2video", modelOverride, taskValidationSpecForAction("video.img2video", payload))
 	if err != nil {
 		return nil, err
 	}

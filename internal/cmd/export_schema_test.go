@@ -38,28 +38,16 @@ func TestExportSchemaAnthropicSingleCommand(t *testing.T) {
 	}
 }
 
-func TestExportSchemaIncludesRunnableParentSugarCommand(t *testing.T) {
+func TestExportSchemaDoesNotIncludeDeletedParentSugarCommand(t *testing.T) {
 	root := NewRootCmd("0.test")
 
-	stdout, stderr, err := executeRootRaw(root, []string{
+	_, _, err := executeRootRaw(root, []string{
 		"export-schema",
 		"--command", "image",
 		"--format", "generic",
 	})
-	if err != nil {
-		t.Fatalf("export-schema failed: %v stderr=%s", err, stderr)
-	}
-
-	var tools []map[string]any
-	if err := json.Unmarshal([]byte(stdout), &tools); err != nil {
-		t.Fatalf("unmarshal export-schema output: %v output=%q", err, stdout)
-	}
-	if len(tools) != 1 {
-		t.Fatalf("expected one tool, got %d", len(tools))
-	}
-	properties := tools[0]["input_schema"].(map[string]any)["properties"].(map[string]any)
-	if properties["prompt"] == nil {
-		t.Fatalf("expected prompt property, got %#v", properties)
+	if err == nil {
+		t.Fatal("expected deleted parent sugar command to be absent from export-schema")
 	}
 }
 
@@ -190,12 +178,12 @@ func TestExportSchemaVideoSeedanceRequiresPromptOrVisualReference(t *testing.T) 
 	}
 }
 
-func TestExportSchemaVideoGenerateIncludesStartEndFrameFlags(t *testing.T) {
+func TestExportSchemaVideoImg2VideoIncludesStartEndFrameFlags(t *testing.T) {
 	root := NewRootCmd("0.test")
 
 	stdout, stderr, err := executeRootRaw(root, []string{
 		"export-schema",
-		"--command", "video generate",
+		"--command", "video img2video",
 		"--format", "generic",
 	})
 	if err != nil {
@@ -246,12 +234,12 @@ func TestExportSchemaOpenAICompletionCommandUsesShellEnum(t *testing.T) {
 	}
 }
 
-func TestExportSchemaSpeechSynthesizeDefaultsToMiniMaxSpeechModel(t *testing.T) {
+func TestExportSchemaAudioTTSDefaultsToMiniMaxSpeechModel(t *testing.T) {
 	root := NewRootCmd("0.test")
 
 	stdout, stderr, err := executeRootRaw(root, []string{
 		"export-schema",
-		"--command", "speech synthesize",
+		"--command", "audio tts",
 		"--format", "openai",
 	})
 	if err != nil {

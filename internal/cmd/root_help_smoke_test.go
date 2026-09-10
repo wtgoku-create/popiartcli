@@ -25,7 +25,6 @@ func TestTopLevelCommandHelpSmoke(t *testing.T) {
 		"project",
 		"run",
 		"setup",
-		"speech",
 		"skills",
 		"update",
 		"video",

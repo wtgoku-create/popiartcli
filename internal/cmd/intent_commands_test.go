@@ -363,7 +363,7 @@ func TestVideoGenerateDownloadCompactsLocalUploadOutput(t *testing.T) {
 
 	dir := filepath.Join(t.TempDir(), "videos")
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "img2video",
 		"--download",
 		"--dir", dir,
 		"--image", sourcePath,
@@ -687,39 +687,15 @@ func TestImageDescribeReturnsModelNotFoundWhenNoDescribeModel(t *testing.T) {
 	}
 }
 
-func TestImageParentSugarUsesPositionalPrompt(t *testing.T) {
+func TestImageParentSugarCommandIsRemoved(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":101,"code":"seedream-4-5-251128","categories":[{"taskSubType":103}]}]}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
-			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode body: %v", err)
-			}
-			if body["chatPrompt"] != "sunset over tokyo" {
-				t.Fatalf("unexpected prompt: %#v", body["chatPrompt"])
-			}
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_image_parent_1","status":0,"type":1,"subType":103}}`)
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer server.Close()
-	t.Setenv("POPIART_ENDPOINT", server.URL)
-
-	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
 		"image", "sunset over tokyo",
 	})
-
-	data := resp["data"].(map[string]any)
-	if data["job_id"] != "task_image_parent_1" {
-		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	if err == nil {
+		t.Fatal("expected image parent sugar command to be removed")
 	}
 }
 
@@ -791,47 +767,17 @@ func TestImageImg2ImgUploadsLocalImageBeforeSubmittingJob(t *testing.T) {
 	}
 }
 
-func TestImageTransformAliasSubmitsTaskRequest(t *testing.T) {
+func TestImageTransformAliasCommandIsRemoved(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":101,"code":"seedream-4-5-251128","isSupportImages":true,"uploadImageLimit":5,"categories":[{"taskSubType":103}]}]}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
-			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode body: %v", err)
-			}
-			images := body["images"].([]any)
-			if len(images) != 1 || images[0] != "https://example.com/source.png" {
-				t.Fatalf("unexpected images payload: %#v", body["images"])
-			}
-			if body["chatPrompt"] != "restyle it" {
-				t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
-			}
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_transform_1","status":0,"type":1,"subType":103}}`)
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer server.Close()
-	t.Setenv("POPIART_ENDPOINT", server.URL)
-
-	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
 		"image", "transform",
 		"--image", "https://example.com/source.png",
 		"--prompt", "restyle it",
 	})
-
-	data := resp["data"].(map[string]any)
-	if data["job_id"] != "task_transform_1" {
-		t.Fatalf("unexpected job_id: %#v", data["job_id"])
-	}
-	if data["execution_mode"] != "task-model-default" {
-		t.Fatalf("unexpected execution_mode: %#v", data["execution_mode"])
+	if err == nil {
+		t.Fatal("expected image transform alias command to be removed")
 	}
 }
 
@@ -918,7 +864,7 @@ func TestImageImg2ImgUploadsRemoteSourceAndReferenceImagesForFusion(t *testing.T
 	}
 }
 
-func TestImageTransformModelOverrideSubmitsTaskRequest(t *testing.T) {
+func TestImageImg2ImgModelOverrideSubmitsTaskRequest(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
@@ -958,7 +904,7 @@ func TestImageTransformModelOverrideSubmitsTaskRequest(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"image", "transform",
+		"image", "img2img",
 		"--source-artifact-id", "art_source_1",
 		"--identity-reference-artifact-id", "art_ref_1",
 		"--style-reference-artifact-id", "art_ref_2",
@@ -1039,7 +985,7 @@ func TestVideoGenerateUploadsLocalImageBeforeSubmittingJob(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "img2video",
 		"--image", sourcePath,
 		"--prompt", "slow push-in",
 	})
@@ -1056,35 +1002,28 @@ func TestVideoGenerateUploadsLocalImageBeforeSubmittingJob(t *testing.T) {
 	}
 }
 
-func TestVideoParentSugarUsesFromFlag(t *testing.T) {
+func TestVideoGenerateRepeatedImageFlagsSubmitAllImages(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"resolution":["720P","1080P"],"categories":[{"taskSubType":202}]}]}`)
+			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"uploadImageLimit":5,"categories":[{"taskSubType":202}]}]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode body: %v", err)
+				t.Fatalf("decode task body: %v", err)
 			}
 			images := body["images"].([]any)
-			if len(images) != 1 || images[0] != "https://example.com/source.png" {
+			if len(images) != 2 || images[0] != "https://example.com/first.png" || images[1] != "https://example.com/second.png" {
 				t.Fatalf("unexpected images payload: %#v", body["images"])
 			}
-			if body["chatPrompt"] != "gentle wind motion" {
+			if body["chatPrompt"] != "use both references" {
 				t.Fatalf("unexpected chatPrompt: %#v", body["chatPrompt"])
 			}
-			if body["subType"] != float64(202) {
-				t.Fatalf("unexpected subType: %#v", body["subType"])
-			}
-			if body["resolution"] != "720P" {
-				t.Fatalf("unexpected resolution: %#v", body["resolution"])
-			}
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_video_parent_1","status":0,"type":2,"subType":202}}`)
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_video_multi_image_1","status":0,"type":2,"subType":202}}`)
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -1093,25 +1032,40 @@ func TestVideoParentSugarUsesFromFlag(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "--from", "https://example.com/source.png", "gentle wind motion",
+		"video", "img2video",
+		"--image", "https://example.com/first.png",
+		"--image", "https://example.com/second.png",
+		"--prompt", "use both references",
 	})
 
 	data := resp["data"].(map[string]any)
-	if data["job_id"] != "task_video_parent_1" {
+	if data["job_id"] != "task_video_multi_image_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
 }
 
-func TestVideoGeneratePromptOnlyReturnsCapabilityUnavailable(t *testing.T) {
+func TestVideoParentSugarCommandIsRemoved(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
 	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "--from", "https://example.com/source.png", "gentle wind motion",
+	})
+	if err == nil {
+		t.Fatal("expected video parent sugar command to be removed")
+	}
+}
+
+func TestVideoImg2VideoPromptOnlyReturnsCapabilityUnavailable(t *testing.T) {
+	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
+	t.Setenv("POPIART_KEY", "pk-demo")
+
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
+		"video", "img2video",
 		"--prompt", "make a cinematic teaser",
 	})
 	if err == nil {
-		t.Fatal("expected prompt-only video generate to be unavailable")
+		t.Fatal("expected prompt-only video img2video to be unavailable")
 	}
 	cliErr, ok := err.(*output.CLIError)
 	if !ok || cliErr.Code != "CAPABILITY_UNAVAILABLE" {
@@ -1179,7 +1133,7 @@ func TestVideoGenerateWithPromptEnhancerUsesMainSiteLLMChat(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "img2video",
 		"--image", "https://example.com/source.png",
 		"--prompt", "让人物轻轻转头，镜头慢慢推进",
 		"--prompt-enhancer-model", "501",
@@ -1217,7 +1171,7 @@ func TestVideoGeneratePromptEnhancerDryRunShowsTwoStageRequests(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "img2video",
 		"--image", "https://example.com/source.png",
 		"--prompt", "make it cinematic",
 		"--prompt-enhancer-model", "501",
@@ -1295,7 +1249,7 @@ func TestVideoGeneratePromptEnhancerHydratesArtifactURLWhenAvailable(t *testing.
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "img2video",
 		"--source-artifact-id", "art_source_1",
 		"--prompt", "轻一点",
 		"--prompt-enhancer-model", "501",
@@ -1308,7 +1262,7 @@ func TestVideoGeneratePromptEnhancerHydratesArtifactURLWhenAvailable(t *testing.
 	}
 }
 
-func TestVideoParentSugarPromptOnlyReturnsCapabilityUnavailable(t *testing.T) {
+func TestVideoParentSugarPromptOnlyCommandIsRemoved(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
@@ -1316,11 +1270,7 @@ func TestVideoParentSugarPromptOnlyReturnsCapabilityUnavailable(t *testing.T) {
 		"video", "make a cinematic teaser",
 	})
 	if err == nil {
-		t.Fatal("expected prompt-only parent video command to be unavailable")
-	}
-	cliErr, ok := err.(*output.CLIError)
-	if !ok || cliErr.Code != "CAPABILITY_UNAVAILABLE" {
-		t.Fatalf("unexpected error: %#v", err)
+		t.Fatal("expected prompt-only parent video command to be removed")
 	}
 }
 
@@ -1975,16 +1925,16 @@ func TestAudioTTSAutofillsTaskFieldsFromModelList(t *testing.T) {
 	}
 }
 
-func TestSpeechRejectsUnsupportedMainSiteFlags(t *testing.T) {
+func TestAudioTTSRejectsUnsupportedMainSiteFlags(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 
 	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
-		"speech", "synthesize",
+		"audio", "tts",
 		"--text", "hello",
 		"--format", "mp3",
 	})
 	if err == nil {
-		t.Fatal("expected unsupported speech flag to fail")
+		t.Fatal("expected unsupported audio tts flag to fail")
 	}
 	cliErr, ok := err.(*output.CLIError)
 	if !ok {
@@ -2121,7 +2071,7 @@ func TestVideoGenerateStartEndFramesSubmitsTaskRequest(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "img2video",
 		"--image", "https://example.com/first.png",
 		"--last-frame", "https://example.com/last.png",
 		"--prompt", "transition naturally",
@@ -2192,7 +2142,7 @@ func TestVideoGenerateStartEndFramesUploadsLocalFrames(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "img2video",
 		"--image", firstPath,
 		"--last-frame", lastPath,
 		"--prompt", "A little girl grows up.",
@@ -2306,41 +2256,35 @@ func TestVideoImg2VideoAllowsZeroUploadImageLimitFromModelList(t *testing.T) {
 	}
 }
 
-func TestVideoFromImageAliasSubmitsTaskRequest(t *testing.T) {
+func TestVideoFromImageAliasCommandIsRemoved(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":203,"code":"viduq2-pro-fast","isSupportImages":true,"categories":[{"taskSubType":202}]}]}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
-			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode body: %v", err)
-			}
-			if body["subType"] != float64(202) {
-				t.Fatalf("unexpected subType: %#v", body["subType"])
-			}
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_from_image_1","status":0,"type":2,"subType":202}}`)
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer server.Close()
-	t.Setenv("POPIART_ENDPOINT", server.URL)
-
-	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
 		"video", "from-image",
 		"--image", "https://example.com/source.png",
 		"--prompt", "slow push-in",
 	})
+	if err == nil {
+		t.Fatal("expected video from-image alias command to be removed")
+	}
+}
 
-	data := resp["data"].(map[string]any)
-	if data["job_id"] != "task_from_image_1" {
-		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+func TestDuplicateCommandAliasesAreRemoved(t *testing.T) {
+	for _, args := range [][]string{
+		{"speech", "synthesize", "--text", "hello"},
+		{"video", "motion-transfer", "--image", "https://example.com/face.jpg", "--video", "https://example.com/motion.mp4"},
+		{"video", "dreamactor", "--image", "https://example.com/face.jpg", "--video", "https://example.com/motion.mp4"},
+		{"video", "doubao", "--prompt", "hello"},
+		{"video", "doubao-seedance", "--prompt", "hello"},
+		{"auth", "token", "show"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			_, _, err := executeRootRaw(NewRootCmd("0.test"), args)
+			if err == nil {
+				t.Fatalf("expected duplicate command alias to be removed: %v", args)
+			}
+		})
 	}
 }
 
@@ -2364,7 +2308,7 @@ func TestVideoGenerateDryRunShowsUploadPreflight(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"video", "generate",
+		"video", "img2video",
 		"--image", sourcePath,
 		"--prompt", "gentle motion",
 		"--dry-run",
@@ -2425,12 +2369,12 @@ func TestImageImg2ImgDryRunShowsUploadPreflight(t *testing.T) {
 	}
 }
 
-func TestSpeechSynthesizeAliasReadsTextFileAndSubmitsJob(t *testing.T) {
+func TestAudioTTSReadsTextFileAndSubmitsJob(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
 	textPath := filepath.Join(t.TempDir(), "speech.txt")
-	if err := os.WriteFile(textPath, []byte("hello from speech alias"), 0o644); err != nil {
+	if err := os.WriteFile(textPath, []byte("hello from audio tts"), 0o644); err != nil {
 		t.Fatalf("write text file: %v", err)
 	}
 
@@ -2444,14 +2388,14 @@ func TestSpeechSynthesizeAliasReadsTextFileAndSubmitsJob(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode body: %v", err)
 			}
-			if body["chatPrompt"] != "hello from speech alias" {
+			if body["chatPrompt"] != "hello from audio tts" {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
 			if body["voiceId"] != "male-qn-qingse" {
 				t.Fatalf("unexpected default voiceId: %#v", body["voiceId"])
 			}
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_speech_alias_1","status":0,"type":3,"subType":301}}`)
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_audio_tts_file_1","status":0,"type":3,"subType":301}}`)
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -2460,12 +2404,12 @@ func TestSpeechSynthesizeAliasReadsTextFileAndSubmitsJob(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"speech", "synthesize",
+		"audio", "tts",
 		"--text-file", textPath,
 	})
 
 	data := resp["data"].(map[string]any)
-	if data["job_id"] != "task_speech_alias_1" {
+	if data["job_id"] != "task_audio_tts_file_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
 	if data["execution_mode"] != "task-model-default" {
@@ -2473,7 +2417,7 @@ func TestSpeechSynthesizeAliasReadsTextFileAndSubmitsJob(t *testing.T) {
 	}
 }
 
-func TestSpeechSynthesizeModelOverrideUsesModelsInfer(t *testing.T) {
+func TestAudioTTSModelOverrideUsesModelsInfer(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
@@ -2492,7 +2436,7 @@ func TestSpeechSynthesizeModelOverrideUsesModelsInfer(t *testing.T) {
 				t.Fatalf("unexpected text payload: %#v", body["chatPrompt"])
 			}
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_speech_model_override_1","status":0,"type":3,"subType":301}}`)
+			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_audio_tts_model_override_1","status":0,"type":3,"subType":301}}`)
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -2501,13 +2445,13 @@ func TestSpeechSynthesizeModelOverrideUsesModelsInfer(t *testing.T) {
 	t.Setenv("POPIART_ENDPOINT", server.URL)
 
 	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
-		"speech", "synthesize",
+		"audio", "tts",
 		"--text", "hello from override",
 		"--model", "301",
 	})
 
 	data := resp["data"].(map[string]any)
-	if data["job_id"] != "task_speech_model_override_1" {
+	if data["job_id"] != "task_audio_tts_model_override_1" {
 		t.Fatalf("unexpected job_id: %#v", data["job_id"])
 	}
 	if data["execution_mode"] != "task-model-override" {
@@ -2611,42 +2555,15 @@ func TestMusicGenerateAutofillsTaskFieldsFromModelList(t *testing.T) {
 	}
 }
 
-func TestMusicRootSugarUsesPositionalPrompt(t *testing.T) {
+func TestMusicRootSugarCommandIsRemoved(t *testing.T) {
 	t.Setenv("POPIART_CONFIG_DIR", t.TempDir())
 	t.Setenv("POPIART_KEY", "pk-demo")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api_client/anime/ai/model/list":
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":[{"id":401,"code":"music-2.6","categories":[{"taskSubType":304}]}]}`)
-		case r.Method == http.MethodPost && r.URL.Path == "/api_client/anime/task/create":
-			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode body: %v", err)
-			}
-			if body["chatPrompt"] != "Warm morning folk" {
-				t.Fatalf("unexpected prompt: %#v", body["chatPrompt"])
-			}
-			if _, ok := body["metadata"]; ok {
-				t.Fatalf("metadata should be omitted from music request: %#v", body["metadata"])
-			}
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ok":true,"data":{"id":"task_music_root_1","status":0,"type":3,"subType":304}}`)
-		default:
-			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer server.Close()
-	t.Setenv("POPIART_ENDPOINT", server.URL)
-
-	resp := executeRootJSON(t, NewRootCmd("0.test"), []string{
+	_, _, err := executeRootRaw(NewRootCmd("0.test"), []string{
 		"music", "Warm morning folk",
 	})
-
-	data := resp["data"].(map[string]any)
-	if data["job_id"] != "task_music_root_1" {
-		t.Fatalf("unexpected job_id: %#v", data["job_id"])
+	if err == nil {
+		t.Fatal("expected music root sugar command to be removed")
 	}
 }
 

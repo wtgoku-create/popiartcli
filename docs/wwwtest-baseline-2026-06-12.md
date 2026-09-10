@@ -20,13 +20,13 @@ These are the current default candidate pools in [internal/popiart/defaults.go](
 
 | Command family | Current default candidates | Notes |
 | --- | --- | --- |
-| `image`, `image generate` | `Nano-banana-pro`, `gemini-3-pro-image-preview`, `seedream-4-5-251128` | now prefers the model that has passed real `wwwtest` runs |
-| `image img2img`, `image transform` | `Nano-banana-pro`, `gemini-3-pro-image-preview`, `seedream-4-5-251128` | same default pool as image generation |
-| `video`, `video generate`, `video img2video`, `video from-image` | `viduq2-pro`, `viduq2-pro-fast` | now prefers the model that has passed real `wwwtest` image-to-video runs |
-| `video seedance` | `huimeng-seedance-2.0` | kept as Seedance-specific default |
+| `image generate` | `Nano-banana-pro`, `gemini-3-pro-image-preview`, `seedream-4-5-251128` | now prefers the model that has passed real `wwwtest` runs |
+| `image img2img` | `Nano-banana-pro`, `gemini-3-pro-image-preview`, `seedream-4-5-251128` | same default pool as image generation |
+| `video img2video` | `viduq2-pro`, `viduq2-pro-fast` | now prefers the model that has passed real `wwwtest` image-to-video runs |
+| `video seedance` | `huimeng-seedance-2.5`, `huimeng-seedance-2.0` | kept as Seedance-specific default candidates |
 | `video action-transfer` | `jimeng_dreamactor_m20_gen_video` | not revalidated in this pass |
-| `audio tts`, `speech synthesize` | `speech-2.8-hd` | real TTS success confirmed |
-| `music`, `music generate` | `music-2.6`, `music-2.6-free` | default candidate pool; check latest real validations before tightening default further |
+| `audio tts` | `speech-2.8-hd` | real TTS success confirmed |
+| `music generate` | `music-2.6`, `music-2.6-free` | default candidate pool; check latest real validations before tightening default further |
 
 ## Verified Successes In wwwtest
 
@@ -114,7 +114,7 @@ As of `2026-06-12`, the current `image2video` capability slice in `wwwtest` sugg
 | `MiniMax-Hailuo-2.3-Fast` | `202` | CLI should allow submit when other required fields are auto-filled; real success still depends on upstream task execution |
 | `seedance 2.0` | `202`, `203`, `204` | use dedicated `video seedance` flow; baseline request is ratio from model list + `resolution=480P/720P/1K` + `duration=5` |
 | `viduq3-mix` | `203` only | not baseline-safe for generic prompt-only video; current real attempt without image fell into `reference-to-video requires at least 1 image` |
-| `jimeng_dreamactor_m20_gen_video` | `205` only | use `video action-transfer`, not generic `video generate` |
+| `jimeng_dreamactor_m20_gen_video` | `205` only | use `video action-transfer`, not `video img2video` |
 
 ## Not Yet Counted As Baseline Success
 
@@ -137,6 +137,6 @@ The following are not currently counted as baseline-success capabilities:
   - default `resolution` when supported and omitted
   - model-backed ratio selection when supported and omitted
   - derived `width` and `height`
-- For generic `video generate`, the CLI still keeps the current safety boundary:
+- For `video img2video`, the CLI still keeps the current safety boundary:
   - image-backed video requests can auto-fill model-backed `resolution`, `duration`, and compatible request fields
   - pure prompt video is still not treated as baseline-supported, because a real `wwwtest` run on `2026-06-12` returned `reference-to-video requires at least 1 image` for a `subType=203` fallback attempt

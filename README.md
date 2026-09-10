@@ -35,7 +35,7 @@ popiart --endpoint https://www.popi.art auth login --key <token>
 如果你已经有一张本地图，最短的视频路径是：
 
 ```sh
-popiart video generate \
+popiart video img2video \
   --image ./source.png \
   --prompt "Slow push-in and soft wind movement" \
   --wait \
@@ -47,7 +47,7 @@ popiart video generate \
 如果要提交首尾帧视频，首帧仍用 `--image` / `--from`，尾帧用 `--last-frame`：
 
 ```sh
-popiart video generate \
+popiart video img2video \
   --image ./first-frame.png \
   --last-frame ./last-frame.png \
   --prompt "从第一帧自然过渡到最后一帧，镜头平稳推进" \
@@ -75,7 +75,7 @@ popiart image describe \
 如果想先让带图像理解的模型把“一张图 + 一句简单描述”扩写成更完整的图生视频提示词，再提交视频模型，可以加：
 
 ```sh
-popiart video generate \
+popiart video img2video \
   --image ./source.png \
   --prompt "让人物自然转头，镜头慢慢推进" \
   --prompt-enhancer-model gemini-2.5-flash \
@@ -144,11 +144,10 @@ popiart video seedance \
 - `popiart image generate`
 - `popiart image describe`
 - `popiart image img2img`
-- `popiart video generate`
 - `popiart video img2video`
 - `popiart video action-transfer`
 - `popiart video seedance`
-- `popiart speech synthesize`
+- `popiart audio tts`
 - `popiart music generate`
 
 它们是面向新用户和 agent 的 opinionated façade，内部仍然映射到官方 runtime skill，不改变底层架构。

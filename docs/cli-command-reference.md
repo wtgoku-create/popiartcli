@@ -129,15 +129,7 @@ popiart image img2img --image ./source.png --prompt "改成黄昏电影感" --wa
 - `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
 - `--dir` 下载输出目录（仅在 `--download` 时生效）
 
-3. 显式图生图入口：`popiart image transform`
-
-示例：
-
-```sh
-popiart image transform --image ./source.png --prompt "改成赛博朋克海报风格" --wait
-```
-
-4. 识别图片并生成描述性 prompt：`popiart image describe`
+3. 识别图片并生成描述性 prompt：`popiart image describe`
 
 示例：
 
@@ -158,36 +150,7 @@ popiart image describe --image ./source.png --prompt "请写成适合文生图�
 
 ## 生视频相关
 
-1. 通用视频生成：`popiart video generate`
-
-示例：
-
-```sh
-popiart video generate --image ./source.png --prompt "镜头缓慢推进" --wait
-```
-
-常用参数：
-
-- `--image` 源图
-- `--from` 等同于 `--image`
-- `--source-artifact-id` 已上传源图 ID
-- `--prompt` 视频提示词
-- `--model` 指定主站视频模型 ID（`aiModelId`）；不传则使用 CLI 默认模型候选
-- `--prompt-enhancer-model` 先用图像理解模型 ID（`aiModelId`）增强 prompt
-- `--aspect-ratio` 视频比例
-- `--size` 分辨率，例如 `720P`、`1080P`、`1K`、`2K`、`4K`
-- `--duration` 视频时长秒数
-- `--fps` 帧率提示
-- `--camera-motion` 镜头运动提示
-- `--motion-intensity` 运动强度提示
-- `--style` 风格提示，会透传到 `metadata.style`
-- `--negative-prompt` 排除项，会透传到 `metadata.negative_prompt`
-- `--seed` 随机种子，会透传到 `metadata.seed`
-- `--wait` 轮询结果
-- `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
-- `--dir` 下载输出目录（仅在 `--download` 时生效）
-
-2. 显式图生视频：`popiart video img2video`
+1. 图生视频：`popiart video img2video`
 
 示例：
 
@@ -216,17 +179,7 @@ popiart video img2video --image ./source.png --prompt "让头发和衣摆自然�
 - `--download` 任务成功后直接下载结果文件；启用后输出 `files` / `saved_to`，不再输出结果 URL
 - `--dir` 下载输出目录（仅在 `--download` 时生效）
 
-3. 显式 `from-image` 入口：`popiart video from-image`
-
-示例：
-
-```sh
-popiart video from-image --image ./source.png --prompt "慢慢推近人物面部" --wait
-```
-
-常用参数同 `popiart video img2video`，也支持 `--download` / `--dir` 直接下载结果文件。
-
-4. 即梦动作迁移：`popiart video action-transfer`
+2. 即梦动作迁移：`popiart video action-transfer`
 
 示例：
 
@@ -288,16 +241,16 @@ popiart voices list --pageSize 50
 
 说明：
 
-- 输出里的 `voice_id` 可用于 `speech synthesize` / `audio tts` 的 `--voice`
+- 输出里的 `voice_id` 可用于 `audio tts` 的 `--voice`
 - `--page` 页码
 - `--pageSize` 每页数量；也兼容 `--page-size`
 
-1. 语音合成：`popiart speech synthesize`
+1. 语音合成：`popiart audio tts`
 
 示例：
 
 ```sh
-popiart speech synthesize --text "你好，欢迎使用 PopiArt" --wait
+popiart audio tts --text "你好，欢迎使用 PopiArt" --wait
 ```
 
 常用参数：
@@ -314,14 +267,6 @@ popiart speech synthesize --text "你好，欢迎使用 PopiArt" --wait
 - `--wait` 轮询结果
 - `--download` 任务成功后直接下载结果文件
 - `--dir` 下载输出目录
-
-2. 兼容 TTS 入口：`popiart audio tts`
-
-示例：
-
-```sh
-popiart audio tts --text "你好，欢迎使用 PopiArt" --wait
-```
 
 ## 音乐相关
 
@@ -701,7 +646,7 @@ popiart export-schema --format generic
 示例：
 
 ```sh
-popiart export-schema --command "video generate" --format openai
+popiart export-schema --command "video img2video" --format openai
 ```
 
 常用参数：

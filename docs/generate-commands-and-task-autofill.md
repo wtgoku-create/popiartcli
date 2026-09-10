@@ -8,19 +8,12 @@ This document summarizes the current generation-oriented `go run ./cmd/popiart .
 
 | Command | Capability | Task path | Notes |
 | --- | --- | --- | --- |
-| `popiart image [prompt]` | 文生图 | `type=1`, `subType=103` | root sugar for `image generate` |
 | `popiart image generate` | 文生图 | `type=1`, `subType=103` | supports `--model <aiModelId>` override |
 | `popiart image img2img` | 图生图 | `type=1`, `subType=103` | source image required |
-| `popiart image transform` | 图生图 | `type=1`, `subType=103` | alias of `img2img` |
-| `popiart video [prompt]` | 图生视频 | `type=2`, current generic flow | root sugar for `video generate` |
-| `popiart video generate` | 图生视频 | `type=2`, current generic flow | still not baseline-open for pure prompt text-to-video |
 | `popiart video img2video` | 图生视频 | `type=2`, model-backed `subType` | explicit image-to-video entry |
-| `popiart video from-image` | 图生视频 | `type=2`, model-backed `subType` | alias of `img2video` |
 | `popiart video action-transfer` | 动作迁移 | `type=2`, `subType=205` | DreamActor-specific |
 | `popiart video seedance` | Seedance 视频 | `type=2`, `subType=202/203/204` | dedicated Seedance flow |
 | `popiart audio tts` | 文本转语音 | `type=3`, `subType=301` | official TTS flow |
-| `popiart speech synthesize` | 文本转语音 | `type=3`, `subType=301` | alias of `audio tts` |
-| `popiart music [prompt]` | 音乐生成 | `type=3`, `subType=304/305` | root sugar for `music generate` |
 | `popiart music generate` | 音乐生成 | `type=3`, `subType=304/305` | model-backed music subtype |
 
 ## Task Field Mapping
@@ -68,7 +61,7 @@ As of `2026-06-12` in `https://wwwtest.popi.art`:
 - partially validated:
   - `kling-video-o1` can create a `video img2video` task through generic task flow
 - not yet baseline-open:
-  - generic pure prompt `video generate`
+  - pure prompt `video img2video`
   - music generation in this pass
 
 ## Related Files

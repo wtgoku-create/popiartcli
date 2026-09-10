@@ -32,22 +32,13 @@ const (
 
 func newImageCmd() *cobra.Command {
 	imageCmd := &cobra.Command{
-		Use:   "image [prompt]",
+		Use:   "image",
 		Short: "围绕官方 image runtime 的意图化命令面",
-		Args:  cobra.MaximumNArgs(1),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 && strings.TrimSpace(flagString(cmd, "prompt")) == "" {
-				return cmd.Help()
-			}
-			payload, err := resolveText2ImageInput(cmd, args)
-			if err != nil {
-				return err
-			}
-			return executeTaskCommand(cmd, "image", payload, popiart.BuildTextToImageTaskRequest, nil)
+			return cmd.Help()
 		},
 	}
-	addText2ImageFlags(imageCmd)
-	addCommonExecutionFlags(imageCmd)
 
 	generateCmd := &cobra.Command{
 		Use:   "generate",
@@ -78,65 +69,26 @@ func newImageCmd() *cobra.Command {
 	addCommonExecutionFlags(img2imgCmd)
 	addImageTransformFlags(img2imgCmd)
 
-	transformCmd := &cobra.Command{
-		Use:   "transform",
-		Short: "显式的 img2img 入口",
-		Long:  "与 `popiart image img2img` 等价，但用更自然的 transform 命名暴露官方 img2img runtime。",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			payload, preview, err := resolveImageTransformInput(cmd)
-			if err != nil {
-				return err
-			}
-			return executeTaskCommand(cmd, "image.transform", payload, popiart.BuildImageTransformTaskRequest, preview)
-		},
-	}
-	addCommonExecutionFlags(transformCmd)
-	addImageTransformFlags(transformCmd)
-
 	describeCmd := newImageDescribeCmd()
 
-	imageCmd.AddCommand(generateCmd, img2imgCmd, transformCmd, describeCmd)
+	imageCmd.AddCommand(generateCmd, img2imgCmd, describeCmd)
 	return imageCmd
 }
 
 func newVideoCmd() *cobra.Command {
 	videoCmd := &cobra.Command{
-		Use:   "video [prompt]",
+		Use:   "video",
 		Short: "围绕官方 video runtime 的意图化命令面",
-		Args:  cobra.MaximumNArgs(1),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 && strings.TrimSpace(flagString(cmd, "prompt")) == "" && !hasImageSourceInput(cmd) {
-				return cmd.Help()
-			}
-			payload, preview, err := resolveVideoGenerateInput(cmd, args)
-			if err != nil {
-				return err
-			}
-			return executeVideoGenerateCommand(cmd, payload, "video", preview)
+			return cmd.Help()
 		},
 	}
-	addVideoGenerateFlags(videoCmd)
-	addCommonExecutionFlags(videoCmd)
-
-	generateCmd := &cobra.Command{
-		Use:   "generate",
-		Short: "通用视频生成入口",
-		Long:  "当前优先映射到官方 image2video runtime。传入 --image / --from 时可直接使用稳定 URL 或本地文件路径；本地文件会先自动上传为 source artifact。纯 prompt 的 text2video 路径会在 runtime baseline ready 后接入。",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			payload, preview, err := resolveVideoGenerateInput(cmd, nil)
-			if err != nil {
-				return err
-			}
-			return executeVideoGenerateCommand(cmd, payload, "video.generate", preview)
-		},
-	}
-	addCommonExecutionFlags(generateCmd)
-	addVideoGenerateFlags(generateCmd)
 
 	img2videoCmd := &cobra.Command{
 		Use:   "img2video",
 		Short: "显式的 image-to-video 入口",
-		Long:  "与 `popiart video generate` 等价，但用更直接的 img2video 命名暴露官方 image2video runtime。",
+		Long:  "映射到官方 image2video runtime。传入 --image / --from 时可直接使用稳定 URL 或本地文件路径；本地文件会先自动上传为 source artifact。纯 prompt 的 text2video 路径会在 runtime baseline ready 后接入。",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload, preview, err := resolveVideoGenerateInput(cmd, nil)
 			if err != nil {
@@ -148,26 +100,10 @@ func newVideoCmd() *cobra.Command {
 	addCommonExecutionFlags(img2videoCmd)
 	addVideoGenerateFlags(img2videoCmd)
 
-	fromImageCmd := &cobra.Command{
-		Use:   "from-image",
-		Short: "显式的 from-image 入口",
-		Long:  "与 `popiart video generate` 等价，但用 from-image 命名强调当前是 image2video 路径。",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			payload, preview, err := resolveVideoGenerateInput(cmd, nil)
-			if err != nil {
-				return err
-			}
-			return executeVideoGenerateCommand(cmd, payload, "video.from-image", preview)
-		},
-	}
-	addCommonExecutionFlags(fromImageCmd)
-	addVideoGenerateFlags(fromImageCmd)
-
 	actionTransferCmd := &cobra.Command{
-		Use:     "action-transfer",
-		Aliases: []string{"motion-transfer", "dreamactor"},
-		Short:   "通过即梦 DreamActor 做动作迁移",
-		Long:    "提交一张身份图和一个动作参考视频到即梦动作迁移模型。默认模型为 jimeng_dreamactor_m20_gen_video，payload 会按统一网关规整为 images[0]、videos[0] 和 metadata.action=actionGenerate。",
+		Use:   "action-transfer",
+		Short: "通过即梦 DreamActor 做动作迁移",
+		Long:  "提交一张身份图和一个动作参考视频到即梦动作迁移模型。默认模型为 jimeng_dreamactor_m20_gen_video，payload 会按统一网关规整为 images[0]、videos[0] 和 metadata.action=actionGenerate。",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload, preview, err := resolveVideoActionTransferInput(cmd)
 			if err != nil {
@@ -180,10 +116,9 @@ func newVideoCmd() *cobra.Command {
 	addVideoActionTransferFlags(actionTransferCmd)
 
 	seedanceCmd := &cobra.Command{
-		Use:     "seedance",
-		Aliases: []string{"doubao", "doubao-seedance"},
-		Short:   "通过 Seedance / 豆包视频模型生成视频",
-		Long:    "提交文生、图生、参考视频或参考音频请求到 Seedance / Doubao 视频模型。默认模型为 huimeng-seedance-2.0，按 action 和输入形态映射到主站视频 task。",
+		Use:   "seedance",
+		Short: "通过 Seedance / 豆包视频模型生成视频",
+		Long:  "提交文生、图生、参考视频或参考音频请求到 Seedance / Doubao 视频模型。默认模型为 huimeng-seedance-2.0，按 action 和输入形态映射到主站视频 task。",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			payload, preview, err := resolveSeedanceVideoInput(cmd)
 			if err != nil {
@@ -195,7 +130,7 @@ func newVideoCmd() *cobra.Command {
 	addCommonExecutionFlags(seedanceCmd)
 	addVideoSeedanceFlags(seedanceCmd)
 
-	videoCmd.AddCommand(generateCmd, img2videoCmd, fromImageCmd, actionTransferCmd, seedanceCmd)
+	videoCmd.AddCommand(img2videoCmd, actionTransferCmd, seedanceCmd)
 	return videoCmd
 }
 
@@ -203,6 +138,10 @@ func newAudioCmd() *cobra.Command {
 	audioCmd := &cobra.Command{
 		Use:   "audio",
 		Short: "围绕官方 audio runtime 的意图化命令面",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 	}
 
 	ttsCmd := &cobra.Command{
@@ -237,62 +176,15 @@ func newAudioCmd() *cobra.Command {
 	return audioCmd
 }
 
-func newSpeechCmd() *cobra.Command {
-	speechCmd := &cobra.Command{
-		Use:   "speech",
-		Short: "围绕官方 speech runtime 的意图化命令面",
-	}
-
-	synthesizeCmd := &cobra.Command{
-		Use:   "synthesize",
-		Short: "通过官方 TTS runtime 合成语音",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			text, err := resolveTextInput(cmd)
-			if err != nil {
-				return err
-			}
-
-			payload := map[string]any{
-				"text": text,
-			}
-			if err := rejectUnsupportedSpeechFlags(cmd); err != nil {
-				return err
-			}
-			putString(payload, "voice", resolveSpeechVoice(cmd))
-			putString(payload, "language", flagString(cmd, "language"))
-			putString(payload, "emotion", flagString(cmd, "emotion"))
-			putChangedFloat(payload, "speed", cmd, "speed")
-			putChangedFloat(payload, "volume", cmd, "volume")
-			putChangedFloat(payload, "pitch", cmd, "pitch")
-
-			return executeTaskCommand(cmd, "speech.synthesize", payload, popiart.BuildTextToSpeechTaskRequest, nil)
-		},
-	}
-	addCommonExecutionFlags(synthesizeCmd)
-	addSpeechSynthesizeFlags(synthesizeCmd)
-
-	speechCmd.AddCommand(synthesizeCmd)
-	return speechCmd
-}
-
 func newMusicCmd() *cobra.Command {
 	musicCmd := &cobra.Command{
-		Use:   "music [prompt]",
+		Use:   "music",
 		Short: "围绕 MiniMax music 的意图化命令面",
-		Args:  cobra.MaximumNArgs(1),
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 && strings.TrimSpace(flagString(cmd, "prompt")) == "" && strings.TrimSpace(flagString(cmd, "lyrics")) == "" && strings.TrimSpace(flagString(cmd, "lyrics-file")) == "" {
-				return cmd.Help()
-			}
-			payload, err := resolveMusicGenerateInput(cmd, args)
-			if err != nil {
-				return err
-			}
-			return executeTaskCommand(cmd, "music", payload, popiart.BuildMusicTaskRequest, nil)
+			return cmd.Help()
 		},
 	}
-	addCommonExecutionFlags(musicCmd)
-	addMusicGenerateFlags(musicCmd)
 
 	generateCmd := &cobra.Command{
 		Use:   "generate",
@@ -358,7 +250,7 @@ func addVideoGenerateFlags(cmd *cobra.Command) {
 	cmd.Flags().String("model", "", "显式指定本次请求使用的主站模型 ID（aiModelId）")
 	cmd.Flags().String("prompt-enhancer-model", "", "显式指定前置图像理解/提示词增强模型 ID（aiModelId）；传入后会先生成增强后的图生视频 prompt 再提交视频任务")
 	cmd.Flags().String("from", "", "源图路径或 URL（等同于 --image）")
-	cmd.Flags().String("image", "", "源图 URL、本地文件路径或 data:image/*;base64 URL")
+	cmd.Flags().StringArray("image", nil, "源图 URL、本地文件路径或 data:image/*;base64 URL，可重复传入")
 	cmd.Flags().String("source-artifact-id", "", "已上传源图的 artifact_id")
 	cmd.Flags().String("last-frame", "", "尾帧图片 URL、本地文件路径或 data:image/*;base64 URL；传入后按首尾帧视频提交")
 	cmd.Flags().String("last-frame-artifact-id", "", "已上传尾帧图片的 artifact_id；传入后按首尾帧视频提交")
@@ -452,7 +344,7 @@ func rejectUnsupportedSpeechFlags(cmd *cobra.Command) error {
 		if cmd.Flags().Changed(name) {
 			return output.NewError("VALIDATION_ERROR", "当前主站语音接口不支持该参数", map[string]any{
 				"flag": "--" + name,
-				"hint": "当前 speech synthesize / audio tts 仅支持 --text、--text-file、--model、--voice、--language、--emotion、--speed、--volume、--pitch、--wait、--download、--dir",
+				"hint": "当前 audio tts 仅支持 --text、--text-file、--model、--voice、--language、--emotion、--speed、--volume、--pitch、--wait、--download、--dir",
 			})
 		}
 	}
@@ -614,11 +506,11 @@ func executeTaskCommand(cmd *cobra.Command, action string, payload map[string]an
 
 func taskTypeForAction(action string) int {
 	switch strings.TrimSpace(action) {
-	case "image", "image.generate", "image.img2img", "image.transform":
+	case "image.generate", "image.img2img":
 		return 1
-	case "video", "video.generate", "video.img2video", "video.from-image", "video.action-transfer", "video.seedance":
+	case "video.img2video", "video.action-transfer", "video.seedance":
 		return 2
-	case "audio.tts", "speech.synthesize", "music", "music.generate":
+	case "audio.tts", "music.generate":
 		return 3
 	default:
 		return 0
@@ -627,7 +519,7 @@ func taskTypeForAction(action string) int {
 
 func isVideoTaskAction(action string) bool {
 	switch strings.TrimSpace(action) {
-	case "video", "video.generate", "video.img2video", "video.from-image", "video.action-transfer", "video.seedance":
+	case "video.img2video", "video.action-transfer", "video.seedance":
 		return true
 	default:
 		return false
@@ -1151,17 +1043,17 @@ func taskExecutionMode(explicitModel string) string {
 func taskValidationSpecForAction(action string, payload map[string]any) popiart.ModelValidationSpec {
 	spec := popiart.ModelValidationSpec{}
 	switch strings.TrimSpace(action) {
-	case "image", "image.generate":
+	case "image.generate":
 		spec.SubType = 103
 		spec.Ratio = stringValue(payload["aspect_ratio"])
 		spec.Resolution = stringValue(payload["size"])
-	case "image.img2img", "image.transform":
+	case "image.img2img":
 		spec.SubType = 103
 		spec.RequiresImages = true
 		spec.ImageCount = len(stringSliceValue(payload["images"]))
 		spec.Ratio = stringValue(payload["aspect_ratio"])
 		spec.Resolution = stringValue(payload["size"])
-	case "video", "video.generate", "video.img2video", "video.from-image":
+	case "video.img2video":
 		spec.SubType = int(numericValue(payload["sub_type"]))
 		if spec.SubType == 0 {
 			spec.AllowedSubTypes = []int{202, 203, 204}
@@ -1189,9 +1081,9 @@ func taskValidationSpecForAction(action string, payload map[string]any) popiart.
 		spec.VideoRatio = stringValue(payload["aspect_ratio"])
 		spec.Resolution = stringValue(payload["size"])
 		spec.Duration = int(numericValue(payload["duration"]))
-	case "audio.tts", "speech.synthesize":
+	case "audio.tts":
 		spec.SubType = 301
-	case "music", "music.generate":
+	case "music.generate":
 		spec.AllowedSubTypes = []int{304, 305}
 	}
 	return spec
@@ -1199,7 +1091,7 @@ func taskValidationSpecForAction(action string, payload map[string]any) popiart.
 
 func directModelTypeForAction(action string) string {
 	switch strings.TrimSpace(action) {
-	case "music", "music.generate":
+	case "music.generate":
 		return "music"
 	case "video.action-transfer":
 		return "video"
@@ -1355,8 +1247,8 @@ func resolveVideoGenerateInput(cmd *cobra.Command, args []string) (map[string]an
 				"mode": "prompt-only",
 			}, nil
 		}
-		return nil, nil, output.NewError("CAPABILITY_UNAVAILABLE", "当前 video.generate 还未开放 text2video runtime", map[string]any{
-			"command": "video generate",
+		return nil, nil, output.NewError("CAPABILITY_UNAVAILABLE", "当前 video.img2video 还未开放 text2video runtime", map[string]any{
+			"command": "video img2video",
 			"hint":    "先通过 --image / --from / --source-artifact-id 走 image2video；等 runtime baseline ready 后再开放纯 prompt 视频生成",
 		})
 	}
@@ -2127,10 +2019,10 @@ func hasVideoLastFrameInput(cmd *cobra.Command) bool {
 }
 
 func hasImageSourceInput(cmd *cobra.Command) bool {
-	image := strings.TrimSpace(flagString(cmd, "image"))
+	images := cleanedStringSlice(flagStringValues(cmd, "image"))
 	from := strings.TrimSpace(flagString(cmd, "from"))
 	sourceArtifactID := strings.TrimSpace(flagString(cmd, "source-artifact-id"))
-	return image != "" || from != "" || sourceArtifactID != ""
+	return len(images) > 0 || from != "" || sourceArtifactID != ""
 }
 
 // resolveImageTransformInput 把图生图输入统一规整为主站 task/create 可消费的图片 URL 列表。
@@ -2205,16 +2097,16 @@ func resolveTaskVideoGenerateInput(cmd *cobra.Command) (map[string]any, map[stri
 // resolveTaskPrimaryImageInput 兼容主图使用 URL、本地文件或历史 artifact_id 的输入方式。
 func resolveTaskPrimaryImageInput(cmd *cobra.Command) ([]string, map[string]any, error) {
 	sourceArtifactID := strings.TrimSpace(flagString(cmd, "source-artifact-id"))
-	image := strings.TrimSpace(flagString(cmd, "image"))
+	images := cleanedStringSlice(flagStringValues(cmd, "image"))
 	from := strings.TrimSpace(flagString(cmd, "from"))
-	if image == "" && from != "" {
-		image = from
+	if len(images) == 0 && from != "" {
+		images = []string{from}
 	}
 
 	switch {
-	case sourceArtifactID == "" && image == "":
+	case sourceArtifactID == "" && len(images) == 0:
 		return nil, nil, invalidFlagValueError("--image", "", "请传入 --image / --from 或 --source-artifact-id")
-	case sourceArtifactID != "" && image != "":
+	case sourceArtifactID != "" && len(images) > 0:
 		return nil, nil, conflictingAgentFlagsError("image", "source-artifact-id")
 	case sourceArtifactID != "":
 		urls, preview, err := resolveTaskArtifactURLs(cmd, []string{sourceArtifactID}, "source")
@@ -2223,7 +2115,7 @@ func resolveTaskPrimaryImageInput(cmd *cobra.Command) ([]string, map[string]any,
 		}
 		return urls, preview, nil
 	default:
-		urls, preview, err := resolveTaskMediaURLs(cmd, []string{image}, "source", true)
+		urls, preview, err := resolveTaskMediaURLs(cmd, images, "source", true)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -2954,4 +2846,22 @@ func flagStringArray(cmd *cobra.Command, name string) []string {
 	}
 	value, _ := cmd.Flags().GetStringArray(name)
 	return value
+}
+
+func flagStringValues(cmd *cobra.Command, name string) []string {
+	if cmd == nil {
+		return nil
+	}
+	flag := cmd.Flags().Lookup(name)
+	if flag == nil {
+		return nil
+	}
+	if flag.Value.Type() == "stringArray" {
+		return flagStringArray(cmd, name)
+	}
+	value := strings.TrimSpace(flagString(cmd, name))
+	if value == "" {
+		return nil
+	}
+	return []string{value}
 }

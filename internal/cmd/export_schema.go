@@ -52,7 +52,7 @@ func newExportSchemaCmd() *cobra.Command {
 		Use:   "export-schema",
 		Short: "导出 PopiArt CLI 命令的 tool JSON schema",
 		Long: "从 Cobra 命令树导出 PopiArt CLI 自身的命令结构，用于动态注册为 Anthropic / OpenAI 兼容工具。\n\n" +
-			"默认导出所有可执行 leaf 命令；传入 `--command \"video generate\"` 可只导出一个命令。\n" +
+			"默认导出所有可执行 leaf 命令；传入 `--command \"video img2video\"` 可只导出一个命令。\n" +
 			"该命令直接输出原始 JSON schema，而不是标准 `{ ok, data }` envelope。",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			format, err := normalizeExportSchemaFormat(format)
@@ -69,7 +69,7 @@ func newExportSchemaCmd() *cobra.Command {
 	}
 
 	exportCmd.Flags().StringVar(&format, "format", exportSchemaFormatAnthropic, "导出格式: anthropic | openai | generic")
-	exportCmd.Flags().StringVar(&commandPath, "command", "", "仅导出指定命令，例如 \"video generate\" 或 \"models route-override set\"")
+	exportCmd.Flags().StringVar(&commandPath, "command", "", "仅导出指定命令，例如 \"video img2video\" 或 \"models route-override set\"")
 	return exportCmd
 }
 
@@ -169,7 +169,7 @@ func shouldExportCommand(cmd *cobra.Command) bool {
 		return false
 	}
 	switch cmd.Name() {
-	case "help", "export-schema":
+	case "help", "export-schema", "image", "video", "audio", "music", "auth":
 		return false
 	default:
 		return true
@@ -299,9 +299,9 @@ func applyExportSchemaOverlay(commandPath string, schema map[string]any) map[str
 	}
 
 	switch commandPath {
-	case "image", "image generate":
+	case "image generate":
 		addRequired("prompt")
-	case "image img2img", "image transform":
+	case "image img2img":
 		addRequired("prompt")
 		schema["oneOf"] = []map[string]any{
 			{"required": []string{"image"}},
@@ -313,7 +313,7 @@ func applyExportSchemaOverlay(commandPath string, schema map[string]any) map[str
 			{"required": []string{"from"}},
 			{"required": []string{"source_artifact_id"}},
 		}
-	case "video", "video generate", "video img2video", "video from-image":
+	case "video img2video":
 		schema["oneOf"] = []map[string]any{
 			{"required": []string{"image"}},
 			{"required": []string{"from"}},
@@ -328,12 +328,12 @@ func applyExportSchemaOverlay(commandPath string, schema map[string]any) map[str
 			{"required": []string{"image"}},
 			{"required": []string{"video"}},
 		}
-	case "audio tts", "speech synthesize":
+	case "audio tts":
 		schema["oneOf"] = []map[string]any{
 			{"required": []string{"text"}},
 			{"required": []string{"text_file"}},
 		}
-	case "music", "music generate":
+	case "music generate":
 		schema["oneOf"] = []map[string]any{
 			{"required": []string{"prompt"}},
 			{"required": []string{"lyrics"}},

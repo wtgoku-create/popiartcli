@@ -355,11 +355,10 @@ func defaultRouteMappings() []defaultRouteMapping {
 	return []defaultRouteMapping{
 		{RouteKey: "image.text2image", Command: "image.generate", SubType: 103},
 		{RouteKey: "image.img2img", Command: "image.img2img", SubType: 103},
-		{RouteKey: "video.image2video", Command: "video.generate", SubType: 202},
+		{RouteKey: "video.image2video", Command: "video.img2video", SubType: 202},
 		{RouteKey: "video.seedance", Command: "video.seedance"},
 		{RouteKey: "video.action-transfer", Command: "video.action-transfer", SubType: 205},
 		{RouteKey: "audio.tts", Command: "audio.tts", SubType: 301},
-		{RouteKey: "speech.synthesize", Command: "speech.synthesize", SubType: 301},
 		{RouteKey: "music.generate", Command: "music.generate", SubType: 301},
 	}
 }

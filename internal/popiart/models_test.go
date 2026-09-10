@@ -61,6 +61,39 @@ func TestResolveCandidateModelRequiresExplicitModelID(t *testing.T) {
 	}
 }
 
+func TestDefaultModelCodesOnlyExposeCanonicalCommands(t *testing.T) {
+	removedCommands := []string{
+		"image",
+		"image.transform",
+		"video",
+		"video.generate",
+		"video.from-image",
+		"speech.synthesize",
+		"music",
+	}
+	for _, command := range removedCommands {
+		if got := DefaultModelCodes(command); len(got) != 0 {
+			t.Fatalf("expected removed command %q to have no default models, got %#v", command, got)
+		}
+	}
+
+	canonicalCommands := []string{
+		"image.generate",
+		"image.img2img",
+		"image.describe",
+		"video.img2video",
+		"video.action-transfer",
+		"video.seedance",
+		"audio.tts",
+		"music.generate",
+	}
+	for _, command := range canonicalCommands {
+		if got := DefaultModelCodes(command); len(got) == 0 {
+			t.Fatalf("expected canonical command %q to keep default models", command)
+		}
+	}
+}
+
 func TestValidateModelSupportRejectsUnsupportedSubtype(t *testing.T) {
 	model := Model{
 		Code:            "seedance-main",

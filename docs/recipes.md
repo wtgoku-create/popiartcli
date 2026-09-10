@@ -123,23 +123,9 @@ popiart image img2img \
   --non-interactive
 ```
 
-## Recipe: intent-first video generation from local file
+## Recipe: image-to-video from local file
 
-`video generate` 会自动完成本地文件上传，再提交 runtime job。
-
-```sh
-popiart video generate \
-  --image ./source.png \
-  --prompt "Slow push-in and subtle wind motion" \
-  --wait \
-  --output json \
-  --quiet \
-  --non-interactive
-```
-
-## Recipe: explicit img2video
-
-如果你希望命令名直接体现 image-to-video，而不是通用 generate：
+`video img2video` 会自动完成本地文件上传，再提交 runtime job。
 
 ```sh
 popiart video img2video \
@@ -154,7 +140,7 @@ popiart video img2video \
 首尾帧视频用 `--image` 提供首帧，用 `--last-frame` 提供尾帧；显式 `--model` 时会直接走 `models infer`，并提交网关兼容的 `images[0]` / `images[1]` 与 `metadata.action=firstTailGenerate`：
 
 ```sh
-popiart video generate \
+popiart video img2video \
   --image ./first-frame.png \
   --last-frame ./last-frame.png \
   --prompt "从第一帧自然过渡到最后一帧，镜头平稳推进" \
@@ -170,7 +156,7 @@ popiart video generate \
 如果你只想预览，不想真的提交：
 
 ```sh
-popiart video generate \
+popiart video img2video \
   --image ./source.png \
   --prompt "Slow push-in and subtle wind motion" \
   --dry-run \
@@ -306,10 +292,9 @@ popiart video seedance \
 ## Recipe: text-to-speech
 
 ```sh
-popiart speech synthesize \
+popiart audio tts \
   --text "今天我们来做一个更适合 agent 调用的 CLI。" \
   --voice narrator_female \
-  --format mp3 \
   --output json \
   --quiet \
   --non-interactive
@@ -318,9 +303,8 @@ popiart speech synthesize \
 也可以从文件读取：
 
 ```sh
-popiart speech synthesize \
+popiart audio tts \
   --text-file ./speech.txt \
-  --format mp3 \
   --output json \
   --quiet \
   --non-interactive

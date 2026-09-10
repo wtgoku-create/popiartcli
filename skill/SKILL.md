@@ -128,7 +128,7 @@ popiart image img2img \
 ### Image To Video
 
 ```bash
-popiart video generate \
+popiart video img2video \
   --image ./source.png \
   --prompt "Hair and fabric drift in a soft breeze; slow camera push-in" \
   --duration 5 \
@@ -138,12 +138,10 @@ popiart video generate \
   --non-interactive
 ```
 
-`popiart video img2video` is an explicit alias for this flow.
-
 Optional prompt enhancement:
 
 ```bash
-popiart video generate \
+popiart video img2video \
   --image ./source.png \
   --prompt "Make the person naturally turn toward camera" \
   --prompt-enhancer-model <image-understanding-ai-model-id> \
@@ -170,10 +168,9 @@ popiart video action-transfer \
 ### Speech And Music
 
 ```bash
-popiart speech synthesize \
+popiart audio tts \
   --text "Today we are building a CLI for agents." \
   --voice narrator_female \
-  --format mp3 \
   --output json \
   --quiet \
   --non-interactive
@@ -277,7 +274,7 @@ popiart image generate \
 ```
 
 ```bash
-popiart video generate \
+popiart video img2video \
   --model <video-ai-model-id> \
   --image ./source.png \
   --prompt "Subtle camera push-in and natural motion" \
@@ -337,7 +334,7 @@ For agents that register CLI commands as native tools:
 ```bash
 popiart export-schema --format openai
 popiart export-schema --format anthropic
-popiart export-schema --command "video generate" --format openai
+popiart export-schema --command "video img2video" --format openai
 ```
 
 `export-schema` emits raw tool schema JSON rather than the normal `{ ok, data }` envelope.

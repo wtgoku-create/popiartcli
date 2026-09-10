@@ -16,6 +16,10 @@ func newAuthCmd() *cobra.Command {
 	authCmd := &cobra.Command{
 		Use:   "auth",
 		Short: "管理身份验证和 API key",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return cmd.Help()
+		},
 	}
 
 	loginCmd := &cobra.Command{
@@ -105,9 +109,8 @@ func newAuthCmd() *cobra.Command {
 	}
 
 	tokenCmd := &cobra.Command{
-		Use:     "key",
-		Aliases: []string{"token"},
-		Short:   "管理 API key",
+		Use:   "key",
+		Short: "管理 API key",
 	}
 
 	tokenShowCmd := &cobra.Command{
